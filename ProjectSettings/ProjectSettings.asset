@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!129 &1
+PlayerSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 26
+  productGUID: 4b4f128db5bd4fd0b1119c6c1f022f1f
+  companyName: Codex Prototype
+  productName: Tower Defense Roguelite
+  defaultScreenWidth: 1920
+  defaultScreenHeight: 1080
+  defaultIsNativeResolution: 1
+  runInBackground: 1
+  captureSingleScreen: 0
+  usePlayerLog: 1
+  resizableWindow: 1
+  fullscreenMode: 1
+  scriptingBackend:
+    Standalone: 1
+  il2cppCompilerConfiguration: {}
+  managedStrippingLevel: {}
+  activeInputHandler: 0
+  m_BuildTargetIcons: []

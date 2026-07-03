@@ -1,0 +1,246 @@
+using System.Collections.Generic;
+using TowerDefense.Data;
+using TowerDefense.Input;
+using TowerDefense.Progression;
+using TowerDefense.Rewards;
+using TowerDefense.Save;
+using TowerDefense.Simulation;
+using UnityEngine;
+
+namespace TowerDefense.Runtime
+{
+    public sealed class GameSession : MonoBehaviour
+    {
+        private readonly RewardService rewards = new();
+        private ProfileStore profileStore;
+        private PlayerProfile profile;
+        private LevelDefinition level;
+        private ProgressionService progression;
+        private EnemyManager enemies;
+        private TowerManager towers;
+        private ActiveWeaponController activeWeapon;
+        private WorldPopupManager popups;
+        private PlayerInputRouter input;
+        private PathRoute path;
+        private int lives;
+        private int maxLivesForRun;
+        private int enemiesKilled;
+        private bool running;
+        private bool finished;
+        private bool won;
+
+        public PlayerProfile Profile => profile;
+        public LevelDefinition Level => level;
+        public int Lives => lives;
+        public int EnemiesKilled => enemiesKilled;
+        public bool IsPlanning => !running && !finished;
+        public bool IsRunning => running;
+        public bool Finished => finished;
+        public bool Won => finished && won;
+        public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
+
+        public void AddCurrency(CurrencyType currency, int amount)
+        {
+            profile.AddCurrency(currency, amount);
+            profileStore.Save(profile);
+        }
+
+        public void RefundAndResetUpgrades()
+        {
+            progression.RefundAndResetPurchasedUpgrades();
+            profileStore.Save(profile);
+            ResetToPlanning();
+        }
+
+        public bool IsUpgradePurchased(string nodeId)
+        {
+            return progression.IsPurchased(nodeId);
+        }
+
+        public bool CanPurchaseUpgrade(string nodeId)
+        {
+            return progression.CanPurchase(nodeId);
+        }
+
+        public bool TryPurchaseUpgrade(string nodeId)
+        {
+            var purchased = progression.TryPurchase(nodeId);
+            if (purchased)
+            {
+                profileStore.Save(profile);
+                ResetToPlanning();
+            }
+
+            return purchased;
+        }
+
+        public void Initialize(
+            LevelDefinition levelDefinition,
+            SkillTreeDefinition skillTree,
+            PathRoute path,
+            IReadOnlyList<TowerDefinition> availableTowers,
+            EnemyManager enemyManager,
+            TowerManager towerManager,
+            ActiveWeaponController activeWeaponController,
+            WorldPopupManager popupManager,
+            PlayerInputRouter inputRouter)
+        {
+            level = levelDefinition;
+            profileStore = new ProfileStore();
+            profile = profileStore.LoadOrCreate();
+            progression = new ProgressionService(skillTree, profile);
+            enemies = enemyManager;
+            towers = towerManager;
+            activeWeapon = activeWeaponController;
+            popups = popupManager;
+            input = inputRouter;
+            this.path = path;
+
+            var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
+            var towerLimit = level.baseTowerLimit + Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.GlobalTowerLimitFlat));
+            var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
+            var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
+            var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
+            maxLivesForRun = level.startingLives + bonusLives;
+            lives = maxLivesForRun;
+            enemiesKilled = 0;
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+
+            enemies.EnemyKilled += OnEnemyKilled;
+            enemies.EnemyEscaped += OnEnemyEscaped;
+            towers.Initialize(enemies, path, availableTowers, towerLimit);
+            towers.SetTowerDamageMultiplier(towerDamageMultiplier);
+            activeWeapon.Damage *= activeDamageMultiplier;
+            activeWeapon.CooldownSeconds *= activeCooldownMultiplier;
+            towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+        }
+
+        private void Update()
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            var state = input.Current;
+            if (state.RestartLevel)
+            {
+                ResetToPlanning();
+                return;
+            }
+
+            if (finished)
+            {
+                return;
+            }
+
+            if (IsPlanning)
+            {
+                if (state.StartLevel)
+                {
+                    StartLevel();
+                    return;
+                }
+
+                if (state.PlaceTower && towers.AvailableTowers.Count > state.SelectedTowerIndex)
+                {
+                    var selectedTower = towers.AvailableTowers[state.SelectedTowerIndex];
+                    var blockReason = towers.GetPlacementBlockReason(selectedTower, state.PointerWorld);
+                    if (string.IsNullOrEmpty(blockReason) && towers.TryPlace(selectedTower, state.PointerWorld))
+                    {
+                        SaveLayout();
+                    }
+                    else
+                    {
+                        popups?.Show(blockReason, state.PointerWorld);
+                    }
+                }
+
+                if (state.RemoveTower && towers.RemoveNearest(state.PointerWorld))
+                {
+                    SaveLayout();
+                }
+
+                if (state.RemoveAllTowers)
+                {
+                    towers.RemoveAll();
+                    SaveLayout();
+                }
+
+                return;
+            }
+
+            if (lives <= 0)
+            {
+                Finish(false);
+            }
+            else if (enemies.IsWaveComplete)
+            {
+                Finish(true);
+            }
+        }
+
+        public void StartLevel()
+        {
+            if (!IsPlanning)
+            {
+                return;
+            }
+
+            SaveLayout();
+            enemiesKilled = 0;
+            running = true;
+            activeWeapon.CanFire = true;
+            enemies.BeginWave(level.wave, path);
+        }
+
+        public void ResetToPlanning()
+        {
+            enemies.EnemyKilled -= OnEnemyKilled;
+            enemies.EnemyEscaped -= OnEnemyEscaped;
+            enemies.StopWave();
+            towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+            lives = maxLivesForRun;
+            enemiesKilled = 0;
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+            enemies.EnemyKilled += OnEnemyKilled;
+            enemies.EnemyEscaped += OnEnemyEscaped;
+        }
+
+        private void Finish(bool won)
+        {
+            finished = true;
+            running = false;
+            this.won = won;
+            activeWeapon.CanFire = false;
+            enemies.StopWave();
+            rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun);
+            SaveLayout();
+            profileStore.Save(profile);
+        }
+
+        private void OnEnemyKilled(EnemyActor enemy)
+        {
+            enemiesKilled++;
+            rewards.ApplyKillReward(profile, enemy.Definition);
+        }
+
+        private void OnEnemyEscaped(EnemyActor enemy)
+        {
+            lives -= enemy.Definition.lifeDamage;
+        }
+
+        private void SaveLayout()
+        {
+            var layout = profile.GetOrCreateLayout(level.id);
+            layout.placements = towers.CaptureLayout();
+            profileStore.Save(profile);
+        }
+    }
+}
