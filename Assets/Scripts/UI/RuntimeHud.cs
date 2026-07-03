@@ -148,7 +148,7 @@ namespace TowerDefense.UI
                 {
                     var marker = input.Current.SelectedTowerIndex == i ? ">" : " ";
                     var tower = towers.AvailableTowers[i];
-                    text.AppendLine($"{marker} {i + 1}. {tower.displayName}  {towers.CountOf(tower)}/{tower.perTypeLimit}");
+                    text.AppendLine($"{marker} {i + 1}. {tower.displayName}  {towers.CountOf(tower)}/{towers.GetPerTypeLimit(tower)}");
                 }
             }
             else
@@ -452,40 +452,40 @@ namespace TowerDefense.UI
 
         private void CreateStatsPanel(Transform parent)
         {
-            statsPanel = CreatePanel("StatsPanel", parent, new Vector2(-14f, -48f), new Vector2(300f, 244f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            statsPanel = CreatePanel("StatsPanel", parent, new Vector2(-14f, -48f), new Vector2(380f, 264f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(statsPanel.GetComponent<RectTransform>());
             var title = CreateText("StatsTitle", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(270f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
-            title.text = "TOWER STATS";
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(350f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            title.text = "DAMAGE STATS";
 
             statsRows.Clear();
             var towersForStats = session.AllTowerDefinitions ?? towers.AvailableTowers;
             for (var i = 0; i < towersForStats.Count; i++)
             {
                 var tower = towersForStats[i];
-                var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(-72f, -60f - i * 28f), new Vector2(130f, 24f), 11);
+                var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(-96f, -60f - i * 28f), new Vector2(176f, 24f), 10);
                 row.onClick.AddListener(() => SelectStatsTower(tower));
                 statsRows[tower] = row.GetComponentInChildren<Text>();
                 statsRowButtons[tower] = row;
             }
 
             var towerHeader = CreateText("StatsTowerHeader", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(towerHeader.GetComponent<RectTransform>(), new Vector2(-72f, -40f), new Vector2(130f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(towerHeader.GetComponent<RectTransform>(), new Vector2(-96f, -40f), new Vector2(176f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             towerHeader.text = "TOWERS";
 
             var activeHeader = CreateText("StatsActiveHeader", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(activeHeader.GetComponent<RectTransform>(), new Vector2(76f, -40f), new Vector2(130f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(activeHeader.GetComponent<RectTransform>(), new Vector2(98f, -40f), new Vector2(150f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             activeHeader.text = "ACTIVE";
-            activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, "Active Weapon", new Vector2(76f, -60f), new Vector2(130f, 24f), 11);
+            activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, "Volley of Arrows", new Vector2(98f, -60f), new Vector2(150f, 24f), 10);
             activeWeaponStatsButton.onClick.AddListener(SelectActiveWeaponStats);
 
             statsEmptyTowerText = CreateText("StatsNoTowers", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-72f, -62f), new Vector2(130f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-96f, -62f), new Vector2(176f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             statsEmptyTowerText.text = "No towers unlocked";
             statsEmptyTowerText.color = new Color(0.7f, 0.78f, 0.86f, 1f);
 
             statsDetailText = CreateText("StatsDetails", statsPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
-            ConfigureCenteredRect(statsDetailText.GetComponent<RectTransform>(), new Vector2(0f, -148f), new Vector2(260f, 82f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            ConfigureCenteredRect(statsDetailText.GetComponent<RectTransform>(), new Vector2(0f, -158f), new Vector2(340f, 92f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             statsDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
             statsPanelVisible = false;
             statsPanel.SetActive(false);
@@ -595,7 +595,9 @@ namespace TowerDefense.UI
                     continue;
                 }
 
-                text.text = tower.displayName;
+                var damage = towers.GetDamageDealt(tower);
+                var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
+                text.text = $"{tower.displayName}  {damage:0}  {percent:0}%";
                 text.color = tower == selectedStatsTower ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
             }
 
@@ -607,6 +609,8 @@ namespace TowerDefense.UI
             if (activeWeaponStatsButton != null)
             {
                 var label = activeWeaponStatsButton.GetComponentInChildren<Text>();
+                var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
+                label.text = $"Volley of Arrows  {activeWeapon.TotalDamageDealt:0}  {activePercent:0}%";
                 label.color = selectedStatsActiveWeapon ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
             }
 
@@ -619,7 +623,7 @@ namespace TowerDefense.UI
             {
                 var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
                 statsDetailText.text =
-                    "Active Weapon\n" +
+                    "Volley of Arrows\n" +
                     $"Damage: {activeWeapon.Damage:0.0} per target\n" +
                     $"Radius: {activeWeapon.Radius:0.0}\n" +
                     $"Cooldown: {activeWeapon.CooldownSeconds:0.0}s\n" +
@@ -838,6 +842,8 @@ namespace TowerDefense.UI
                     return $"Unlock {effect.targetId} tower";
                 case UpgradeEffectType.GlobalTowerLimitFlat:
                     return $"+{effect.value:0} total tower limit";
+                case UpgradeEffectType.PerTypeTowerLimitFlat:
+                    return $"+{effect.value:0} {effect.targetId} tower limit";
                 case UpgradeEffectType.TowerDamagePercent:
                     return $"+{effect.value:0}% {effect.targetId} tower damage";
                 case UpgradeEffectType.ActiveWeaponDamagePercent:

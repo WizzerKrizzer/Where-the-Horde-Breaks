@@ -31,6 +31,7 @@ namespace TowerDefense.Data
         ActiveWeaponDamagePercent,
         ActiveWeaponCooldownPercent,
         GlobalTowerLimitFlat,
+        PerTypeTowerLimitFlat,
         TowerDamagePercent,
         BaseLivesFlat,
         UnlockTower,

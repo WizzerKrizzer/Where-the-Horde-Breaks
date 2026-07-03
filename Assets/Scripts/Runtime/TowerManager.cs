@@ -10,6 +10,7 @@ namespace TowerDefense.Runtime
     public sealed class TowerManager : MonoBehaviour
     {
         private readonly List<TowerActor> towers = new();
+        private readonly Dictionary<string, int> perTypeLimitBonuses = new();
         private EnemyManager enemies;
         private PathRoute route;
         private int globalLimit;
@@ -48,6 +49,31 @@ namespace TowerDefense.Runtime
             globalLimit = Mathf.Max(0, towerLimit);
         }
 
+        public void SetPerTypeLimitBonus(string towerId, int bonus)
+        {
+            if (string.IsNullOrEmpty(towerId))
+            {
+                return;
+            }
+
+            perTypeLimitBonuses[towerId] = Mathf.Max(0, bonus);
+        }
+
+        public void ClearPerTypeLimitBonuses()
+        {
+            perTypeLimitBonuses.Clear();
+        }
+
+        public int GetPerTypeLimit(TowerDefinition definition)
+        {
+            if (definition == null)
+            {
+                return 0;
+            }
+
+            return definition.perTypeLimit + (perTypeLimitBonuses.TryGetValue(definition.id, out var bonus) ? bonus : 0);
+        }
+
         public bool CanPlace(TowerDefinition definition, Vector3 position)
         {
             return string.IsNullOrEmpty(GetPlacementBlockReason(definition, position));
@@ -70,7 +96,7 @@ namespace TowerDefense.Runtime
                 return "Too close to enemy path";
             }
 
-            if (towers.Count(tower => tower.Definition == definition) >= definition.perTypeLimit)
+            if (towers.Count(tower => tower.Definition == definition) >= GetPerTypeLimit(definition))
             {
                 return $"{definition.displayName} limit reached";
             }

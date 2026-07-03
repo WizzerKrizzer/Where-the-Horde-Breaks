@@ -271,6 +271,15 @@ namespace TowerDefense.Runtime
             maxLivesForRun = level.startingLives + bonusLives;
             towers.SetAvailableTowers(GetUnlockedTowers());
             towers.SetGlobalLimit(towerLimit);
+            towers.ClearPerTypeLimitBonuses();
+            if (allTowerDefinitions != null)
+            {
+                foreach (var towerDefinition in allTowerDefinitions)
+                {
+                    var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
+                    towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
+                }
+            }
             towers.SetTowerDamageMultiplier(towerDamageMultiplier);
             activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;

@@ -147,5 +147,31 @@ namespace TowerDefense.Tests
             Assert.That(profile.GetCurrency(CurrencyType.KillEssence), Is.EqualTo(60));
             Assert.That(progression.GetPurchasedRank("damage"), Is.EqualTo(0));
         }
+
+        [Test]
+        public void GetEffectTotal_FiltersPerTypeTowerLimitByTarget()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "archer_limit",
+                    maxRanks = 2,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 5);
+            var progression = new ProgressionService(tree, profile);
+
+            progression.TryPurchase("archer_limit");
+            progression.TryPurchase("archer_limit");
+
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, "archer"), Is.EqualTo(2f));
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, "ballista"), Is.EqualTo(0f));
+        }
     }
 }

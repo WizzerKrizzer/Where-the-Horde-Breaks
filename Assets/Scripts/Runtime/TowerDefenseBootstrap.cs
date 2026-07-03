@@ -127,9 +127,9 @@ namespace TowerDefense.Runtime
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy, 58f, 2.35f, 2, 3, new Color(0.05f, 0.45f, 0.08f), 0.62f);
             var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support, 32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
 
-            var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine, 0, 3, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
-            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, 0, 3, 9.5f, 16f, 1.75f, 14f, new Color(0.7f, 0.35f, 0.16f));
-            var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine, 0, 3, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
+            var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine, 0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
+            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, 0, 1, 9.5f, 16f, 1.75f, 14f, new Color(0.7f, 0.35f, 0.16f));
+            var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine, 0, 1, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
@@ -147,7 +147,7 @@ namespace TowerDefense.Runtime
             level.id = "level_01";
             level.displayName = "Green Pass";
             level.startingLives = 12;
-            level.baseTowerLimit = 9;
+            level.baseTowerLimit = 1;
             level.wave = wave;
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
@@ -205,12 +205,12 @@ namespace TowerDefense.Runtime
                 {
                     id = "archer_limit_01",
                     displayName = "Archer Barracks",
-                    description = "Each rank adds 1 total tower slot for early archer-heavy layouts.",
+                    description = "Each rank increases the Archer Tower limit by 1.",
                     radialPosition = new Vector2(-98f, -102f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "tower_limit_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.GlobalTowerLimitFlat, value = 1f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
                 }
             };
 
