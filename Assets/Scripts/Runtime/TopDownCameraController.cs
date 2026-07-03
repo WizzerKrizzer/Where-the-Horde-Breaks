@@ -49,10 +49,15 @@ namespace TowerDefense.Runtime
         private void ClampCameraPosition()
         {
             var position = controlledCamera.transform.position;
-            position.x = Mathf.Clamp(position.x, minBounds.x, maxBounds.x);
-            position.z = Mathf.Clamp(position.z, minBounds.y, maxBounds.y);
             position.y = Mathf.Clamp(position.y, minHeight, maxHeight);
             controlledCamera.transform.position = position;
+
+            var focus = ScreenPointToGround(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
+            var clampedFocus = new Vector3(
+                Mathf.Clamp(focus.x, minBounds.x, maxBounds.x),
+                focus.y,
+                Mathf.Clamp(focus.z, minBounds.y, maxBounds.y));
+            controlledCamera.transform.position += clampedFocus - focus;
         }
 
         private Vector3 ScreenPointToGround(Vector3 screenPosition)
