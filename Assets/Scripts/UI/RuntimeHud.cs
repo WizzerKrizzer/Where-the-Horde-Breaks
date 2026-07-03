@@ -93,6 +93,8 @@ namespace TowerDefense.UI
                 return;
             }
 
+            HandleHudShortcuts();
+
             var profile = session.Profile;
             var text = new StringBuilder();
             text.AppendLine($"{session.Level.displayName}   Lives: {session.Lives}");
@@ -112,6 +114,19 @@ namespace TowerDefense.UI
             UpdateResultPanel();
             UpdateUpgradePanel();
             UpdateStatsPanel();
+        }
+
+        private void HandleHudShortcuts()
+        {
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
+            {
+                ToggleStatsPanel();
+            }
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.BackQuote))
+            {
+                ToggleDevPanel();
+            }
         }
 
         private void UpdateTowerText()
@@ -405,10 +420,10 @@ namespace TowerDefense.UI
 
         private void CreateTopRightToggles(Transform parent)
         {
-            statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS", new Vector2(-56f, -18f), new Vector2(74f, 28f), new Vector2(1f, 1f), 12);
+            statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS [TAB]", new Vector2(-70f, -18f), new Vector2(102f, 28f), new Vector2(1f, 1f), 11);
             statsToggleButton.onClick.AddListener(ToggleStatsPanel);
 
-            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV", new Vector2(-136f, -18f), new Vector2(64f, 28f), new Vector2(1f, 1f), 12);
+            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-168f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
             devToggleButton.onClick.AddListener(ToggleDevPanel);
         }
 
