@@ -33,6 +33,7 @@ namespace TowerDefense.UI
         private RectTransform upgradeTreeContent;
         private RectTransform upgradeTreeViewport;
         private readonly List<RectTransform> upgradeTreeLabels = new();
+        private GameObject upgradeDetailPanel;
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
         private Text upgradeDetailBody;
@@ -224,15 +225,16 @@ namespace TowerDefense.UI
             }
             ApplyUpgradeTreeTransform();
 
-            var detailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(0f, 76f), new Vector2(760f, 88f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
-            detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.72f);
-            upgradeDetailTitle = CreateText("DetailTitle", detailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 15);
+            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(0f, 76f), new Vector2(760f, 88f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            upgradeDetailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.72f);
+            upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 15);
             ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(-270f, 24f), new Vector2(190f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeDetailBody = CreateText("DetailBody", detailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
+            upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
             ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(12f, 0f), new Vector2(430f, 70f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", detailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
+            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
             upgradeBuyButton.gameObject.SetActive(false);
+            upgradeDetailPanel.SetActive(false);
 
             CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
@@ -315,6 +317,11 @@ namespace TowerDefense.UI
             }
 
             selectedUpgradeNode = null;
+            if (upgradeDetailPanel != null)
+            {
+                upgradeDetailPanel.SetActive(false);
+            }
+
             if (upgradeDetailTitle != null)
             {
                 upgradeDetailTitle.text = string.Empty;
@@ -758,6 +765,11 @@ namespace TowerDefense.UI
             if (selectedUpgradeNode == null || upgradeDetailTitle == null || upgradeDetailBody == null || upgradeBuyButton == null)
             {
                 return;
+            }
+
+            if (upgradeDetailPanel != null)
+            {
+                upgradeDetailPanel.SetActive(true);
             }
 
             var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
