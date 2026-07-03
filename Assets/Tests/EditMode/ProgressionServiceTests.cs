@@ -60,6 +60,34 @@ namespace TowerDefense.Tests
         }
 
         [Test]
+        public void TryPurchase_AllowsMultipleRanksUntilMaxRank()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "damage",
+                    maxRanks = 3,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 40);
+            var progression = new ProgressionService(tree, profile);
+
+            Assert.True(progression.TryPurchase("damage"));
+            Assert.True(progression.TryPurchase("damage"));
+            Assert.True(progression.TryPurchase("damage"));
+            Assert.False(progression.CanPurchase("damage"));
+            Assert.That(progression.GetPurchasedRank("damage"), Is.EqualTo(3));
+            Assert.That(profile.GetCurrency(CurrencyType.KillEssence), Is.EqualTo(10));
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent), Is.EqualTo(6f));
+        }
+
+        [Test]
         public void RefundAndResetPurchasedUpgrades_ReturnsCostsAndClearsPurchases()
         {
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();

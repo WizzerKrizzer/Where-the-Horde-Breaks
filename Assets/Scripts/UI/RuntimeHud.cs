@@ -238,7 +238,7 @@ namespace TowerDefense.UI
         private void CreateUpgradeNode(Transform parent, SkillNodeDefinition node)
         {
             var size = node.isMajorUnlock ? new Vector2(46f, 46f) : new Vector2(34f, 34f);
-            var button = CreateAnchoredButton($"Node_{node.id}", parent, node.isMajorUnlock ? "A" : "+", node.radialPosition, size, new Vector2(0.5f, 0.5f), node.isMajorUnlock ? 18 : 16);
+            var button = CreateAnchoredButton($"Node_{node.id}", parent, "0/1", node.radialPosition, size, new Vector2(0.5f, 0.5f), node.isMajorUnlock ? 13 : 11);
             button.onClick.AddListener(() => SelectUpgradeNode(node));
 
             var events = button.gameObject.AddComponent<EventTrigger>();
@@ -412,9 +412,19 @@ namespace TowerDefense.UI
                 }
 
                 var nodeId = button.name.Substring(5);
+                var node = FindNode(session.UpgradeNodes, nodeId);
                 var label = button.GetComponentInChildren<Text>();
                 var image = button.targetGraphic as Image;
-                if (session.IsUpgradePurchased(nodeId))
+                if (node == null)
+                {
+                    continue;
+                }
+
+                var rank = session.GetUpgradeRank(nodeId);
+                var maxRank = session.GetUpgradeMaxRank(nodeId);
+                label.text = $"{rank}/{maxRank}";
+
+                if (rank >= maxRank)
                 {
                     button.interactable = true;
                     if (image != null)
@@ -453,18 +463,20 @@ namespace TowerDefense.UI
                 return;
             }
 
-            upgradeDetailTitle.text = selectedUpgradeNode.displayName;
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nEffect: {FormatEffects(selectedUpgradeNode.effects)}\nCost: {FormatCosts(selectedUpgradeNode.costs)}";
+            var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
+            var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
+            upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
+            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nPer rank: {FormatEffects(selectedUpgradeNode.effects)}\nNext cost: {FormatCosts(selectedUpgradeNode.costs)}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
-            if (session.IsUpgradePurchased(selectedUpgradeNode.id))
+            if (rank >= maxRank)
             {
                 upgradeBuyButton.interactable = false;
-                buttonLabel.text = "OWNED";
+                buttonLabel.text = "MAXED";
             }
             else if (session.CanPurchaseUpgrade(selectedUpgradeNode.id))
             {
                 upgradeBuyButton.interactable = true;
-                buttonLabel.text = "BUY";
+                buttonLabel.text = "BUY RANK";
             }
             else
             {

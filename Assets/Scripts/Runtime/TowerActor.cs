@@ -12,11 +12,16 @@ namespace TowerDefense.Runtime
 
         public TowerDefinition Definition => definition;
 
+        public void SetDamageMultiplier(float multiplier)
+        {
+            damageMultiplier = Mathf.Max(0.05f, multiplier);
+        }
+
         public void Initialize(TowerDefinition towerDefinition, EnemyManager enemyManager, float towerDamageMultiplier = 1f)
         {
             definition = towerDefinition;
             enemies = enemyManager;
-            damageMultiplier = towerDamageMultiplier;
+            SetDamageMultiplier(towerDamageMultiplier);
             cooldown = Random.Range(0f, towerDefinition.fireInterval);
             var renderer = GetComponent<Renderer>();
             if (renderer != null)

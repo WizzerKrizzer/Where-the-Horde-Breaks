@@ -17,13 +17,24 @@ namespace TowerDefense.Progression
 
         public bool IsPurchased(string nodeId)
         {
-            return profile.purchasedUpgradeIds.Contains(nodeId);
+            return GetPurchasedRank(nodeId) > 0;
+        }
+
+        public int GetPurchasedRank(string nodeId)
+        {
+            return profile.purchasedUpgradeIds.Count(id => id == nodeId);
+        }
+
+        public int GetMaxRank(string nodeId)
+        {
+            var node = FindNode(nodeId);
+            return GetMaxRank(node);
         }
 
         public bool CanPurchase(string nodeId)
         {
             var node = FindNode(nodeId);
-            if (node == null || IsPurchased(nodeId))
+            if (node == null || GetPurchasedRank(nodeId) >= GetMaxRank(node))
             {
                 return false;
             }
@@ -101,6 +112,11 @@ namespace TowerDefense.Progression
             }
 
             return total;
+        }
+
+        private static int GetMaxRank(SkillNodeDefinition node)
+        {
+            return node == null ? 0 : System.Math.Max(1, node.maxRanks);
         }
 
         private SkillNodeDefinition FindNode(string nodeId)

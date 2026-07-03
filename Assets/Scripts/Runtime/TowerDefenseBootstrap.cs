@@ -163,6 +163,7 @@ namespace TowerDefense.Runtime
                     displayName = "Archer Tower",
                     description = "Unlock the Archer Tower for future runs.",
                     radialPosition = Vector2.zero,
+                    maxRanks = 1,
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 25) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer", value = 1f } },
                     isMajorUnlock = true
@@ -171,38 +172,42 @@ namespace TowerDefense.Runtime
                 {
                     id = "tower_limit_01",
                     displayName = "Field Logistics",
-                    description = "Increase the total tower limit by 2.",
+                    description = "Each rank increases the total tower limit by 1.",
                     radialPosition = new Vector2(-145f, 42f),
+                    maxRanks = 5,
                     prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 35) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.GlobalTowerLimitFlat, value = 2f } }
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 20) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.GlobalTowerLimitFlat, value = 1f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "active_power_01",
                     displayName = "Sharpened Volley",
-                    description = "Increase active weapon damage by 20%.",
+                    description = "Each rank increases active weapon damage by 2%.",
                     radialPosition = new Vector2(145f, 42f),
+                    maxRanks = 10,
                     prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 35) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 20f } }
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "base_lives_01",
                     displayName = "Reinforced Gate",
-                    description = "Gain 3 additional base lives.",
+                    description = "Each rank adds 1 base life.",
                     radialPosition = new Vector2(0f, 128f),
+                    maxRanks = 3,
                     prerequisiteNodeIds = new[] { "core" },
                     costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 3f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "archer_limit_01",
                     displayName = "Archer Barracks",
-                    description = "Prototype node for increasing Archer capacity.",
+                    description = "Each rank adds 1 total tower slot for early archer-heavy layouts.",
                     radialPosition = new Vector2(-98f, -102f),
+                    maxRanks = 3,
                     prerequisiteNodeIds = new[] { "tower_limit_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.GlobalTowerLimitFlat, value = 1f } }

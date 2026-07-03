@@ -16,6 +16,7 @@ namespace TowerDefense.Data
         public string displayName;
         [TextArea] public string description;
         public Vector2 radialPosition;
+        [Min(1)] public int maxRanks = 1;
         public string[] prerequisiteNodeIds;
         public CurrencyAmount[] costs;
         public UpgradeEffect[] effects;

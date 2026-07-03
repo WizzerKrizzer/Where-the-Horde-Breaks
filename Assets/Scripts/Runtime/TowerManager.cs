@@ -32,6 +32,15 @@ namespace TowerDefense.Runtime
         public void SetTowerDamageMultiplier(float multiplier)
         {
             towerDamageMultiplier = Mathf.Max(0.05f, multiplier);
+            foreach (var tower in towers)
+            {
+                tower.SetDamageMultiplier(towerDamageMultiplier);
+            }
+        }
+
+        public void SetGlobalLimit(int towerLimit)
+        {
+            globalLimit = Mathf.Max(0, towerLimit);
         }
 
         public bool CanPlace(TowerDefinition definition, Vector3 position)

@@ -25,6 +25,8 @@ namespace TowerDefense.Runtime
         private int lives;
         private int maxLivesForRun;
         private int enemiesKilled;
+        private float baseActiveWeaponDamage;
+        private float baseActiveWeaponCooldown;
         private bool running;
         private bool finished;
         private bool won;
@@ -57,6 +59,16 @@ namespace TowerDefense.Runtime
             return progression.IsPurchased(nodeId);
         }
 
+        public int GetUpgradeRank(string nodeId)
+        {
+            return progression.GetPurchasedRank(nodeId);
+        }
+
+        public int GetUpgradeMaxRank(string nodeId)
+        {
+            return progression.GetMaxRank(nodeId);
+        }
+
         public bool CanPurchaseUpgrade(string nodeId)
         {
             return progression.CanPurchase(nodeId);
@@ -67,6 +79,7 @@ namespace TowerDefense.Runtime
             var purchased = progression.TryPurchase(nodeId);
             if (purchased)
             {
+                ApplyProgressionStats();
                 profileStore.Save(profile);
                 ResetToPlanning();
             }
@@ -95,14 +108,9 @@ namespace TowerDefense.Runtime
             popups = popupManager;
             input = inputRouter;
             this.path = path;
+            baseActiveWeaponDamage = activeWeapon.Damage;
+            baseActiveWeaponCooldown = activeWeapon.CooldownSeconds;
 
-            var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
-            var towerLimit = level.baseTowerLimit + Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.GlobalTowerLimitFlat));
-            var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
-            var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
-            var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
-            maxLivesForRun = level.startingLives + bonusLives;
-            lives = maxLivesForRun;
             enemiesKilled = 0;
             running = false;
             finished = false;
@@ -111,10 +119,9 @@ namespace TowerDefense.Runtime
 
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
-            towers.Initialize(enemies, path, availableTowers, towerLimit);
-            towers.SetTowerDamageMultiplier(towerDamageMultiplier);
-            activeWeapon.Damage *= activeDamageMultiplier;
-            activeWeapon.CooldownSeconds *= activeCooldownMultiplier;
+            towers.Initialize(enemies, path, availableTowers, level.baseTowerLimit);
+            ApplyProgressionStats();
+            lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
         }
 
@@ -202,6 +209,7 @@ namespace TowerDefense.Runtime
             enemies.EnemyKilled -= OnEnemyKilled;
             enemies.EnemyEscaped -= OnEnemyEscaped;
             enemies.StopWave();
+            ApplyProgressionStats();
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
             lives = maxLivesForRun;
             enemiesKilled = 0;
@@ -241,6 +249,21 @@ namespace TowerDefense.Runtime
             var layout = profile.GetOrCreateLayout(level.id);
             layout.placements = towers.CaptureLayout();
             profileStore.Save(profile);
+        }
+
+        private void ApplyProgressionStats()
+        {
+            var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
+            var towerLimit = level.baseTowerLimit + Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.GlobalTowerLimitFlat));
+            var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
+            var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
+            var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
+
+            maxLivesForRun = level.startingLives + bonusLives;
+            towers.SetGlobalLimit(towerLimit);
+            towers.SetTowerDamageMultiplier(towerDamageMultiplier);
+            activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
+            activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
         }
     }
 }
