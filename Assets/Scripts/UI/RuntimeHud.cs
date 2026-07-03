@@ -25,12 +25,14 @@ namespace TowerDefense.UI
         private Button devSpeed2Button;
         private Button devSpeed5Button;
         private Button devSpeed10Button;
+        private Button devToggleButton;
         private GameObject resultPanel;
         private Text resultTitle;
         private Text resultBody;
         private GameObject upgradePanel;
         private RectTransform upgradeTreeContent;
         private RectTransform upgradeTreeViewport;
+        private readonly List<RectTransform> upgradeTreeLabels = new();
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
         private Text upgradeDetailBody;
@@ -39,6 +41,13 @@ namespace TowerDefense.UI
         private Vector2 upgradeTreePan;
         private float upgradeTreeZoom = 1f;
         private GameObject devPanel;
+        private bool devPanelVisible;
+        private Button statsToggleButton;
+        private GameObject statsPanel;
+        private readonly Dictionary<TowerDefinition, Text> statsRows = new();
+        private Text statsDetailText;
+        private TowerDefinition selectedStatsTower;
+        private bool statsPanelVisible;
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
         {
@@ -68,7 +77,9 @@ namespace TowerDefense.UI
             CreateActiveWeaponSlot(parent);
             CreateResultPanel(parent);
             CreateUpgradePanel(parent);
+            CreateStatsPanel(parent);
             CreateDevPanel(parent);
+            CreateTopRightToggles(parent);
         }
 
         private void Update()
@@ -96,6 +107,7 @@ namespace TowerDefense.UI
             UpdateDevSpeedButtons();
             UpdateResultPanel();
             UpdateUpgradePanel();
+            UpdateStatsPanel();
         }
 
         private void UpdateTowerText()
@@ -108,6 +120,11 @@ namespace TowerDefense.UI
             var text = new StringBuilder();
             if (session.IsPlanning)
             {
+                if (towers.AvailableTowers.Count == 0)
+                {
+                    text.AppendLine("No towers unlocked");
+                }
+
                 for (var i = 0; i < towers.AvailableTowers.Count; i++)
                 {
                     var marker = input.Current.SelectedTowerIndex == i ? ">" : " ";
@@ -176,6 +193,7 @@ namespace TowerDefense.UI
             upgradeTreeContent.anchorMax = new Vector2(0.5f, 0.5f);
             upgradeTreeContent.pivot = new Vector2(0.5f, 0.5f);
             upgradeTreeContent.sizeDelta = new Vector2(900f, 580f);
+            upgradeTreeLabels.Clear();
             upgradeTreePan = Vector2.zero;
             upgradeTreeZoom = 1f;
 
@@ -250,6 +268,7 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(label.GetComponent<RectTransform>(), node.radialPosition + new Vector2(0f, -34f), new Vector2(128f, 28f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             label.text = node.displayName;
             label.color = new Color(0.86f, 0.93f, 1f, 1f);
+            upgradeTreeLabels.Add(label.GetComponent<RectTransform>());
         }
 
         private void ShowUpgradePanel()
@@ -302,6 +321,14 @@ namespace TowerDefense.UI
 
             upgradeTreeContent.anchoredPosition = upgradeTreePan;
             upgradeTreeContent.localScale = Vector3.one * upgradeTreeZoom;
+            var labelScale = Vector3.one * Mathf.Clamp(1f / upgradeTreeZoom, 0.72f, 1.65f);
+            for (var i = 0; i < upgradeTreeLabels.Count; i++)
+            {
+                if (upgradeTreeLabels[i] != null)
+                {
+                    upgradeTreeLabels[i].localScale = labelScale;
+                }
+            }
         }
 
         private void SetUpgradePanelVisible(bool visible)
@@ -313,13 +340,18 @@ namespace TowerDefense.UI
 
             if (devPanel != null)
             {
-                devPanel.SetActive(!visible);
+                devPanel.SetActive(!visible && devPanelVisible);
+            }
+
+            if (statsPanel != null)
+            {
+                statsPanel.SetActive(!visible && statsPanelVisible);
             }
         }
 
         private void CreateDevPanel(Transform parent)
         {
-            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-14f, -14f), new Vector2(230f, 262f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 262f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(devPanel.GetComponent<RectTransform>());
             var title = CreateText("DevTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -350,6 +382,76 @@ namespace TowerDefense.UI
 
             CreateButton("RefundUpgrades", devPanel.transform, "RESET UPGRADES", new Vector2(0f, -240f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
+
+            devPanelVisible = false;
+            devPanel.SetActive(false);
+        }
+
+        private void CreateTopRightToggles(Transform parent)
+        {
+            statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS", new Vector2(-56f, -18f), new Vector2(74f, 28f), new Vector2(1f, 1f), 12);
+            statsToggleButton.onClick.AddListener(ToggleStatsPanel);
+
+            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV", new Vector2(-136f, -18f), new Vector2(64f, 28f), new Vector2(1f, 1f), 12);
+            devToggleButton.onClick.AddListener(ToggleDevPanel);
+        }
+
+        private void ToggleDevPanel()
+        {
+            devPanelVisible = !devPanelVisible;
+            if (devPanel != null)
+            {
+                devPanel.SetActive(devPanelVisible && !IsUpgradePanelOpen());
+            }
+        }
+
+        private void ToggleStatsPanel()
+        {
+            statsPanelVisible = !statsPanelVisible;
+            if (statsPanel != null)
+            {
+                statsPanel.SetActive(statsPanelVisible && !IsUpgradePanelOpen());
+            }
+        }
+
+        private bool IsUpgradePanelOpen()
+        {
+            return upgradePanel != null && upgradePanel.activeSelf;
+        }
+
+        private void CreateStatsPanel(Transform parent)
+        {
+            statsPanel = CreatePanel("StatsPanel", parent, new Vector2(-14f, -48f), new Vector2(300f, 244f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            input.RegisterBlockingUiRect(statsPanel.GetComponent<RectTransform>());
+            var title = CreateText("StatsTitle", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(270f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            title.text = "TOWER STATS";
+
+            statsRows.Clear();
+            var towersForStats = session.AllTowerDefinitions ?? towers.AvailableTowers;
+            for (var i = 0; i < towersForStats.Count; i++)
+            {
+                var tower = towersForStats[i];
+                var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(0f, -44f - i * 30f), new Vector2(260f, 24f), 11);
+                row.onClick.AddListener(() => SelectStatsTower(tower));
+                statsRows[tower] = row.GetComponentInChildren<Text>();
+                if (selectedStatsTower == null)
+                {
+                    selectedStatsTower = tower;
+                }
+            }
+
+            statsDetailText = CreateText("StatsDetails", statsPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
+            ConfigureCenteredRect(statsDetailText.GetComponent<RectTransform>(), new Vector2(0f, -148f), new Vector2(260f, 82f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            statsDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
+            statsPanelVisible = false;
+            statsPanel.SetActive(false);
+        }
+
+        private void SelectStatsTower(TowerDefinition tower)
+        {
+            selectedStatsTower = tower;
+            UpdateStatsPanel();
         }
 
         private void UpdateResultPanel()
@@ -384,6 +486,8 @@ namespace TowerDefense.UI
             HighlightSpeedButton(devSpeed2Button, Mathf.Approximately(Time.timeScale, 2f));
             HighlightSpeedButton(devSpeed5Button, Mathf.Approximately(Time.timeScale, 5f));
             HighlightSpeedButton(devSpeed10Button, Mathf.Approximately(Time.timeScale, 10f));
+            HighlightToggleButton(devToggleButton, devPanelVisible);
+            HighlightToggleButton(statsToggleButton, statsPanelVisible);
         }
 
         private static void HighlightSpeedButton(Button button, bool active)
@@ -391,6 +495,50 @@ namespace TowerDefense.UI
             if (button?.targetGraphic is Image image)
             {
                 image.color = active ? new Color(0.25f, 0.7f, 1f, 1f) : new Color(0.15f, 0.45f, 0.82f, 1f);
+            }
+        }
+
+        private static void HighlightToggleButton(Button button, bool active)
+        {
+            if (button?.targetGraphic is Image image)
+            {
+                image.color = active ? new Color(0.25f, 0.7f, 1f, 1f) : new Color(0.12f, 0.32f, 0.58f, 1f);
+            }
+        }
+
+        private void UpdateStatsPanel()
+        {
+            if (statsPanel == null || !statsPanel.activeSelf)
+            {
+                return;
+            }
+
+            var totalDamage = 0f;
+            foreach (var entry in statsRows)
+            {
+                totalDamage += towers.GetDamageDealt(entry.Key);
+            }
+
+            foreach (var entry in statsRows)
+            {
+                var tower = entry.Key;
+                var text = entry.Value;
+                var damage = towers.GetDamageDealt(tower);
+                var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
+                text.text = $"{tower.displayName}   {damage:0} dmg   {percent:0}%";
+                text.color = tower == selectedStatsTower ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
+            }
+
+            if (selectedStatsTower != null && statsDetailText != null)
+            {
+                var damage = towers.GetDamageDealt(selectedStatsTower);
+                statsDetailText.text =
+                    $"{selectedStatsTower.displayName}\n" +
+                    $"Damage: {selectedStatsTower.damage:0.0} per hit\n" +
+                    $"Range: {selectedStatsTower.range:0.0}\n" +
+                    $"Fire rate: {1f / Mathf.Max(0.01f, selectedStatsTower.fireInterval):0.0}/sec\n" +
+                    $"Projectile: single target\n" +
+                    $"Run damage: {damage:0}";
             }
         }
 
@@ -466,7 +614,8 @@ namespace TowerDefense.UI
             var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
             var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
             upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nPer rank: {FormatEffects(selectedUpgradeNode.effects)}\nNext cost: {FormatCosts(selectedUpgradeNode.costs)}";
+            var costLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
+            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nPer rank: {FormatEffects(selectedUpgradeNode.effects)}\nNext cost: {costLine}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {

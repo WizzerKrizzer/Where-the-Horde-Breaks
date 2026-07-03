@@ -56,24 +56,26 @@ namespace TowerDefense.Runtime
             MoveToPathPosition();
         }
 
-        public void ApplyDamage(float damage)
+        public float ApplyDamage(float damage)
         {
             if (!IsAlive)
             {
-                return;
+                return 0f;
             }
 
+            var appliedDamage = Mathf.Min(health, damage);
             health -= damage;
             UpdateHealthBar();
             if (health > 0f)
             {
-                return;
+                return appliedDamage;
             }
 
             active = false;
             Died?.Invoke(this);
             owner.NotifyEnemyKilled(this);
             gameObject.SetActive(false);
+            return appliedDamage;
         }
 
         private void MoveToPathPosition()

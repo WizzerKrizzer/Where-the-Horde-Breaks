@@ -22,6 +22,7 @@ namespace TowerDefense.Runtime
         private WorldPopupManager popups;
         private PlayerInputRouter input;
         private PathRoute path;
+        private IReadOnlyList<TowerDefinition> allTowerDefinitions;
         private int lives;
         private int maxLivesForRun;
         private int enemiesKilled;
@@ -40,6 +41,7 @@ namespace TowerDefense.Runtime
         public bool Finished => finished;
         public bool Won => finished && won;
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
+        public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
 
         public void AddCurrency(CurrencyType currency, int amount)
         {
@@ -67,6 +69,11 @@ namespace TowerDefense.Runtime
         public int GetUpgradeMaxRank(string nodeId)
         {
             return progression.GetMaxRank(nodeId);
+        }
+
+        public CurrencyAmount[] GetUpgradeNextCosts(string nodeId)
+        {
+            return progression.GetCurrentCosts(nodeId);
         }
 
         public bool CanPurchaseUpgrade(string nodeId)
@@ -108,6 +115,7 @@ namespace TowerDefense.Runtime
             popups = popupManager;
             input = inputRouter;
             this.path = path;
+            allTowerDefinitions = availableTowers;
             baseActiveWeaponDamage = activeWeapon.Damage;
             baseActiveWeaponCooldown = activeWeapon.CooldownSeconds;
 
@@ -119,7 +127,7 @@ namespace TowerDefense.Runtime
 
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
-            towers.Initialize(enemies, path, availableTowers, level.baseTowerLimit);
+            towers.Initialize(enemies, path, GetUnlockedTowers(), level.baseTowerLimit);
             ApplyProgressionStats();
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
@@ -260,10 +268,30 @@ namespace TowerDefense.Runtime
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
 
             maxLivesForRun = level.startingLives + bonusLives;
+            towers.SetAvailableTowers(GetUnlockedTowers());
             towers.SetGlobalLimit(towerLimit);
             towers.SetTowerDamageMultiplier(towerDamageMultiplier);
             activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
+        }
+
+        private IReadOnlyList<TowerDefinition> GetUnlockedTowers()
+        {
+            var unlocked = new List<TowerDefinition>();
+            if (allTowerDefinitions == null)
+            {
+                return unlocked;
+            }
+
+            foreach (var tower in allTowerDefinitions)
+            {
+                if (progression.GetEffectTotal(UpgradeEffectType.UnlockTower, tower.id) > 0f)
+                {
+                    unlocked.Add(tower);
+                }
+            }
+
+            return unlocked;
         }
     }
 }

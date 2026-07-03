@@ -11,6 +11,7 @@ namespace TowerDefense.Runtime
         private float cooldown;
 
         public TowerDefinition Definition => definition;
+        public float DamageDealt { get; private set; }
 
         public void SetDamageMultiplier(float multiplier)
         {
@@ -61,7 +62,12 @@ namespace TowerDefense.Runtime
             go.transform.localScale = Vector3.one * 0.16f;
             go.GetComponent<Renderer>().material = BootstrapMaterials.Get(Color.yellow);
             var projectile = go.AddComponent<ProjectileActor>();
-            projectile.Fire(definition, target, definition.damage * damageMultiplier);
+            projectile.Fire(this, definition, target, definition.damage * damageMultiplier);
+        }
+
+        public void RecordDamage(float damage)
+        {
+            DamageDealt += damage;
         }
     }
 }

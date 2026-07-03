@@ -25,8 +25,13 @@ namespace TowerDefense.Runtime
         {
             enemies = enemyManager;
             route = pathRoute;
-            AvailableTowers = towerDefinitions;
+            SetAvailableTowers(towerDefinitions);
             globalLimit = towerLimit;
+        }
+
+        public void SetAvailableTowers(IReadOnlyList<TowerDefinition> towerDefinitions)
+        {
+            AvailableTowers = towerDefinitions ?? System.Array.Empty<TowerDefinition>();
         }
 
         public void SetTowerDamageMultiplier(float multiplier)
@@ -165,6 +170,11 @@ namespace TowerDefense.Runtime
                     TryPlace(definition, new Vector3(record.x, record.y, record.z));
                 }
             }
+        }
+
+        public float GetDamageDealt(TowerDefinition definition)
+        {
+            return towers.Where(tower => tower.Definition == definition).Sum(tower => tower.DamageDealt);
         }
 
         private bool IsTooCloseToPath(Vector3 position)

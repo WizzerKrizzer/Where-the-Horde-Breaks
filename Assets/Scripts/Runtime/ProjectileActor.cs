@@ -5,13 +5,15 @@ namespace TowerDefense.Runtime
 {
     public sealed class ProjectileActor : MonoBehaviour
     {
+        private TowerActor source;
         private EnemyActor target;
         private float damage;
         private float speed;
         private bool active;
 
-        public void Fire(TowerDefinition sourceTower, EnemyActor targetEnemy, float projectileDamage)
+        public void Fire(TowerActor sourceTowerActor, TowerDefinition sourceTower, EnemyActor targetEnemy, float projectileDamage)
         {
+            source = sourceTowerActor;
             target = targetEnemy;
             damage = projectileDamage;
             speed = sourceTower.projectileSpeed;
@@ -33,7 +35,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            target.ApplyDamage(damage);
+            var appliedDamage = target.ApplyDamage(damage);
+            source?.RecordDamage(appliedDamage);
             Deactivate();
         }
 
