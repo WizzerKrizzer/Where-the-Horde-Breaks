@@ -29,11 +29,15 @@ namespace TowerDefense.UI
         private Text resultTitle;
         private Text resultBody;
         private GameObject upgradePanel;
+        private RectTransform upgradeTreeContent;
+        private RectTransform upgradeTreeViewport;
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
         private Text upgradeDetailBody;
         private Button upgradeBuyButton;
         private SkillNodeDefinition selectedUpgradeNode;
+        private Vector2 upgradeTreePan;
+        private float upgradeTreeZoom = 1f;
         private GameObject devPanel;
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
@@ -134,33 +138,67 @@ namespace TowerDefense.UI
 
         private void CreateUpgradePanel(Transform parent)
         {
-            upgradePanel = CreatePanel("UpgradePanel", parent, new Vector2(0f, 88f), new Vector2(640f, 360f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            upgradePanel = CreatePanel("UpgradePanel", parent, Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            var panelRect = upgradePanel.GetComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+            upgradePanel.GetComponent<Image>().color = new Color(0.015f, 0.02f, 0.024f, 0.94f);
+
             var title = CreateText("UpgradeTitle", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 322f), new Vector2(460f, 32f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -22f), new Vector2(460f, 32f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "SKILL TREE";
 
             upgradeCurrencyText = CreateText("UpgradeCurrencies", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
-            ConfigureCenteredRect(upgradeCurrencyText.GetComponent<RectTransform>(), new Vector2(0f, 296f), new Vector2(560f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeCurrencyText.GetComponent<RectTransform>(), new Vector2(0f, -50f), new Vector2(680f, 24f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+
+            var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
+            hint.text = "Drag to pan. Mouse wheel zooms the tree.";
+
+            var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);
+            upgradeTreeViewport = viewport.GetComponent<RectTransform>();
+            upgradeTreeViewport.anchorMin = new Vector2(0f, 0f);
+            upgradeTreeViewport.anchorMax = new Vector2(1f, 1f);
+            upgradeTreeViewport.offsetMin = new Vector2(36f, 146f);
+            upgradeTreeViewport.offsetMax = new Vector2(-36f, -92f);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            var treeInput = viewport.AddComponent<SkillTreeViewportInput>();
+            treeInput.Initialize(OnUpgradeTreeDragged, OnUpgradeTreeScrolled);
+
+            var contentObject = new GameObject("UpgradeTreeContent");
+            contentObject.transform.SetParent(viewport.transform, false);
+            upgradeTreeContent = contentObject.AddComponent<RectTransform>();
+            upgradeTreeContent.anchorMin = new Vector2(0.5f, 0.5f);
+            upgradeTreeContent.anchorMax = new Vector2(0.5f, 0.5f);
+            upgradeTreeContent.pivot = new Vector2(0.5f, 0.5f);
+            upgradeTreeContent.sizeDelta = new Vector2(900f, 580f);
+            upgradeTreePan = Vector2.zero;
+            upgradeTreeZoom = 1f;
 
             var nodes = session.UpgradeNodes;
-            CreateUpgradeLinks(upgradePanel.transform, nodes);
+            CreateUpgradeLinks(upgradeTreeContent, nodes);
             for (var i = 0; i < nodes.Count; i++)
             {
-                CreateUpgradeNode(upgradePanel.transform, nodes[i]);
+                CreateUpgradeNode(upgradeTreeContent, nodes[i]);
             }
+            ApplyUpgradeTreeTransform();
 
-            var detailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(0f, 72f), new Vector2(520f, 82f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            var detailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(0f, 76f), new Vector2(760f, 88f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.72f);
             upgradeDetailTitle = CreateText("DetailTitle", detailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 15);
-            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(-154f, 20f), new Vector2(190f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(-270f, 24f), new Vector2(190f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailBody = CreateText("DetailBody", detailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(16f, 2f), new Vector2(290f, 58f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", detailPanel.transform, "BUY", new Vector2(206f, 0f), new Vector2(82f, 30f), new Vector2(0.5f, 0.5f), 12);
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(12f, 0f), new Vector2(430f, 70f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", detailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
 
-            CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-72f, 24f), new Vector2(112f, 28f), new Vector2(0.5f, 0f), 13)
+            CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateAnchoredButton("CloseUpgradeButton", upgradePanel.transform, "BACK", new Vector2(72f, 24f), new Vector2(112f, 28f), new Vector2(0.5f, 0f), 13)
+            CreateAnchoredButton("CloseUpgradeButton", upgradePanel.transform, "BACK", new Vector2(70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => SetUpgradePanelVisible(false));
 
             input.RegisterBlockingUiRect(upgradePanel.GetComponent<RectTransform>());
@@ -190,20 +228,34 @@ namespace TowerDefense.UI
         private void CreateUpgradeLink(Transform parent, Vector2 from, Vector2 to, SkillNodeDefinition target)
         {
             var delta = to - from;
-            var go = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f + new Vector2(0f, 190f), new Vector2(delta.magnitude, 5f), new Color(0.15f, 0.75f, 1f, 0.65f)).gameObject;
+            var go = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(delta.magnitude, 5f), new Color(0.15f, 0.75f, 1f, 0.65f)).gameObject;
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
             go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
         }
 
         private void CreateUpgradeNode(Transform parent, SkillNodeDefinition node)
         {
             var size = node.isMajorUnlock ? new Vector2(46f, 46f) : new Vector2(34f, 34f);
-            var button = CreateAnchoredButton($"Node_{node.id}", parent, node.isMajorUnlock ? "A" : "+", node.radialPosition + new Vector2(0f, 190f), size, new Vector2(0.5f, 0f), node.isMajorUnlock ? 18 : 16);
+            var button = CreateAnchoredButton($"Node_{node.id}", parent, node.isMajorUnlock ? "A" : "+", node.radialPosition, size, new Vector2(0.5f, 0.5f), node.isMajorUnlock ? 18 : 16);
             button.onClick.AddListener(() => SelectUpgradeNode(node));
+
+            var events = button.gameObject.AddComponent<EventTrigger>();
+            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            enter.callback.AddListener(_ => SelectUpgradeNode(node));
+            events.triggers.Add(enter);
+
+            var label = CreateText($"NodeLabel_{node.id}", parent, node.radialPosition + new Vector2(0f, -34f), TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(label.GetComponent<RectTransform>(), node.radialPosition + new Vector2(0f, -34f), new Vector2(128f, 28f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            label.text = node.displayName;
+            label.color = new Color(0.86f, 0.93f, 1f, 1f);
         }
 
         private void ShowUpgradePanel()
         {
             SetUpgradePanelVisible(true);
+            ApplyUpgradeTreeTransform();
             if (selectedUpgradeNode == null && session.UpgradeNodes.Count > 0)
             {
                 SelectUpgradeNode(session.UpgradeNodes[0]);
@@ -220,8 +272,36 @@ namespace TowerDefense.UI
         {
             if (selectedUpgradeNode != null && session.TryPurchaseUpgrade(selectedUpgradeNode.id))
             {
+                UpdateUpgradePanel();
                 UpdateSelectedUpgradeDetails();
             }
+        }
+
+        private void OnUpgradeTreeDragged(Vector2 delta)
+        {
+            upgradeTreePan += delta;
+            ApplyUpgradeTreeTransform();
+        }
+
+        private void OnUpgradeTreeScrolled(float scrollDelta)
+        {
+            var previousZoom = upgradeTreeZoom;
+            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom + scrollDelta * 0.12f, 0.55f, 1.85f);
+            if (!Mathf.Approximately(previousZoom, upgradeTreeZoom))
+            {
+                ApplyUpgradeTreeTransform();
+            }
+        }
+
+        private void ApplyUpgradeTreeTransform()
+        {
+            if (upgradeTreeContent == null)
+            {
+                return;
+            }
+
+            upgradeTreeContent.anchoredPosition = upgradeTreePan;
+            upgradeTreeContent.localScale = Vector3.one * upgradeTreeZoom;
         }
 
         private void SetUpgradePanelVisible(bool visible)
@@ -322,7 +402,7 @@ namespace TowerDefense.UI
             }
 
             var profile = session.Profile;
-            upgradeCurrencyText.text = $"Essence {profile.GetCurrency(CurrencyType.KillEssence)}   Victory {profile.GetCurrency(CurrencyType.VictorySigil)}   Perfect {profile.GetCurrency(CurrencyType.PerfectSigil)}";
+            upgradeCurrencyText.text = $"Essence {profile.GetCurrency(CurrencyType.KillEssence)}   Victory {profile.GetCurrency(CurrencyType.VictorySigil)}   Perfect {profile.GetCurrency(CurrencyType.PerfectSigil)}   Challenge {profile.GetCurrency(CurrencyType.ChallengeToken)}   Boss {profile.GetCurrency(CurrencyType.BossCore)}";
 
             foreach (var button in upgradePanel.GetComponentsInChildren<Button>())
             {
@@ -333,19 +413,32 @@ namespace TowerDefense.UI
 
                 var nodeId = button.name.Substring(5);
                 var label = button.GetComponentInChildren<Text>();
+                var image = button.targetGraphic as Image;
                 if (session.IsUpgradePurchased(nodeId))
                 {
                     button.interactable = true;
+                    if (image != null)
+                    {
+                        image.color = new Color(0.08f, 0.58f, 0.54f, 1f);
+                    }
                     label.color = new Color(0.6f, 1f, 0.85f, 1f);
                 }
                 else if (session.CanPurchaseUpgrade(nodeId))
                 {
                     button.interactable = true;
+                    if (image != null)
+                    {
+                        image.color = new Color(0.95f, 0.5f, 0.12f, 1f);
+                    }
                     label.color = new Color(1f, 0.86f, 0.35f, 1f);
                 }
                 else
                 {
                     button.interactable = true;
+                    if (image != null)
+                    {
+                        image.color = new Color(0.08f, 0.2f, 0.32f, 1f);
+                    }
                     label.color = new Color(0.45f, 0.55f, 0.65f, 1f);
                 }
             }
@@ -361,7 +454,7 @@ namespace TowerDefense.UI
             }
 
             upgradeDetailTitle.text = selectedUpgradeNode.displayName;
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nCost: {FormatCosts(selectedUpgradeNode.costs)}";
+            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nEffect: {FormatEffects(selectedUpgradeNode.effects)}\nCost: {FormatCosts(selectedUpgradeNode.costs)}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (session.IsUpgradePurchased(selectedUpgradeNode.id))
             {
@@ -376,8 +469,26 @@ namespace TowerDefense.UI
             else
             {
                 upgradeBuyButton.interactable = false;
-                buttonLabel.text = "LOCKED";
+                buttonLabel.text = MissingPrerequisites(selectedUpgradeNode) ? "LOCKED" : "NEED COST";
             }
+        }
+
+        private bool MissingPrerequisites(SkillNodeDefinition node)
+        {
+            if (node.prerequisiteNodeIds == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < node.prerequisiteNodeIds.Length; i++)
+            {
+                if (!session.IsUpgradePurchased(node.prerequisiteNodeIds[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static SkillNodeDefinition FindNode(IReadOnlyList<SkillNodeDefinition> nodes, string id)
@@ -414,6 +525,50 @@ namespace TowerDefense.UI
             }
 
             return text.ToString();
+        }
+
+        private static string FormatEffects(UpgradeEffect[] effects)
+        {
+            if (effects == null || effects.Length == 0)
+            {
+                return "Unlock or milestone";
+            }
+
+            var text = new StringBuilder();
+            for (var i = 0; i < effects.Length; i++)
+            {
+                if (i > 0)
+                {
+                    text.Append(", ");
+                }
+
+                text.Append(FormatEffect(effects[i]));
+            }
+
+            return text.ToString();
+        }
+
+        private static string FormatEffect(UpgradeEffect effect)
+        {
+            switch (effect.type)
+            {
+                case UpgradeEffectType.UnlockTower:
+                    return $"Unlock {effect.targetId} tower";
+                case UpgradeEffectType.GlobalTowerLimitFlat:
+                    return $"+{effect.value:0} total tower limit";
+                case UpgradeEffectType.TowerDamagePercent:
+                    return $"+{effect.value:0}% {effect.targetId} tower damage";
+                case UpgradeEffectType.ActiveWeaponDamagePercent:
+                    return $"+{effect.value:0}% active weapon damage";
+                case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                    return $"-{effect.value:0}% active weapon cooldown";
+                case UpgradeEffectType.BaseLivesFlat:
+                    return $"+{effect.value:0} base lives";
+                case UpgradeEffectType.UnlockEra:
+                    return $"Unlock {effect.targetId} era";
+                default:
+                    return effect.type.ToString();
+            }
         }
 
         private void CreateActiveWeaponSlot(Transform parent)
@@ -554,6 +709,28 @@ namespace TowerDefense.UI
             var eventSystem = new GameObject("EventSystem");
             eventSystem.AddComponent<EventSystem>();
             eventSystem.AddComponent<StandaloneInputModule>();
+        }
+
+        private sealed class SkillTreeViewportInput : MonoBehaviour, IDragHandler, IScrollHandler
+        {
+            private System.Action<Vector2> onDragged;
+            private System.Action<float> onScrolled;
+
+            public void Initialize(System.Action<Vector2> dragged, System.Action<float> scrolled)
+            {
+                onDragged = dragged;
+                onScrolled = scrolled;
+            }
+
+            public void OnDrag(PointerEventData eventData)
+            {
+                onDragged?.Invoke(eventData.delta);
+            }
+
+            public void OnScroll(PointerEventData eventData)
+            {
+                onScrolled?.Invoke(eventData.scrollDelta.y);
+            }
         }
     }
 }
