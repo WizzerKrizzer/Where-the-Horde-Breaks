@@ -9,6 +9,8 @@ namespace TowerDefense.Runtime
         [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float minHeight = 8f;
         [SerializeField] private float maxHeight = 60f;
+        [SerializeField] private Vector2 minBounds = new(-30f, -18f);
+        [SerializeField] private Vector2 maxBounds = new(30f, 18f);
 
         private Camera controlledCamera;
         private PlayerInputRouter input;
@@ -30,6 +32,7 @@ namespace TowerDefense.Runtime
             var forward = Vector3.ProjectOnPlane(controlledCamera.transform.forward, Vector3.up).normalized;
             var right = Vector3.ProjectOnPlane(controlledCamera.transform.right, Vector3.up).normalized;
             controlledCamera.transform.position += (right * state.Pan.x + forward * state.Pan.y) * (panSpeed * Time.deltaTime);
+            ClampCameraPosition();
 
             if (Mathf.Abs(state.Zoom) > 0.01f)
             {
@@ -39,7 +42,17 @@ namespace TowerDefense.Runtime
                 controlledCamera.transform.position = position;
                 var pointerAfterZoom = ScreenPointToGround(UnityEngine.Input.mousePosition);
                 controlledCamera.transform.position += pointerBeforeZoom - pointerAfterZoom;
+                ClampCameraPosition();
             }
+        }
+
+        private void ClampCameraPosition()
+        {
+            var position = controlledCamera.transform.position;
+            position.x = Mathf.Clamp(position.x, minBounds.x, maxBounds.x);
+            position.z = Mathf.Clamp(position.z, minBounds.y, maxBounds.y);
+            position.y = Mathf.Clamp(position.y, minHeight, maxHeight);
+            controlledCamera.transform.position = position;
         }
 
         private Vector3 ScreenPointToGround(Vector3 screenPosition)

@@ -369,6 +369,11 @@ namespace TowerDefense.UI
                 upgradePanel.SetActive(visible);
             }
 
+            if (input != null)
+            {
+                input.GameplayInputBlocked = visible;
+            }
+
             if (devPanel != null)
             {
                 devPanel.SetActive(!visible && devPanelVisible);

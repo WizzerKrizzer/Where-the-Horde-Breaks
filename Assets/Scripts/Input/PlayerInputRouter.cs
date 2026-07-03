@@ -10,6 +10,7 @@ namespace TowerDefense.Input
         private int selectedTowerIndex;
 
         public GameInputState Current { get; private set; }
+        public bool GameplayInputBlocked { get; set; }
 
         public void Initialize(Camera camera)
         {
@@ -26,6 +27,16 @@ namespace TowerDefense.Input
 
         private void Update()
         {
+            if (GameplayInputBlocked)
+            {
+                Current = new GameInputState
+                {
+                    SelectedTowerIndex = selectedTowerIndex,
+                    PointerWorld = PointerToWorld()
+                };
+                return;
+            }
+
             var pan = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
             if (UnityEngine.Input.GetMouseButton(1))
             {

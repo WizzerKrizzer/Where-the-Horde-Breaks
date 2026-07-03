@@ -170,17 +170,6 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "tower_limit_01",
-                    displayName = "Field Logistics",
-                    description = "Each rank increases the total tower limit by 1.",
-                    radialPosition = new Vector2(-145f, 42f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 20) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.GlobalTowerLimitFlat, value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
                     id = "active_power_01",
                     displayName = "Sharpened Volley",
                     description = "Each rank increases active weapon damage by 2%.",
@@ -192,23 +181,12 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "base_lives_01",
-                    displayName = "Reinforced Gate",
-                    description = "Each rank adds 1 base life.",
-                    radialPosition = new Vector2(0f, 128f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
                     id = "archer_limit_01",
                     displayName = "Archer Barracks",
                     description = "Each rank increases the Archer Tower limit by 1.",
                     radialPosition = new Vector2(-98f, -102f),
                     maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "tower_limit_01" },
+                    prerequisiteNodeIds = new[] { "core" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
                 }
