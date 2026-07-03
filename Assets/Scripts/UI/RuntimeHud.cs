@@ -45,8 +45,12 @@ namespace TowerDefense.UI
         private Button statsToggleButton;
         private GameObject statsPanel;
         private readonly Dictionary<TowerDefinition, Text> statsRows = new();
+        private readonly Dictionary<TowerDefinition, Button> statsRowButtons = new();
         private Text statsDetailText;
+        private Text statsEmptyTowerText;
+        private Button activeWeaponStatsButton;
         private TowerDefinition selectedStatsTower;
+        private bool selectedStatsActiveWeapon;
         private bool statsPanelVisible;
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
@@ -173,7 +177,7 @@ namespace TowerDefense.UI
             var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
-            hint.text = "Drag to pan. Mouse wheel zooms the tree.";
+            hint.text = "Hover for details. Click a node to buy its next rank. Drag to pan. Mouse wheel zooms.";
 
             var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);
@@ -213,6 +217,7 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(12f, 0f), new Vector2(430f, 70f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", detailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
+            upgradeBuyButton.gameObject.SetActive(false);
 
             CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
@@ -257,7 +262,7 @@ namespace TowerDefense.UI
         {
             var size = node.isMajorUnlock ? new Vector2(46f, 46f) : new Vector2(34f, 34f);
             var button = CreateAnchoredButton($"Node_{node.id}", parent, "0/1", node.radialPosition, size, new Vector2(0.5f, 0.5f), node.isMajorUnlock ? 13 : 11);
-            button.onClick.AddListener(() => SelectUpgradeNode(node));
+            button.onClick.AddListener(() => PurchaseUpgradeNode(node));
 
             var events = button.gameObject.AddComponent<EventTrigger>();
             var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
@@ -284,6 +289,17 @@ namespace TowerDefense.UI
         private void SelectUpgradeNode(SkillNodeDefinition node)
         {
             selectedUpgradeNode = node;
+            UpdateSelectedUpgradeDetails();
+        }
+
+        private void PurchaseUpgradeNode(SkillNodeDefinition node)
+        {
+            selectedUpgradeNode = node;
+            if (session.TryPurchaseUpgrade(node.id))
+            {
+                UpdateUpgradePanel();
+            }
+
             UpdateSelectedUpgradeDetails();
         }
 
@@ -432,14 +448,26 @@ namespace TowerDefense.UI
             for (var i = 0; i < towersForStats.Count; i++)
             {
                 var tower = towersForStats[i];
-                var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(0f, -44f - i * 30f), new Vector2(260f, 24f), 11);
+                var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(-72f, -60f - i * 28f), new Vector2(130f, 24f), 11);
                 row.onClick.AddListener(() => SelectStatsTower(tower));
                 statsRows[tower] = row.GetComponentInChildren<Text>();
-                if (selectedStatsTower == null)
-                {
-                    selectedStatsTower = tower;
-                }
+                statsRowButtons[tower] = row;
             }
+
+            var towerHeader = CreateText("StatsTowerHeader", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(towerHeader.GetComponent<RectTransform>(), new Vector2(-72f, -40f), new Vector2(130f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            towerHeader.text = "TOWERS";
+
+            var activeHeader = CreateText("StatsActiveHeader", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(activeHeader.GetComponent<RectTransform>(), new Vector2(76f, -40f), new Vector2(130f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            activeHeader.text = "ACTIVE";
+            activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, "Active Weapon", new Vector2(76f, -60f), new Vector2(130f, 24f), 11);
+            activeWeaponStatsButton.onClick.AddListener(SelectActiveWeaponStats);
+
+            statsEmptyTowerText = CreateText("StatsNoTowers", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-72f, -62f), new Vector2(130f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            statsEmptyTowerText.text = "No towers unlocked";
+            statsEmptyTowerText.color = new Color(0.7f, 0.78f, 0.86f, 1f);
 
             statsDetailText = CreateText("StatsDetails", statsPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
             ConfigureCenteredRect(statsDetailText.GetComponent<RectTransform>(), new Vector2(0f, -148f), new Vector2(260f, 82f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
@@ -451,6 +479,14 @@ namespace TowerDefense.UI
         private void SelectStatsTower(TowerDefinition tower)
         {
             selectedStatsTower = tower;
+            selectedStatsActiveWeapon = false;
+            UpdateStatsPanel();
+        }
+
+        private void SelectActiveWeaponStats()
+        {
+            selectedStatsTower = null;
+            selectedStatsActiveWeapon = true;
             UpdateStatsPanel();
         }
 
@@ -513,33 +549,103 @@ namespace TowerDefense.UI
                 return;
             }
 
+            var unlockedTowers = towers.AvailableTowers;
+            if (!selectedStatsActiveWeapon && (selectedStatsTower == null || !ContainsTower(unlockedTowers, selectedStatsTower)))
+            {
+                selectedStatsTower = unlockedTowers.Count > 0 ? unlockedTowers[0] : null;
+            }
+
             var totalDamage = 0f;
             foreach (var entry in statsRows)
             {
-                totalDamage += towers.GetDamageDealt(entry.Key);
+                if (ContainsTower(unlockedTowers, entry.Key))
+                {
+                    totalDamage += towers.GetDamageDealt(entry.Key);
+                }
             }
+            totalDamage += activeWeapon.TotalDamageDealt;
 
             foreach (var entry in statsRows)
             {
                 var tower = entry.Key;
                 var text = entry.Value;
-                var damage = towers.GetDamageDealt(tower);
-                var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
-                text.text = $"{tower.displayName}   {damage:0} dmg   {percent:0}%";
+                var unlocked = ContainsTower(unlockedTowers, tower);
+                if (statsRowButtons.TryGetValue(tower, out var button))
+                {
+                    button.gameObject.SetActive(unlocked);
+                }
+
+                if (!unlocked)
+                {
+                    continue;
+                }
+
+                text.text = tower.displayName;
                 text.color = tower == selectedStatsTower ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
             }
 
-            if (selectedStatsTower != null && statsDetailText != null)
+            if (statsEmptyTowerText != null)
+            {
+                statsEmptyTowerText.gameObject.SetActive(unlockedTowers.Count == 0);
+            }
+
+            if (activeWeaponStatsButton != null)
+            {
+                var label = activeWeaponStatsButton.GetComponentInChildren<Text>();
+                label.color = selectedStatsActiveWeapon ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
+            }
+
+            if (statsDetailText == null)
+            {
+                return;
+            }
+
+            if (selectedStatsActiveWeapon)
+            {
+                var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
+                statsDetailText.text =
+                    "Active Weapon\n" +
+                    $"Damage: {activeWeapon.Damage:0.0} per target\n" +
+                    $"Radius: {activeWeapon.Radius:0.0}\n" +
+                    $"Cooldown: {activeWeapon.CooldownSeconds:0.0}s\n" +
+                    $"Run damage: {activeWeapon.TotalDamageDealt:0} ({activePercent:0}%)";
+                return;
+            }
+
+            if (selectedStatsTower != null)
             {
                 var damage = towers.GetDamageDealt(selectedStatsTower);
+                var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
                 statsDetailText.text =
                     $"{selectedStatsTower.displayName}\n" +
                     $"Damage: {selectedStatsTower.damage:0.0} per hit\n" +
                     $"Range: {selectedStatsTower.range:0.0}\n" +
                     $"Fire rate: {1f / Mathf.Max(0.01f, selectedStatsTower.fireInterval):0.0}/sec\n" +
                     $"Projectile: single target\n" +
-                    $"Run damage: {damage:0}";
+                    $"Run damage: {damage:0} ({percent:0}%)";
             }
+            else
+            {
+                statsDetailText.text = "Unlock a tower or select Active Weapon.";
+            }
+        }
+
+        private static bool ContainsTower(IReadOnlyList<TowerDefinition> towerList, TowerDefinition tower)
+        {
+            if (towerList == null || tower == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < towerList.Count; i++)
+            {
+                if (towerList[i] == tower)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void UpdateUpgradePanel()

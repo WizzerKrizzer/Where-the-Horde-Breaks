@@ -207,6 +207,7 @@ namespace TowerDefense.Runtime
 
             SaveLayout();
             enemiesKilled = 0;
+            activeWeapon.ResetRunStats();
             running = true;
             activeWeapon.CanFire = true;
             enemies.BeginWave(level.wave, path);

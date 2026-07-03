@@ -13,6 +13,7 @@ namespace TowerDefense.Runtime
         public float Radius { get; set; } = 2.8f;
         public float CooldownSeconds { get; set; } = 1.2f;
         public int TotalDamageEvents { get; private set; }
+        public float TotalDamageDealt { get; private set; }
         public bool CanFire { get; set; }
         public float CooldownRemaining => Mathf.Max(0f, cooldown);
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
@@ -24,6 +25,12 @@ namespace TowerDefense.Runtime
             input = router;
         }
 
+        public void ResetRunStats()
+        {
+            TotalDamageEvents = 0;
+            TotalDamageDealt = 0f;
+        }
+
         private void Update()
         {
             cooldown = Mathf.Max(0f, cooldown - Time.deltaTime);
@@ -32,8 +39,9 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var hitCount = enemies.DamageInRadius(input.Current.PointerWorld, Radius, Damage);
+            var appliedDamage = enemies.DamageInRadius(input.Current.PointerWorld, Radius, Damage, out var hitCount);
             TotalDamageEvents += hitCount;
+            TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds;
             SpawnImpactMarker(input.Current.PointerWorld);
         }

@@ -107,10 +107,11 @@ namespace TowerDefense.Runtime
             return best;
         }
 
-        public int DamageInRadius(Vector3 center, float radius, float damage)
+        public float DamageInRadius(Vector3 center, float radius, float damage, out int hitCount)
         {
             var radiusSq = radius * radius;
-            var hitCount = 0;
+            hitCount = 0;
+            var appliedDamage = 0f;
             for (var i = activeEnemies.Count - 1; i >= 0; i--)
             {
                 var enemy = activeEnemies[i];
@@ -119,11 +120,11 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                enemy.ApplyDamage(damage);
+                appliedDamage += enemy.ApplyDamage(damage);
                 hitCount++;
             }
 
-            return hitCount;
+            return appliedDamage;
         }
 
         public void ClearAll()
