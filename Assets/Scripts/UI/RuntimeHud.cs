@@ -283,6 +283,9 @@ namespace TowerDefense.UI
             var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
             enter.callback.AddListener(_ => SelectUpgradeNode(node));
             events.triggers.Add(enter);
+            var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+            exit.callback.AddListener(_ => ClearUpgradeDetails(node));
+            events.triggers.Add(exit);
 
             var label = CreateText($"NodeLabel_{node.id}", parent, node.radialPosition + new Vector2(0f, -34f), TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(label.GetComponent<RectTransform>(), node.radialPosition + new Vector2(0f, -34f), new Vector2(128f, 28f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
@@ -295,16 +298,32 @@ namespace TowerDefense.UI
         {
             SetUpgradePanelVisible(true);
             ApplyUpgradeTreeTransform();
-            if (selectedUpgradeNode == null && session.UpgradeNodes.Count > 0)
-            {
-                SelectUpgradeNode(session.UpgradeNodes[0]);
-            }
+            ClearUpgradeDetails();
         }
 
         private void SelectUpgradeNode(SkillNodeDefinition node)
         {
             selectedUpgradeNode = node;
             UpdateSelectedUpgradeDetails();
+        }
+
+        private void ClearUpgradeDetails(SkillNodeDefinition node = null)
+        {
+            if (node != null && selectedUpgradeNode != node)
+            {
+                return;
+            }
+
+            selectedUpgradeNode = null;
+            if (upgradeDetailTitle != null)
+            {
+                upgradeDetailTitle.text = string.Empty;
+            }
+
+            if (upgradeDetailBody != null)
+            {
+                upgradeDetailBody.text = string.Empty;
+            }
         }
 
         private void PurchaseUpgradeNode(SkillNodeDefinition node)
