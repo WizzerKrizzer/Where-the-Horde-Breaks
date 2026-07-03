@@ -18,6 +18,7 @@ namespace TowerDefense.UI
         private ActiveWeaponController activeWeapon;
         private Text statusText;
         private Text towerText;
+        private GameObject activeWeaponSlot;
         private Image activeWeaponIcon;
         private Image activeWeaponCooldownFill;
         private Text activeWeaponCooldownText;
@@ -119,6 +120,11 @@ namespace TowerDefense.UI
 
         private void HandleHudShortcuts()
         {
+            if (IsUpgradePanelOpen())
+            {
+                return;
+            }
+
             if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
             {
                 ToggleStatsPanel();
@@ -181,7 +187,7 @@ namespace TowerDefense.UI
             panelRect.anchorMax = Vector2.one;
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
-            upgradePanel.GetComponent<Image>().color = new Color(0.015f, 0.02f, 0.024f, 0.94f);
+            upgradePanel.GetComponent<Image>().color = new Color(0.015f, 0.02f, 0.024f, 1f);
 
             var title = CreateText("UpgradeTitle", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -22f), new Vector2(460f, 32f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -200,7 +206,7 @@ namespace TowerDefense.UI
             upgradeTreeViewport = viewport.GetComponent<RectTransform>();
             upgradeTreeViewport.anchorMin = new Vector2(0f, 0f);
             upgradeTreeViewport.anchorMax = new Vector2(1f, 1f);
-            upgradeTreeViewport.offsetMin = new Vector2(36f, 146f);
+            upgradeTreeViewport.offsetMin = new Vector2(36f, 54f);
             upgradeTreeViewport.offsetMax = new Vector2(-36f, -92f);
             viewport.AddComponent<Mask>().showMaskGraphic = false;
             var treeInput = viewport.AddComponent<SkillTreeViewportInput>();
@@ -400,6 +406,8 @@ namespace TowerDefense.UI
                 input.GameplayInputBlocked = visible;
             }
 
+            SetMainHudVisible(!visible);
+
             if (devPanel != null)
             {
                 devPanel.SetActive(!visible && devPanelVisible);
@@ -408,6 +416,39 @@ namespace TowerDefense.UI
             if (statsPanel != null)
             {
                 statsPanel.SetActive(!visible && statsPanelVisible);
+            }
+        }
+
+        private void SetMainHudVisible(bool visible)
+        {
+            if (statusText != null)
+            {
+                statusText.gameObject.SetActive(visible);
+            }
+
+            if (towerText != null)
+            {
+                towerText.gameObject.SetActive(visible);
+            }
+
+            if (activeWeaponSlot != null)
+            {
+                activeWeaponSlot.SetActive(visible);
+            }
+
+            if (resultPanel != null)
+            {
+                resultPanel.SetActive(visible && session.Finished);
+            }
+
+            if (statsToggleButton != null)
+            {
+                statsToggleButton.gameObject.SetActive(visible);
+            }
+
+            if (devToggleButton != null)
+            {
+                devToggleButton.gameObject.SetActive(visible);
             }
         }
 
@@ -540,6 +581,12 @@ namespace TowerDefense.UI
         {
             if (resultPanel == null)
             {
+                return;
+            }
+
+            if (IsUpgradePanelOpen())
+            {
+                resultPanel.SetActive(false);
                 return;
             }
 
@@ -898,6 +945,7 @@ namespace TowerDefense.UI
         private void CreateActiveWeaponSlot(Transform parent)
         {
             var root = new GameObject("ActiveWeaponSlot");
+            activeWeaponSlot = root;
             root.transform.SetParent(parent, false);
             var rect = root.AddComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0f);
