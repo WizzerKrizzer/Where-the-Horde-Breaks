@@ -331,7 +331,7 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(-270f, 24f), new Vector2(190f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
             upgradeDetailBody.raycastTarget = false;
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(12f, 0f), new Vector2(430f, 70f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(24f, -4f), new Vector2(470f, 74f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
             upgradeBuyButton.gameObject.SetActive(false);
@@ -1314,8 +1314,8 @@ namespace TowerDefense.UI
             var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
             var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
             upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
-            var costLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\nNext cost: {costLine}";
+            var priceLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
+            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats: {FormatEffects(selectedUpgradeNode.effects)}\n\nPrice: {priceLine}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
