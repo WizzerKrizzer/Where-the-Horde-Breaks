@@ -147,7 +147,6 @@ namespace TowerDefense.Runtime
             level.id = "level_01";
             level.displayName = "Green Pass";
             level.startingLives = 12;
-            level.baseTowerLimit = 1;
             level.wave = wave;
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);

@@ -127,7 +127,7 @@ namespace TowerDefense.Runtime
 
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
-            towers.Initialize(enemies, path, GetUnlockedTowers(), level.baseTowerLimit);
+            towers.Initialize(enemies, path, GetUnlockedTowers());
             ApplyProgressionStats();
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
@@ -263,14 +263,12 @@ namespace TowerDefense.Runtime
         private void ApplyProgressionStats()
         {
             var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
-            var towerLimit = level.baseTowerLimit + Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.GlobalTowerLimitFlat));
             var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
             var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
 
             maxLivesForRun = level.startingLives + bonusLives;
             towers.SetAvailableTowers(GetUnlockedTowers());
-            towers.SetGlobalLimit(towerLimit);
             towers.ClearPerTypeLimitBonuses();
             if (allTowerDefinitions != null)
             {

@@ -923,8 +923,6 @@ namespace TowerDefense.UI
             {
                 case UpgradeEffectType.UnlockTower:
                     return $"Unlock {effect.targetId} tower";
-                case UpgradeEffectType.GlobalTowerLimitFlat:
-                    return $"+{effect.value:0} total tower limit";
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                     return $"+{effect.value:0} {effect.targetId} tower limit";
                 case UpgradeEffectType.TowerDamagePercent:

@@ -13,21 +13,18 @@ namespace TowerDefense.Runtime
         private readonly Dictionary<string, int> perTypeLimitBonuses = new();
         private EnemyManager enemies;
         private PathRoute route;
-        private int globalLimit;
         private float towerDamageMultiplier = 1f;
         private const float MinimumPathDistance = 1.45f;
 
         public IReadOnlyList<TowerActor> Towers => towers;
         public IReadOnlyList<TowerDefinition> AvailableTowers { get; private set; }
-        public int GlobalLimit => globalLimit;
         public int TowerCount => towers.Count;
 
-        public void Initialize(EnemyManager enemyManager, PathRoute pathRoute, IReadOnlyList<TowerDefinition> towerDefinitions, int towerLimit)
+        public void Initialize(EnemyManager enemyManager, PathRoute pathRoute, IReadOnlyList<TowerDefinition> towerDefinitions)
         {
             enemies = enemyManager;
             route = pathRoute;
             SetAvailableTowers(towerDefinitions);
-            globalLimit = towerLimit;
         }
 
         public void SetAvailableTowers(IReadOnlyList<TowerDefinition> towerDefinitions)
@@ -42,11 +39,6 @@ namespace TowerDefense.Runtime
             {
                 tower.SetDamageMultiplier(towerDamageMultiplier);
             }
-        }
-
-        public void SetGlobalLimit(int towerLimit)
-        {
-            globalLimit = Mathf.Max(0, towerLimit);
         }
 
         public void SetPerTypeLimitBonus(string towerId, int bonus)
@@ -99,11 +91,6 @@ namespace TowerDefense.Runtime
             if (towers.Count(tower => tower.Definition == definition) >= GetPerTypeLimit(definition))
             {
                 return $"{definition.displayName} limit reached";
-            }
-
-            if (towers.Count >= globalLimit)
-            {
-                return "Global tower limit reached";
             }
 
             return string.Empty;
