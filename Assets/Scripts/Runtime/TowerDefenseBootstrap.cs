@@ -135,34 +135,98 @@ namespace TowerDefense.Runtime
                 "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
                 32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
+            var vampire = CreateEnemy("vampire", "Vampire", EnemyRole.Saboteur,
+                "A duelist that hunts allied troops. Damaging allied units heals it and can raise its maximum health.",
+                "Weak to ranged focus fire before it reaches your frontline.",
+                48f, 3.55f, 2, 5, new Color(0.45f, 0.02f, 0.08f), 0.52f);
+            var harpy = CreateEnemy("harpy", "Harpy", EnemyRole.Flying,
+                "Flying enemy. It ignores ground pressure and can only be hit by anti-air towers or archers.",
+                "Weak to Archer Towers, Ballistae, and Archer units from barracks.",
+                24f, 4.2f, 1, 3, new Color(0.62f, 0.62f, 0.86f), 0.44f);
+            var zombie = CreateEnemy("zombie", "Gravebound Zombie", EnemyRole.Undead,
+                "Slow undead. The first time it falls, it rises once more at half health.",
+                "Weak to sustained damage after its revival has been spent.",
+                34f, 2.05f, 1, 2, new Color(0.38f, 0.5f, 0.34f), 0.5f);
+            runner.alliedDamageMultiplier = 1.7f;
+            brute.wallDamageMultiplier = 1.8f;
+            shaman.healsEnemies = true;
+            shaman.healAmount = 4f;
+            vampire.alliedDamageMultiplier = 2.1f;
+            vampire.drainsAllies = true;
+            vampire.drainHealMultiplier = 1.4f;
+            harpy.isFlying = true;
+            zombie.revivesOnce = true;
+            zombie.infectsAllies = true;
 
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine,
                 "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.",
                 "Weak against high-health enemies and dense waves once too many targets pass through at once.",
                 0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
+            archer.canHitFlying = true;
             var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine,
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
                 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
+            ballista.canHitFlying = true;
             var bell = CreateTower("bell", "Bell Tower", TowerRole.ControlLine,
-                "A lookout and alarm tower with fast light shots. It fits the medieval base and helps clean up enemies near bends.",
-                "Weak against heavy enemies because each hit is small, and its control identity is still only a prototype.",
+                "A lookout and alarm tower. Once tuned, its ringing slows a capped amount of enemies in its radius.",
+                "Weak against very dense hordes until its slow capacity is upgraded.",
                 0, 1, 6.5f, 2.4f, 0.24f, 22f, new Color(0.45f, 0.72f, 1f));
+            bell.behavior = TowerBehavior.SlowAura;
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
                 0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
+            var barrier = CreateTower("barrier", "Timber Barrier", TowerRole.BarrierLine,
+                "A physical barricade that can be placed on the path. It absorbs enemy attacks until destroyed.",
+                "Weak to enemies that specialize in breaking walls, especially orcs.",
+                0, 1, 1.4f, 0f, 1f, 0f, new Color(0.46f, 0.28f, 0.13f));
+            barrier.behavior = TowerBehavior.Barrier;
+            barrier.health = 65f;
+            var knightBarracks = CreateTower("knight_barracks", "Knight Barracks", TowerRole.BarracksLine,
+                "Spawns knights that hold the line and fight enemies in melee.",
+                "Weak to enemies that specialize in killing allied troops.",
+                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
+            knightBarracks.behavior = TowerBehavior.Barracks;
+            knightBarracks.barracksUnitType = AlliedUnitType.Knight;
+            knightBarracks.alliedUnitHealth = 26f;
+            knightBarracks.alliedUnitDamage = 4.5f;
+            var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
+                "Spawns archers that can shoot flying enemies from a short distance.",
+                "Weak if enemies reach the archers directly.",
+                0, 1, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
+            archerBarracks.behavior = TowerBehavior.Barracks;
+            archerBarracks.barracksUnitType = AlliedUnitType.Archer;
+            archerBarracks.alliedUnitCanHitFlying = true;
+            archerBarracks.alliedUnitRange = 3.4f;
+            archerBarracks.alliedUnitHealth = 16f;
+            archerBarracks.alliedUnitDamage = 3.2f;
+            var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
+                "Spawns a durable paladin. Paladins take more space but bring higher defense.",
+                "Weak because each paladin takes extra capacity and respawns slowly.",
+                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
+            paladinBarracks.behavior = TowerBehavior.Barracks;
+            paladinBarracks.barracksUnitType = AlliedUnitType.Paladin;
+            paladinBarracks.barracksCapacity = 2;
+            paladinBarracks.alliedUnitSlots = 2;
+            paladinBarracks.alliedUnitHealth = 44f;
+            paladinBarracks.alliedUnitDamage = 5.8f;
+            paladinBarracks.alliedUnitDefense = 1.4f;
+            paladinBarracks.barracksRespawnSeconds = 12f;
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 390;
+            wave.totalEnemyCount = 447;
             wave.entries = new[]
             {
                 new WaveEntry { enemy = runner, count = 150, startTime = 0f, spawnInterval = 0.12f },
                 new WaveEntry { enemy = brute, count = 70, startTime = 10f, spawnInterval = 0.36f },
                 new WaveEntry { enemy = shaman, count = 45, startTime = 18f, spawnInterval = 0.44f },
                 new WaveEntry { enemy = runner, count = 80, startTime = 28f, spawnInterval = 0.075f },
-                new WaveEntry { enemy = brute, count = 45, startTime = 34f, spawnInterval = 0.26f }
+                new WaveEntry { enemy = harpy, count = 22, startTime = 31f, spawnInterval = 0.32f },
+                new WaveEntry { enemy = zombie, count = 25, startTime = 32f, spawnInterval = 0.38f },
+                new WaveEntry { enemy = brute, count = 45, startTime = 34f, spawnInterval = 0.26f },
+                new WaveEntry { enemy = vampire, count = 10, startTime = 42f, spawnInterval = 0.75f }
             };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -234,6 +298,28 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "base_health_01",
+                    displayName = "Reinforced Gate",
+                    description = "Each rank gives the base 1 extra life.",
+                    radialPosition = new Vector2(20f, 170f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "tower_speed_01",
+                    displayName = "Ready Crews",
+                    description = "Each rank makes all projectile towers shoot 3% faster.",
+                    radialPosition = new Vector2(150f, 188f),
+                    maxRanks = 10,
+                    prerequisiteNodeIds = new[] { "base_health_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 55) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_unlock",
                     displayName = "Archer Tower",
                     description = "Unlock the Archer Tower for future runs.",
@@ -265,6 +351,17 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "archer_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_double_01",
+                    displayName = "Twin Loose",
+                    description = "Each rank gives Archer Tower 3% chance to fire a second shot.",
+                    radialPosition = new Vector2(-420f, 154f),
+                    maxRanks = 10,
+                    prerequisiteNodeIds = new[] { "archer_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 36) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDoubleShotChancePercent, targetId = "archer", value = 3f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -302,6 +399,17 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "ballista_pierce_01",
+                    displayName = "Skewering Bolts",
+                    description = "Each rank lets Ballista bolts pierce 1 additional nearby enemy.",
+                    radialPosition = new Vector2(-384f, -210f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "ballista_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 85) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "ballista", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "bell_unlock",
                     displayName = "Bell Tower",
                     description = "Unlock the Bell Tower, a fast medieval lookout turret for cleaning up leaks.",
@@ -309,7 +417,12 @@ namespace TowerDefense.Runtime
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_radius_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f } },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 12f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowCapacityFlat, targetId = "bell", value = 10f }
+                    },
                     isMajorUnlock = true
                 },
                 new SkillNodeDefinition
@@ -325,14 +438,36 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "bell_damage_01",
-                    displayName = "Sharper Watch",
-                    description = "Each rank increases Bell Tower damage by 3%.",
+                    id = "bell_slow_01",
+                    displayName = "Heavy Clapper",
+                    description = "Each rank increases Bell Tower slow by 3%.",
                     radialPosition = new Vector2(586f, 8f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "bell_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 42) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "bell", value = 3f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "bell_capacity_01",
+                    displayName = "Wider Toll",
+                    description = "Each rank increases how much enemy mass the Bell Tower can slow.",
+                    radialPosition = new Vector2(724f, -42f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "bell_slow_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 52) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerSlowCapacityFlat, targetId = "bell", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "bell_range_01",
+                    displayName = "High Belfry",
+                    description = "Each rank increases Bell Tower radius by 0.35.",
+                    radialPosition = new Vector2(724f, -172f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "bell_limit_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 66) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerRangeFlat, targetId = "bell", value = 0.35f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -430,6 +565,151 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "catapult_fire_rate_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 95) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireDurationFlat, targetId = "catapult", value = 0.5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barrier_unlock",
+                    displayName = "Timber Barrier",
+                    description = "Unlock a destructible physical barrier that can be placed on the enemy path.",
+                    radialPosition = new Vector2(20f, -220f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 50) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "barrier", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barrier_health_01",
+                    displayName = "Layered Timbers",
+                    description = "Each rank increases Timber Barrier health by 20.",
+                    radialPosition = new Vector2(18f, -356f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "barrier_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerHealthFlat, targetId = "barrier", value = 20f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barrier_thorns_01",
+                    displayName = "Iron Spikes",
+                    description = "Each rank makes the barrier damage enemies that hit it.",
+                    radialPosition = new Vector2(154f, -344f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "barrier_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 60) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerThornsDamageFlat, targetId = "barrier", value = 1.5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barrier_limit_01",
+                    displayName = "Reserve Timbers",
+                    description = "Each rank lets you place one additional Timber Barrier.",
+                    radialPosition = new Vector2(-114f, -344f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "barrier_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 52) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "barrier", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "knight_barracks_unlock",
+                    displayName = "Knight Barracks",
+                    description = "Unlock barracks that respawn one knight defender.",
+                    radialPosition = new Vector2(310f, 292f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "tower_speed_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 90) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barracks_capacity_01",
+                    displayName = "Extra Bunks",
+                    description = "Each rank lets barracks hold one more troop slot.",
+                    radialPosition = new Vector2(466f, 326f),
+                    maxRanks = 4,
+                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "archer_barracks", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "paladin_barracks", value = 1f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barracks_damage_01",
+                    displayName = "Better Steel",
+                    description = "Each rank increases barracks troop damage by 5%.",
+                    radialPosition = new Vector2(466f, 228f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 65) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 5f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "archer_barracks", value = 5f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "paladin_barracks", value = 5f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barracks_health_01",
+                    displayName = "Thicker Mail",
+                    description = "Each rank increases barracks troop health by 5%.",
+                    radialPosition = new Vector2(618f, 300f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "barracks_capacity_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 70) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 5f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "archer_barracks", value = 5f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "paladin_barracks", value = 5f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "barracks_respawn_01",
+                    displayName = "Fresh Recruits",
+                    description = "Each rank reduces barracks respawn time by 4%.",
+                    radialPosition = new Vector2(618f, 202f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "barracks_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 76) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 4f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "archer_barracks", value = 4f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "paladin_barracks", value = 4f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_barracks_unlock",
+                    displayName = "Archer Post",
+                    description = "Unlock barracks that respawn anti-air archers.",
+                    radialPosition = new Vector2(772f, 304f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "barracks_health_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 130), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer_barracks", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_barracks_unlock",
+                    displayName = "Paladin Chapter",
+                    description = "Unlock barracks that respawn durable paladins.",
+                    radialPosition = new Vector2(772f, 202f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "barracks_respawn_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 160), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "paladin_barracks", value = 1f } },
+                    isMajorUnlock = true
                 }
             };
 
@@ -437,7 +717,7 @@ namespace TowerDefense.Runtime
             {
                 Level = level,
                 SkillTree = tree,
-                Towers = new[] { archer, ballista, bell, catapult }
+                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
             };
         }
 

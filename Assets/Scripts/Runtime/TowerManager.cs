@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
         private EnemyManager enemies;
         private PathRoute route;
         private float towerDamageMultiplier = 1f;
+        private float towerFireRateMultiplier = 1f;
         private const float MinimumPathDistance = 1.45f;
 
         public IReadOnlyList<TowerActor> Towers => towers;
@@ -39,6 +40,15 @@ namespace TowerDefense.Runtime
             foreach (var tower in towers)
             {
                 tower.SetDamageMultiplier(GetDamageMultiplier(tower.Definition));
+            }
+        }
+
+        public void SetTowerFireRateMultiplier(float multiplier)
+        {
+            towerFireRateMultiplier = Mathf.Max(0.05f, multiplier);
+            foreach (var tower in towers)
+            {
+                tower.SetFireRateMultiplier(towerFireRateMultiplier);
             }
         }
 
@@ -106,7 +116,7 @@ namespace TowerDefense.Runtime
                 return "Too close to another tower";
             }
 
-            if (IsTooCloseToPath(position))
+            if (definition.behavior != TowerBehavior.Barrier && IsTooCloseToPath(position))
             {
                 return "Too close to enemy path";
             }
@@ -131,6 +141,7 @@ namespace TowerDefense.Runtime
             go.transform.position = position;
             var tower = go.AddComponent<TowerActor>();
             tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
+            tower.SetFireRateMultiplier(towerFireRateMultiplier);
             towers.Add(tower);
             return true;
         }

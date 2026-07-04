@@ -1198,14 +1198,8 @@ namespace TowerDefense.UI
             for (var i = 0; i < towerDefinitions.Count; i++)
             {
                 var tower = towerDefinitions[i];
-                var projectileLine = tower.projectilePattern == ProjectilePattern.ArcSplash
-                    ? $"Projectile: arcing splash\nSplash radius: {tower.splashRadius:0.0}\nKnockback: {tower.knockbackDistance:0.0}"
-                    : "Projectile: single target";
-                var fireLine = tower.appliesFire
-                    ? $"\nFire: {tower.fireDamagePerTick:0.00} damage/tick, {tower.fireTicksPerSecond:0.00} ticks/sec, {tower.fireMaxStacks} max stacks, {tower.fireDuration:0.0}s"
-                    : string.Empty;
                 entries.Add(new CodexEntry(tower.id, tower.displayName,
-                    $"{tower.displayName}\n\n{tower.shortDescription}\n\nWeakness: {tower.weaknessDescription}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\n{projectileLine}{fireLine}\nBase limit: {tower.perTypeLimit}"));
+                    $"{tower.displayName}\n\n{tower.shortDescription}\n\nWeakness: {tower.weaknessDescription}\n\n{FormatTowerCodexStats(tower)}"));
             }
         }
 
@@ -1232,8 +1226,97 @@ namespace TowerDefense.UI
                 }
 
                 entries.Add(new CodexEntry(enemy.id, enemy.displayName,
-                    $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nWeakness: {enemy.weaknessDescription}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} {FormatCurrencySymbol(CurrencyType.KillEssence)}"));
+                    $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nWeakness: {enemy.weaknessDescription}\n\n{FormatEnemyCodexStats(enemy)}"));
             }
+        }
+
+        private static string FormatTowerCodexStats(TowerDefinition tower)
+        {
+            var text = new StringBuilder();
+            text.AppendLine($"Role: {tower.role}");
+            text.AppendLine($"Base limit: {tower.perTypeLimit}");
+            switch (tower.behavior)
+            {
+                case TowerBehavior.SlowAura:
+                    text.AppendLine($"Range: {tower.range:0.0}");
+                    text.AppendLine($"Slow: {tower.slowPercent:0}%");
+                    text.AppendLine($"Slow capacity: {tower.slowCapacity:0.0} mass");
+                    text.Append("Projectile: none");
+                    break;
+                case TowerBehavior.Barrier:
+                    text.AppendLine($"Health: {tower.health:0}");
+                    text.AppendLine($"Thorns: {tower.thornsDamage:0.0}");
+                    text.Append("Projectile: none");
+                    break;
+                case TowerBehavior.Barracks:
+                    text.AppendLine($"Unit: {tower.barracksUnitType}");
+                    text.AppendLine($"Capacity: {tower.barracksCapacity} slots");
+                    text.AppendLine($"Respawn: {tower.barracksRespawnSeconds:0.0}s");
+                    text.AppendLine($"Unit health: {tower.alliedUnitHealth:0.0}");
+                    text.AppendLine($"Unit damage: {tower.alliedUnitDamage:0.0}");
+                    text.AppendLine($"Unit defense: {tower.alliedUnitDefense:0.0}");
+                    text.Append($"Unit range: {tower.alliedUnitRange:0.0}");
+                    break;
+                default:
+                    var projectileLine = tower.projectilePattern == ProjectilePattern.ArcSplash
+                        ? $"Projectile: arcing splash\nSplash radius: {tower.splashRadius:0.0}\nKnockback: {tower.knockbackDistance:0.0}"
+                        : $"Projectile: single target\nPierce: {tower.pierce}";
+                    var fireLine = tower.appliesFire
+                        ? $"\nFire: {tower.fireDamagePerTick:0.00} damage/tick, {tower.fireTicksPerSecond:0.00} ticks/sec, {tower.fireMaxStacks} max stacks, {tower.fireDuration:0.0}s"
+                        : string.Empty;
+                    text.AppendLine($"Damage: {tower.damage:0.0} per hit");
+                    text.AppendLine($"Range: {tower.range:0.0}");
+                    text.AppendLine($"Fire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec");
+                    text.AppendLine($"Can hit flying: {(tower.canHitFlying ? "yes" : "no")}");
+                    text.Append($"{projectileLine}{fireLine}");
+                    break;
+            }
+
+            return text.ToString();
+        }
+
+        private static string FormatEnemyCodexStats(EnemyDefinition enemy)
+        {
+            var text = new StringBuilder();
+            text.AppendLine($"Role: {enemy.role}");
+            text.AppendLine($"Health: {enemy.maxHealth:0}");
+            text.AppendLine($"Speed: {enemy.speed:0.0}");
+            text.AppendLine($"Mass: {enemy.mass:0.0}");
+            text.AppendLine($"Attack: {enemy.attackDamage:0.0} every {enemy.attackInterval:0.0}s");
+            text.AppendLine($"Vs barriers: x{enemy.wallDamageMultiplier:0.0}");
+            text.AppendLine($"Vs allied units: x{enemy.alliedDamageMultiplier:0.0}");
+            text.AppendLine($"Life damage: {enemy.lifeDamage}");
+            text.AppendLine($"Kill reward: {enemy.killReward} {FormatCurrencySymbol(CurrencyType.KillEssence)}");
+
+            var abilities = new List<string>();
+            if (enemy.isFlying)
+            {
+                abilities.Add("Flying");
+            }
+            if (enemy.healsEnemies)
+            {
+                abilities.Add($"Heals allies for {enemy.healAmount:0.0}");
+            }
+            if (enemy.drainsAllies)
+            {
+                abilities.Add("Drains allied units and can raise max health");
+            }
+            if (enemy.infectsAllies)
+            {
+                abilities.Add("Infects killed allied units");
+            }
+            if (enemy.revivesOnce)
+            {
+                abilities.Add("Revives once at 50% health");
+            }
+
+            if (abilities.Count > 0)
+            {
+                text.Append("\nAbilities: ");
+                text.Append(string.Join(", ", abilities));
+            }
+
+            return text.ToString();
         }
 
         private void OnCodexListScrolled(float scrollDelta)
@@ -1516,6 +1599,30 @@ namespace TowerDefense.UI
                     return $"+{effect.value:0} {effect.targetId} tower limit";
                 case UpgradeEffectType.TowerDamagePercent:
                     return $"+{effect.value:0}% {effect.targetId} tower damage";
+                case UpgradeEffectType.TowerFireRatePercent:
+                    return $"+{effect.value:0}% tower fire rate";
+                case UpgradeEffectType.TowerPierceFlat:
+                    return $"+{effect.value:0} {effect.targetId} pierce";
+                case UpgradeEffectType.TowerDoubleShotChancePercent:
+                    return $"+{effect.value:0}% {effect.targetId} double shot chance";
+                case UpgradeEffectType.TowerSlowPercentFlat:
+                    return $"+{effect.value:0}% {effect.targetId} slow";
+                case UpgradeEffectType.TowerSlowCapacityFlat:
+                    return $"+{effect.value:0} {effect.targetId} slow capacity";
+                case UpgradeEffectType.TowerRangeFlat:
+                    return $"+{effect.value:0.0} {effect.targetId} range";
+                case UpgradeEffectType.TowerHealthFlat:
+                    return $"+{effect.value:0} {effect.targetId} health";
+                case UpgradeEffectType.TowerThornsDamageFlat:
+                    return $"+{effect.value:0.0} {effect.targetId} thorns damage";
+                case UpgradeEffectType.BarracksUnitCapacityFlat:
+                    return $"+{effect.value:0} {effect.targetId} troop capacity";
+                case UpgradeEffectType.BarracksUnitDamagePercent:
+                    return $"+{effect.value:0}% {effect.targetId} troop damage";
+                case UpgradeEffectType.BarracksUnitHealthPercent:
+                    return $"+{effect.value:0}% {effect.targetId} troop health";
+                case UpgradeEffectType.BarracksRespawnCooldownPercent:
+                    return $"-{effect.value:0}% {effect.targetId} respawn time";
                 case UpgradeEffectType.EnableTowerFire:
                     return $"Enable {effect.targetId} fire";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:

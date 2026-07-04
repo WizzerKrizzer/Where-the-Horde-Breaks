@@ -16,6 +16,8 @@ namespace TowerDefense.Data
         Support,
         Saboteur,
         Ranged,
+        Flying,
+        Undead,
         Boss
     }
 
@@ -23,7 +25,30 @@ namespace TowerDefense.Data
     {
         ArcherLine,
         ArtilleryLine,
-        ControlLine
+        ControlLine,
+        BarrierLine,
+        BarracksLine
+    }
+
+    public enum TowerBehavior
+    {
+        Projectile,
+        SlowAura,
+        Barrier,
+        Barracks
+    }
+
+    public enum AlliedUnitType
+    {
+        Knight,
+        Archer,
+        Paladin
+    }
+
+    public enum CombatTargetKind
+    {
+        Barrier,
+        AlliedUnit
     }
 
     public enum ProjectilePattern
@@ -40,6 +65,18 @@ namespace TowerDefense.Data
         ActiveWeaponPierceFlat,
         PerTypeTowerLimitFlat,
         TowerDamagePercent,
+        TowerFireRatePercent,
+        TowerPierceFlat,
+        TowerDoubleShotChancePercent,
+        TowerSlowPercentFlat,
+        TowerSlowCapacityFlat,
+        TowerRangeFlat,
+        TowerHealthFlat,
+        TowerThornsDamageFlat,
+        BarracksUnitCapacityFlat,
+        BarracksUnitDamagePercent,
+        BarracksUnitHealthPercent,
+        BarracksRespawnCooldownPercent,
         EnableTowerFire,
         TowerFireDamagePerTickFlat,
         TowerFireTicksPerSecondFlat,

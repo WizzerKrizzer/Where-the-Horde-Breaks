@@ -23,6 +23,7 @@ namespace TowerDefense.Runtime
         private PlayerInputRouter input;
         private PathRoute path;
         private IReadOnlyList<TowerDefinition> allTowerDefinitions;
+        private readonly Dictionary<string, TowerBaseStats> baseTowerStats = new();
         private int lives;
         private int maxLivesForRun;
         private int enemiesKilled;
@@ -162,6 +163,7 @@ namespace TowerDefense.Runtime
             input = inputRouter;
             this.path = path;
             allTowerDefinitions = availableTowers;
+            CaptureBaseTowerStats();
             baseActiveWeaponDamage = activeWeapon.Damage;
             baseActiveWeaponCooldown = activeWeapon.CooldownSeconds;
             baseActiveWeaponRadius = activeWeapon.Radius;
@@ -333,6 +335,7 @@ namespace TowerDefense.Runtime
         {
             var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
             var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
+            var towerFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent) / 100f;
             var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
             var activeRadiusBonus = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRadiusFlat);
@@ -346,10 +349,22 @@ namespace TowerDefense.Runtime
             {
                 foreach (var towerDefinition in allTowerDefinitions)
                 {
+                    RestoreBaseTowerStats(towerDefinition);
                     var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
                     var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
                     towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
+                    towerDefinition.pierce = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerPierceFlat, towerDefinition.id));
+                    towerDefinition.doubleShotChance = progression.GetEffectTotal(UpgradeEffectType.TowerDoubleShotChancePercent, towerDefinition.id) / 100f;
+                    towerDefinition.slowPercent = progression.GetEffectTotal(UpgradeEffectType.TowerSlowPercentFlat, towerDefinition.id) / 100f;
+                    towerDefinition.slowCapacity = progression.GetEffectTotal(UpgradeEffectType.TowerSlowCapacityFlat, towerDefinition.id);
+                    towerDefinition.range += progression.GetEffectTotal(UpgradeEffectType.TowerRangeFlat, towerDefinition.id);
+                    towerDefinition.health += progression.GetEffectTotal(UpgradeEffectType.TowerHealthFlat, towerDefinition.id);
+                    towerDefinition.thornsDamage = progression.GetEffectTotal(UpgradeEffectType.TowerThornsDamageFlat, towerDefinition.id);
+                    towerDefinition.barracksCapacity += Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BarracksUnitCapacityFlat, towerDefinition.id));
+                    towerDefinition.alliedUnitDamage *= 1f + progression.GetEffectTotal(UpgradeEffectType.BarracksUnitDamagePercent, towerDefinition.id) / 100f;
+                    towerDefinition.alliedUnitHealth *= 1f + progression.GetEffectTotal(UpgradeEffectType.BarracksUnitHealthPercent, towerDefinition.id) / 100f;
+                    towerDefinition.barracksRespawnSeconds *= Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.BarracksRespawnCooldownPercent, towerDefinition.id) / 100f);
                     towerDefinition.appliesFire = progression.GetEffectTotal(UpgradeEffectType.EnableTowerFire, towerDefinition.id) > 0f;
                     towerDefinition.fireDamagePerTick = progression.GetEffectTotal(UpgradeEffectType.TowerFireDamagePerTickFlat, towerDefinition.id);
                     towerDefinition.fireTicksPerSecond = progression.GetEffectTotal(UpgradeEffectType.TowerFireTicksPerSecondFlat, towerDefinition.id);
@@ -358,6 +373,7 @@ namespace TowerDefense.Runtime
                 }
             }
             towers.SetTowerDamageMultiplier(towerDamageMultiplier);
+            towers.SetTowerFireRateMultiplier(towerFireRateMultiplier);
             activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
             activeWeapon.Radius = baseActiveWeaponRadius + activeRadiusBonus;
@@ -381,6 +397,70 @@ namespace TowerDefense.Runtime
             }
 
             return unlocked;
+        }
+
+        private void CaptureBaseTowerStats()
+        {
+            baseTowerStats.Clear();
+            if (allTowerDefinitions == null)
+            {
+                return;
+            }
+
+            foreach (var tower in allTowerDefinitions)
+            {
+                baseTowerStats[tower.id] = new TowerBaseStats(tower);
+            }
+        }
+
+        private void RestoreBaseTowerStats(TowerDefinition tower)
+        {
+            if (tower == null || !baseTowerStats.TryGetValue(tower.id, out var stats))
+            {
+                return;
+            }
+
+            stats.Apply(tower);
+        }
+
+        private readonly struct TowerBaseStats
+        {
+            private readonly float range;
+            private readonly float health;
+            private readonly float alliedUnitHealth;
+            private readonly float alliedUnitDamage;
+            private readonly float barracksRespawnSeconds;
+            private readonly int barracksCapacity;
+
+            public TowerBaseStats(TowerDefinition tower)
+            {
+                range = tower.range;
+                health = tower.health;
+                alliedUnitHealth = tower.alliedUnitHealth;
+                alliedUnitDamage = tower.alliedUnitDamage;
+                barracksRespawnSeconds = tower.barracksRespawnSeconds;
+                barracksCapacity = tower.barracksCapacity;
+            }
+
+            public void Apply(TowerDefinition tower)
+            {
+                tower.range = range;
+                tower.health = health;
+                tower.alliedUnitHealth = alliedUnitHealth;
+                tower.alliedUnitDamage = alliedUnitDamage;
+                tower.barracksRespawnSeconds = barracksRespawnSeconds;
+                tower.barracksCapacity = barracksCapacity;
+                tower.pierce = 0;
+                tower.doubleShotChance = 0f;
+                tower.slowPercent = 0f;
+                tower.slowCapacity = 0f;
+                tower.thornsDamage = 0f;
+                tower.appliesFire = false;
+                tower.fireDamagePerTick = 0f;
+                tower.fireTicksPerSecond = 0f;
+                tower.fireMaxStacks = 0;
+                tower.fireDuration = 0f;
+            }
         }
     }
 }

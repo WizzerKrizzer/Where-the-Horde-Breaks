@@ -9,6 +9,7 @@ namespace TowerDefense.Runtime
     public sealed class EnemyManager : MonoBehaviour
     {
         private readonly List<EnemyActor> activeEnemies = new();
+        private readonly List<ICombatTarget> combatTargets = new();
         private readonly Queue<EnemyActor> pool = new();
         private WaveDefinition wave;
         private PathRoute path;
@@ -22,7 +23,7 @@ namespace TowerDefense.Runtime
         public int TotalSpawned => totalSpawned;
         public int TotalResolved => totalResolved;
         public bool HasWave => wave != null;
-        public bool IsWaveComplete => wave != null && totalSpawned >= wave.totalEnemyCount && totalResolved >= totalSpawned;
+        public bool IsWaveComplete => wave != null && totalSpawned >= wave.totalEnemyCount && activeEnemies.Count == 0;
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyActor> EnemyKilled;
         public event Action<EnemyActor> EnemyEscaped;
@@ -53,6 +54,16 @@ namespace TowerDefense.Runtime
 
             path = route;
             Spawn(enemyDefinition);
+        }
+
+        public void SpawnConvertedEnemy(EnemyDefinition enemyDefinition, Vector3 position)
+        {
+            if (enemyDefinition == null || path == null)
+            {
+                return;
+            }
+
+            Spawn(enemyDefinition, EstimatePathDistance(position), countTowardWaveTotal: false);
         }
 
         private void Update()
@@ -100,11 +111,16 @@ namespace TowerDefense.Runtime
 
         public EnemyActor GetNearestEnemy(Vector3 position, float range)
         {
+            return GetNearestEnemy(position, range, canHitFlying: true);
+        }
+
+        public EnemyActor GetNearestEnemy(Vector3 position, float range, bool canHitFlying)
+        {
             EnemyActor best = null;
             var bestDistance = range * range;
             foreach (var enemy in activeEnemies)
             {
-                if (!enemy.IsAlive)
+                if (!enemy.IsAlive || (enemy.Definition.isFlying && !canHitFlying))
                 {
                     continue;
                 }
@@ -118,6 +134,111 @@ namespace TowerDefense.Runtime
             }
 
             return best;
+        }
+
+        public EnemyActor GetNearestEnemyExcept(Vector3 position, float range, bool canHitFlying, EnemyActor excludedEnemy)
+        {
+            EnemyActor best = null;
+            var bestDistance = range * range;
+            foreach (var enemy in activeEnemies)
+            {
+                if (!enemy.IsAlive || enemy == excludedEnemy || (enemy.Definition.isFlying && !canHitFlying))
+                {
+                    continue;
+                }
+
+                var distance = (enemy.transform.position - position).sqrMagnitude;
+                if (distance <= bestDistance)
+                {
+                    best = enemy;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        public ICombatTarget GetNearestCombatTarget(Vector3 position, float range)
+        {
+            ICombatTarget best = null;
+            var bestDistance = range * range;
+            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            {
+                var target = combatTargets[i];
+                if (target == null || !target.IsAlive)
+                {
+                    combatTargets.RemoveAt(i);
+                    continue;
+                }
+
+                var distance = (target.Position - position).sqrMagnitude;
+                if (distance <= bestDistance)
+                {
+                    best = target;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        public void RegisterCombatTarget(ICombatTarget target)
+        {
+            if (target != null && !combatTargets.Contains(target))
+            {
+                combatTargets.Add(target);
+            }
+        }
+
+        public void UnregisterCombatTarget(ICombatTarget target)
+        {
+            combatTargets.Remove(target);
+        }
+
+        public void HealEnemiesInRadius(Vector3 center, float radius, float amount, EnemyActor excludedEnemy)
+        {
+            if (amount <= 0f)
+            {
+                return;
+            }
+
+            var radiusSq = radius * radius;
+            foreach (var enemy in activeEnemies)
+            {
+                if (!enemy.IsAlive || enemy == excludedEnemy || (enemy.transform.position - center).sqrMagnitude > radiusSq)
+                {
+                    continue;
+                }
+
+                enemy.Heal(amount);
+            }
+        }
+
+        public void ApplySlowAura(Vector3 center, float radius, float slowPercent, float capacity)
+        {
+            if (slowPercent <= 0f || capacity <= 0f)
+            {
+                return;
+            }
+
+            var radiusSq = radius * radius;
+            var usedCapacity = 0f;
+            foreach (var enemy in activeEnemies)
+            {
+                if (!enemy.IsAlive || (enemy.transform.position - center).sqrMagnitude > radiusSq)
+                {
+                    continue;
+                }
+
+                var cost = Mathf.Max(0.1f, enemy.Definition.mass);
+                if (usedCapacity + cost > capacity)
+                {
+                    continue;
+                }
+
+                enemy.ApplySlow(slowPercent, 0.15f);
+                usedCapacity += cost;
+            }
         }
 
         public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
@@ -201,15 +322,47 @@ namespace TowerDefense.Runtime
             }
 
             activeEnemies.Clear();
+            combatTargets.Clear();
         }
 
         private void Spawn(EnemyDefinition enemyDefinition)
         {
+            Spawn(enemyDefinition, 0f, countTowardWaveTotal: true);
+        }
+
+        private void Spawn(EnemyDefinition enemyDefinition, float initialOffset, bool countTowardWaveTotal)
+        {
             var actor = pool.Count > 0 ? pool.Dequeue() : CreateEnemyActor(enemyDefinition);
-            actor.Initialize(enemyDefinition, path, this, 0f);
+            actor.Initialize(enemyDefinition, path, this, Mathf.Clamp(initialOffset, 0f, path.TotalLength));
             activeEnemies.Add(actor);
-            totalSpawned++;
+            if (countTowardWaveTotal)
+            {
+                totalSpawned++;
+            }
             EnemySpawned?.Invoke(enemyDefinition);
+        }
+
+        private float EstimatePathDistance(Vector3 position)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return 0f;
+            }
+
+            var bestDistance = 0f;
+            var bestDistanceSq = float.PositiveInfinity;
+            var step = Mathf.Max(0.5f, path.TotalLength / 90f);
+            for (var distance = 0f; distance <= path.TotalLength; distance += step)
+            {
+                var distanceSq = (path.Sample(distance) - position).sqrMagnitude;
+                if (distanceSq < bestDistanceSq)
+                {
+                    bestDistanceSq = distanceSq;
+                    bestDistance = distance;
+                }
+            }
+
+            return bestDistance;
         }
 
         private EnemyActor CreateEnemyActor(EnemyDefinition enemyDefinition)

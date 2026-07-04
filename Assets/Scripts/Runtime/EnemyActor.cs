@@ -15,6 +15,14 @@ namespace TowerDefense.Runtime
         private float pathDistance;
         private Vector3 knockbackOffset;
         private readonly List<BurnStack> burnStacks = new();
+        private float attackCooldown;
+        private float healCooldown;
+        private float slowTimer;
+        private float slowMultiplier = 1f;
+        private bool reviveUsed;
+        private bool waitingToRevive;
+        private float reviveTimer;
+        private float currentMaxHealth;
         private bool active;
         private Transform healthFill;
 
@@ -29,12 +37,26 @@ namespace TowerDefense.Runtime
             definition = enemyDefinition;
             path = route;
             owner = enemyOwner;
-            health = enemyDefinition.maxHealth;
+            currentMaxHealth = enemyDefinition.maxHealth;
+            health = currentMaxHealth;
             pathDistance = initialOffset;
             knockbackOffset = Vector3.zero;
             burnStacks.Clear();
+            attackCooldown = 0f;
+            healCooldown = enemyDefinition.healInterval;
+            slowTimer = 0f;
+            slowMultiplier = 1f;
+            reviveUsed = false;
+            waitingToRevive = false;
+            reviveTimer = 0f;
             active = true;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
+            var renderer = GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.material = BootstrapMaterials.Get(enemyDefinition.color);
+            }
+
             EnsureHealthBar();
             UpdateHealthBar();
             gameObject.SetActive(true);
@@ -43,12 +65,53 @@ namespace TowerDefense.Runtime
 
         private void Update()
         {
+            if (waitingToRevive)
+            {
+                reviveTimer -= Time.deltaTime;
+                if (reviveTimer <= 0f)
+                {
+                    waitingToRevive = false;
+                    active = true;
+                    health = currentMaxHealth * 0.5f;
+                    gameObject.SetActive(true);
+                    MoveToPathPosition();
+                    UpdateHealthBar();
+                }
+                return;
+            }
+
             if (!active || path == null)
             {
                 return;
             }
 
-            pathDistance += definition.speed * Time.deltaTime;
+            if (slowTimer > 0f)
+            {
+                slowTimer -= Time.deltaTime;
+            }
+            else
+            {
+                slowMultiplier = 1f;
+            }
+
+            if (TryAttackCombatTarget())
+            {
+                UpdateBurns();
+                UpdateHealthBar();
+                return;
+            }
+
+            if (definition.healsEnemies)
+            {
+                healCooldown -= Time.deltaTime;
+                if (healCooldown <= 0f)
+                {
+                    owner.HealEnemiesInRadius(transform.position, definition.healRadius, definition.healAmount, this);
+                    healCooldown = Mathf.Max(0.1f, definition.healInterval);
+                }
+            }
+
+            pathDistance += definition.speed * slowMultiplier * Time.deltaTime;
             knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 4f);
             UpdateBurns();
             UpdateHealthBar();
@@ -96,6 +159,28 @@ namespace TowerDefense.Runtime
             burnStacks.Add(new BurnStack(source, damagePerTick, ticksPerSecond, duration));
         }
 
+        public void ApplySlow(float slowPercent, float duration)
+        {
+            if (!IsAlive || slowPercent <= 0f || duration <= 0f)
+            {
+                return;
+            }
+
+            slowMultiplier = Mathf.Min(slowMultiplier, 1f - Mathf.Clamp(slowPercent, 0f, 0.95f));
+            slowTimer = Mathf.Max(slowTimer, duration);
+        }
+
+        public void Heal(float amount)
+        {
+            if (!IsAlive || amount <= 0f)
+            {
+                return;
+            }
+
+            health = Mathf.Min(currentMaxHealth, health + amount);
+            UpdateHealthBar();
+        }
+
         public float ApplyDamage(float damage)
         {
             if (!IsAlive)
@@ -111,11 +196,48 @@ namespace TowerDefense.Runtime
                 return appliedDamage;
             }
 
-            active = false;
-            Died?.Invoke(this);
-            owner.NotifyEnemyKilled(this);
-            gameObject.SetActive(false);
+            if (definition.revivesOnce && !reviveUsed)
+            {
+                reviveUsed = true;
+                active = false;
+                waitingToRevive = true;
+                reviveTimer = Mathf.Max(0.1f, definition.reviveDelay);
+            }
+            else
+            {
+                active = false;
+                Died?.Invoke(this);
+                owner.NotifyEnemyKilled(this);
+                gameObject.SetActive(false);
+            }
             return appliedDamage;
+        }
+
+        private bool TryAttackCombatTarget()
+        {
+            var target = owner.GetNearestCombatTarget(transform.position, 0.85f);
+            if (target == null)
+            {
+                return false;
+            }
+
+            attackCooldown -= Time.deltaTime;
+            if (attackCooldown > 0f)
+            {
+                return true;
+            }
+
+            var multiplier = target.TargetKind == CombatTargetKind.Barrier ? definition.wallDamageMultiplier : definition.alliedDamageMultiplier;
+            var damage = definition.attackDamage * Mathf.Max(0f, multiplier);
+            target.TakeDamage(damage, this);
+            if (definition.drainsAllies && target.TargetKind == CombatTargetKind.AlliedUnit)
+            {
+                currentMaxHealth += damage * 0.35f;
+                health = Mathf.Min(currentMaxHealth, health + damage * definition.drainHealMultiplier);
+            }
+
+            attackCooldown = Mathf.Max(0.1f, definition.attackInterval);
+            return true;
         }
 
         private void MoveToPathPosition()
@@ -185,7 +307,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var normalizedHealth = Mathf.Clamp01(health / definition.maxHealth);
+            var normalizedHealth = Mathf.Clamp01(health / currentMaxHealth);
             healthFill.localScale = new Vector3(1.15f * normalizedHealth, 0.09f, 0.14f);
             healthFill.localPosition = new Vector3(-0.575f + 0.575f * normalizedHealth, 0.012f, 0f);
         }

@@ -44,6 +44,12 @@ namespace TowerDefense.Runtime
                 case TowerRole.ControlLine:
                     target.localScale = new Vector3(0.78f, 1.18f, 0.78f);
                     break;
+                case TowerRole.BarrierLine:
+                    target.localScale = new Vector3(1.35f, 0.46f, 0.52f);
+                    break;
+                case TowerRole.BarracksLine:
+                    target.localScale = new Vector3(1.05f, 0.58f, 1.05f);
+                    break;
                 default:
                     target.localScale = new Vector3(0.8f, 0.7f, 0.8f);
                     break;
@@ -70,6 +76,9 @@ namespace TowerDefense.Runtime
                     return PrimitiveType.Sphere;
                 case TowerRole.ControlLine:
                     return PrimitiveType.Capsule;
+                case TowerRole.BarrierLine:
+                case TowerRole.BarracksLine:
+                    return PrimitiveType.Cube;
                 default:
                     return PrimitiveType.Cylinder;
             }

@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
         private Vector3 impactPosition;
         private float flightTime;
         private float flightElapsed;
+        private int remainingPierce;
         private bool active;
 
         public void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
@@ -28,6 +29,7 @@ namespace TowerDefense.Runtime
             startPosition = transform.position;
             impactPosition = targetEnemy != null ? targetEnemy.transform.position : transform.position;
             flightElapsed = 0f;
+            remainingPierce = Mathf.Max(0, towerDefinition.pierce);
             var flightMultiplier = towerDefinition.projectilePattern == ProjectilePattern.ArcSplash
                 ? Mathf.Max(1f, towerDefinition.arcFlightTimeMultiplier)
                 : 1f;
@@ -69,6 +71,16 @@ namespace TowerDefense.Runtime
 
             var appliedDamage = target.ApplyDamage(damage);
             source?.RecordDamage(appliedDamage);
+            if (remainingPierce > 0)
+            {
+                remainingPierce--;
+                var nextTarget = enemies.GetNearestEnemyExcept(transform.position, 2.6f, sourceTower.canHitFlying, target);
+                if (nextTarget != null)
+                {
+                    target = nextTarget;
+                    return;
+                }
+            }
             Deactivate();
         }
 
