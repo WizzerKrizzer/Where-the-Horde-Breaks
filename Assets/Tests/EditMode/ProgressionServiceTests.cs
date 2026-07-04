@@ -37,6 +37,36 @@ namespace TowerDefense.Tests
         }
 
         [Test]
+        public void StartsUnlockedNode_CountsAsPurchasedPrerequisite()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "volley_core",
+                    maxRanks = 1,
+                    startsUnlocked = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "volley_damage",
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 10);
+            var progression = new ProgressionService(tree, profile);
+
+            Assert.True(progression.IsPurchased("volley_core"));
+            Assert.That(progression.GetPurchasedRank("volley_core"), Is.EqualTo(1));
+            Assert.False(progression.CanPurchase("volley_core"));
+            Assert.True(progression.CanPurchase("volley_damage"));
+        }
+
+        [Test]
         public void TryPurchase_SpendsCurrencyAndAddsEffect()
         {
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();

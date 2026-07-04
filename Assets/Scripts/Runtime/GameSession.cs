@@ -28,6 +28,7 @@ namespace TowerDefense.Runtime
         private int enemiesKilled;
         private float baseActiveWeaponDamage;
         private float baseActiveWeaponCooldown;
+        private float baseActiveWeaponRadius;
         private bool running;
         private bool finished;
         private bool won;
@@ -118,6 +119,7 @@ namespace TowerDefense.Runtime
             allTowerDefinitions = availableTowers;
             baseActiveWeaponDamage = activeWeapon.Damage;
             baseActiveWeaponCooldown = activeWeapon.CooldownSeconds;
+            baseActiveWeaponRadius = activeWeapon.Radius;
 
             enemiesKilled = 0;
             running = false;
@@ -266,21 +268,26 @@ namespace TowerDefense.Runtime
             var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
             var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
+            var activeRadiusBonus = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRadiusFlat);
 
             maxLivesForRun = level.startingLives + bonusLives;
             towers.SetAvailableTowers(GetUnlockedTowers());
             towers.ClearPerTypeLimitBonuses();
+            towers.ClearPerTypeDamageMultipliers();
             if (allTowerDefinitions != null)
             {
                 foreach (var towerDefinition in allTowerDefinitions)
                 {
                     var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
+                    var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
+                    towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
                 }
             }
             towers.SetTowerDamageMultiplier(towerDamageMultiplier);
             activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
+            activeWeapon.Radius = baseActiveWeaponRadius + activeRadiusBonus;
         }
 
         private IReadOnlyList<TowerDefinition> GetUnlockedTowers()

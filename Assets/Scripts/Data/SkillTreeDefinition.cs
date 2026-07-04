@@ -22,5 +22,6 @@ namespace TowerDefense.Data
         public CurrencyAmount[] costs;
         public UpgradeEffect[] effects;
         public bool isMajorUnlock;
+        public bool startsUnlocked;
     }
 }

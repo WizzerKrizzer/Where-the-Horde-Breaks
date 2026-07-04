@@ -30,6 +30,7 @@ namespace TowerDefense.Data
     {
         ActiveWeaponDamagePercent,
         ActiveWeaponCooldownPercent,
+        ActiveWeaponRadiusFlat,
         PerTypeTowerLimitFlat,
         TowerDamagePercent,
         BaseLivesFlat,

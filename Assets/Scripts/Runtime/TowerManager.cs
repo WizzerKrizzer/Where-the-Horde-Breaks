@@ -11,6 +11,7 @@ namespace TowerDefense.Runtime
     {
         private readonly List<TowerActor> towers = new();
         private readonly Dictionary<string, int> perTypeLimitBonuses = new();
+        private readonly Dictionary<string, float> perTypeDamageMultipliers = new();
         private EnemyManager enemies;
         private PathRoute route;
         private float towerDamageMultiplier = 1f;
@@ -37,8 +38,30 @@ namespace TowerDefense.Runtime
             towerDamageMultiplier = Mathf.Max(0.05f, multiplier);
             foreach (var tower in towers)
             {
-                tower.SetDamageMultiplier(towerDamageMultiplier);
+                tower.SetDamageMultiplier(GetDamageMultiplier(tower.Definition));
             }
+        }
+
+        public void SetPerTypeDamageMultiplier(string towerId, float multiplier)
+        {
+            if (string.IsNullOrEmpty(towerId))
+            {
+                return;
+            }
+
+            perTypeDamageMultipliers[towerId] = Mathf.Max(0.05f, multiplier);
+            foreach (var tower in towers)
+            {
+                if (tower.Definition != null && tower.Definition.id == towerId)
+                {
+                    tower.SetDamageMultiplier(GetDamageMultiplier(tower.Definition));
+                }
+            }
+        }
+
+        public void ClearPerTypeDamageMultipliers()
+        {
+            perTypeDamageMultipliers.Clear();
         }
 
         public void SetPerTypeLimitBonus(string towerId, int bonus)
@@ -109,7 +132,7 @@ namespace TowerDefense.Runtime
             go.transform.position = position;
             go.transform.localScale = new Vector3(0.8f, 0.7f, 0.8f);
             var tower = go.AddComponent<TowerActor>();
-            tower.Initialize(definition, enemies, towerDamageMultiplier);
+            tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
             towers.Add(tower);
             return true;
         }
@@ -188,6 +211,16 @@ namespace TowerDefense.Runtime
         public float GetDamageDealt(TowerDefinition definition)
         {
             return towers.Where(tower => tower.Definition == definition).Sum(tower => tower.DamageDealt);
+        }
+
+        private float GetDamageMultiplier(TowerDefinition definition)
+        {
+            if (definition == null)
+            {
+                return towerDamageMultiplier;
+            }
+
+            return towerDamageMultiplier * (perTypeDamageMultipliers.TryGetValue(definition.id, out var multiplier) ? multiplier : 1f);
         }
 
         private bool IsTooCloseToPath(Vector3 position)

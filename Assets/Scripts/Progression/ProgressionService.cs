@@ -22,6 +22,12 @@ namespace TowerDefense.Progression
 
         public int GetPurchasedRank(string nodeId)
         {
+            var node = FindNode(nodeId);
+            if (node != null && node.startsUnlocked)
+            {
+                return GetMaxRank(node);
+            }
+
             return profile.purchasedUpgradeIds.Count(id => id == nodeId);
         }
 
@@ -34,7 +40,7 @@ namespace TowerDefense.Progression
         public bool CanPurchase(string nodeId)
         {
             var node = FindNode(nodeId);
-            if (node == null || GetPurchasedRank(nodeId) >= GetMaxRank(node))
+            if (node == null || node.startsUnlocked || GetPurchasedRank(nodeId) >= GetMaxRank(node))
             {
                 return false;
             }

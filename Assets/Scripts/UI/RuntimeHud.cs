@@ -948,6 +948,8 @@ namespace TowerDefense.UI
                     return $"+{effect.value:0}% active weapon damage";
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:
                     return $"-{effect.value:0}% active weapon cooldown";
+                case UpgradeEffectType.ActiveWeaponRadiusFlat:
+                    return $"+{effect.value:0.00} active weapon radius";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"+{effect.value:0} base lives";
                 case UpgradeEffectType.UnlockEra:

@@ -158,36 +158,114 @@ namespace TowerDefense.Runtime
             {
                 new SkillNodeDefinition
                 {
-                    id = "core",
-                    displayName = "Archer Tower",
-                    description = "Unlock the Archer Tower for future runs.",
+                    id = "volley_core",
+                    displayName = "Volley of Arrows",
+                    description = "Your starting active weapon. This is the center of the first tree.",
                     radialPosition = Vector2.zero,
                     maxRanks = 1,
+                    startsUnlocked = true,
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "volley_damage_01",
+                    displayName = "Sharper Arrows",
+                    description = "Each rank increases active weapon damage by 2%.",
+                    radialPosition = new Vector2(150f, 54f),
+                    maxRanks = 10,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "volley_cooldown_01",
+                    displayName = "Quick Draw",
+                    description = "Each rank reduces active weapon cooldown by 2%.",
+                    radialPosition = new Vector2(285f, 116f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "volley_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 22) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponCooldownPercent, value = 2f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "volley_radius_01",
+                    displayName = "Wider Volley",
+                    description = "Each rank increases active weapon radius by 0.15.",
+                    radialPosition = new Vector2(292f, -28f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "volley_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 28) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponRadiusFlat, value = 0.15f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_unlock",
+                    displayName = "Archer Tower",
+                    description = "Unlock the Archer Tower for future runs.",
+                    radialPosition = new Vector2(-150f, 52f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_core" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 25) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer", value = 1f } },
                     isMajorUnlock = true
                 },
                 new SkillNodeDefinition
                 {
-                    id = "active_power_01",
-                    displayName = "Sharpened Volley",
-                    description = "Each rank increases active weapon damage by 2%.",
-                    radialPosition = new Vector2(145f, 42f),
-                    maxRanks = 10,
-                    prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
-                },
-                new SkillNodeDefinition
-                {
                     id = "archer_limit_01",
                     displayName = "Archer Barracks",
                     description = "Each rank increases the Archer Tower limit by 1.",
-                    radialPosition = new Vector2(-98f, -102f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
+                    radialPosition = new Vector2(-298f, 36f),
+                    maxRanks = 4,
+                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 35) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_damage_01",
+                    displayName = "Fletching",
+                    description = "Each rank increases Archer Tower damage by 3%.",
+                    radialPosition = new Vector2(-280f, 130f),
+                    maxRanks = 10,
+                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "ballista_unlock",
+                    displayName = "Ballista",
+                    description = "Unlock a slow tower with heavy single-target damage.",
+                    radialPosition = new Vector2(-150f, -98f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 95), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "ballista", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "ballista_limit_01",
+                    displayName = "Siege Crew",
+                    description = "Each rank increases the Ballista limit by 1.",
+                    radialPosition = new Vector2(-306f, -112f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "ballista_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 70) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "ballista", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "ballista_damage_01",
+                    displayName = "Heavy Bolts",
+                    description = "Each rank increases Ballista damage by 4%.",
+                    radialPosition = new Vector2(-232f, -208f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "ballista_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 55) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "ballista", value = 4f } }
                 }
             };
 
