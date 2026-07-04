@@ -9,7 +9,7 @@ namespace TowerDefense.Runtime
         private PlayerInputRouter input;
         private float cooldown;
 
-        public float Damage { get; set; } = 8f;
+        public float Damage { get; set; } = 9.166667f;
         public float Radius { get; set; } = 2.8f;
         public float CooldownSeconds { get; set; } = 1.6f;
         public int MaxTargets { get; set; } = 10;

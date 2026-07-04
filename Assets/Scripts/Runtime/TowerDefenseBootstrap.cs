@@ -126,7 +126,7 @@ namespace TowerDefense.Runtime
             var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner,
                 "Fast and fragile. Dangerous in large groups because it slips past slow towers.",
                 "Weak to rapid-fire towers, bends with overlapping coverage, and well-timed arrow volleys.",
-                14f, 5.2f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.38f);
+                11f, 5.4f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.38f);
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy,
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
