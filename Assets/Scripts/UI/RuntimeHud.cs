@@ -1313,7 +1313,17 @@ namespace TowerDefense.UI
 
             var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
             var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
+            var missingPrerequisites = MissingPrerequisites(selectedUpgradeNode);
             upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
+            if (missingPrerequisites)
+            {
+                upgradeDetailBody.text = "Locked\n\nPurchase connected previous upgrades to reveal this node.";
+                var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
+                upgradeBuyButton.interactable = false;
+                lockedLabel.text = "LOCKED";
+                return;
+            }
+
             var priceLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
             upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats: {FormatEffects(selectedUpgradeNode.effects)}\n\n{priceLine}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
@@ -1330,7 +1340,7 @@ namespace TowerDefense.UI
             else
             {
                 upgradeBuyButton.interactable = false;
-                buttonLabel.text = MissingPrerequisites(selectedUpgradeNode) ? "LOCKED" : "NEED COST";
+                buttonLabel.text = "NEED COST";
             }
         }
 
