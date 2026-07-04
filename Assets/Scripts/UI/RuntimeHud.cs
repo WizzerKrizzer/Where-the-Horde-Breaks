@@ -104,7 +104,7 @@ namespace TowerDefense.UI
             statusText = CreateText("Status", parent, new Vector2(12f, -12f), TextAnchor.UpperLeft, 13);
             statusText.GetComponent<RectTransform>().sizeDelta = new Vector2(420f, 96f);
             towerText = CreateText("TowerSelection", parent, new Vector2(12f, -84f), TextAnchor.UpperLeft, 13);
-            towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(320f, 100f);
+            towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
             CreateActiveWeaponSlot(parent);
             CreateSelectedTowerPanel(parent);
             CreateStartBattleButton(parent);

@@ -43,22 +43,7 @@ namespace TowerDefense.Input
                 pan += new Vector2(-UnityEngine.Input.GetAxisRaw("Mouse X"), -UnityEngine.Input.GetAxisRaw("Mouse Y")) * 14f;
             }
 
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha1))
-            {
-                selectedTowerIndex = 0;
-            }
-            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                selectedTowerIndex = 1;
-            }
-            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha3))
-            {
-                selectedTowerIndex = 2;
-            }
-            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha4))
-            {
-                selectedTowerIndex = 3;
-            }
+            UpdateTowerHotkeySelection();
 
             var leftClick = UnityEngine.Input.GetMouseButtonDown(0) && !IsPointerOverBlockingUi();
             Current = new GameInputState
@@ -86,6 +71,46 @@ namespace TowerDefense.Input
             var ray = targetCamera.ScreenPointToRay(UnityEngine.Input.mousePosition);
             var plane = new Plane(Vector3.up, Vector3.zero);
             return plane.Raycast(ray, out var enter) ? ray.GetPoint(enter) : Vector3.zero;
+        }
+
+        private void UpdateTowerHotkeySelection()
+        {
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha1) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad1))
+            {
+                selectedTowerIndex = 0;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha2) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad2))
+            {
+                selectedTowerIndex = 1;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha3) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad3))
+            {
+                selectedTowerIndex = 2;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha4) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad4))
+            {
+                selectedTowerIndex = 3;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha5) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad5))
+            {
+                selectedTowerIndex = 4;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha6) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad6))
+            {
+                selectedTowerIndex = 5;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha7) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad7))
+            {
+                selectedTowerIndex = 6;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha8) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad8))
+            {
+                selectedTowerIndex = 7;
+            }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha9) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad9))
+            {
+                selectedTowerIndex = 8;
+            }
         }
 
         public bool IsPointerOverBlockingUi()
