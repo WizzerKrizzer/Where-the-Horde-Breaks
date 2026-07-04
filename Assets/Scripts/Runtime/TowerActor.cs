@@ -12,6 +12,7 @@ namespace TowerDefense.Runtime
         private float fireRateMultiplier = 1f;
         private float cooldown;
         private float health;
+        private float maxHealth;
         private float respawnTimer;
         private readonly List<AlliedUnitActor> alliedUnits = new();
         private GameObject auraDisc;
@@ -22,6 +23,7 @@ namespace TowerDefense.Runtime
         public Vector3 Position => transform.position;
         public bool IsAlive => gameObject.activeSelf && (definition == null || definition.behavior != TowerBehavior.Barrier || health > 0f);
         public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
+        public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? 1.25f : 0.7f;
 
         public void SetDamageMultiplier(float multiplier)
         {
@@ -38,7 +40,8 @@ namespace TowerDefense.Runtime
             definition = towerDefinition;
             enemies = enemyManager;
             SetDamageMultiplier(towerDamageMultiplier);
-            health = Mathf.Max(1f, towerDefinition.health);
+            maxHealth = Mathf.Max(1f, towerDefinition.health);
+            health = maxHealth;
             cooldown = Random.Range(0f, towerDefinition.fireInterval);
             respawnTimer = 0f;
             var renderer = GetComponent<Renderer>();
@@ -198,6 +201,7 @@ namespace TowerDefense.Runtime
             }
 
             health -= damage;
+            UpdateBarrierDamageVisual();
             if (definition.thornsDamage > 0f && source != null && source.IsAlive)
             {
                 RecordDamage(source.ApplyDamage(definition.thornsDamage));
@@ -211,6 +215,23 @@ namespace TowerDefense.Runtime
             health = 0f;
             enemies?.UnregisterCombatTarget(this);
             gameObject.SetActive(false);
+        }
+
+        private void UpdateBarrierDamageVisual()
+        {
+            if (definition == null || definition.behavior != TowerBehavior.Barrier)
+            {
+                return;
+            }
+
+            var renderer = GetComponent<Renderer>();
+            if (renderer == null)
+            {
+                return;
+            }
+
+            var healthPercent = Mathf.Clamp01(health / Mathf.Max(1f, maxHealth));
+            renderer.material = BootstrapMaterials.Get(Color.Lerp(new Color(0.75f, 0.12f, 0.08f), definition.color, healthPercent));
         }
 
         public void NotifyAlliedUnitLost(AlliedUnitActor unit)

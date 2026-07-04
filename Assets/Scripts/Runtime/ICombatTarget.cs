@@ -8,6 +8,7 @@ namespace TowerDefense.Runtime
         Vector3 Position { get; }
         bool IsAlive { get; }
         CombatTargetKind TargetKind { get; }
+        float CombatRadius { get; }
         void TakeDamage(float damage, EnemyActor source);
     }
 }

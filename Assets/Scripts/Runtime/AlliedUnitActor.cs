@@ -14,6 +14,7 @@ namespace TowerDefense.Runtime
         public Vector3 Position => transform.position;
         public bool IsAlive => health > 0f && gameObject.activeSelf;
         public CombatTargetKind TargetKind => CombatTargetKind.AlliedUnit;
+        public float CombatRadius => definition != null && definition.barracksUnitType == AlliedUnitType.Paladin ? 0.72f : 0.55f;
 
         public void Initialize(TowerActor ownerTower, TowerDefinition towerDefinition, EnemyManager enemyManager, Vector3 position)
         {

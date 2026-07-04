@@ -161,7 +161,7 @@ namespace TowerDefense.Runtime
         public ICombatTarget GetNearestCombatTarget(Vector3 position, float range)
         {
             ICombatTarget best = null;
-            var bestDistance = range * range;
+            var bestDistance = float.PositiveInfinity;
             for (var i = combatTargets.Count - 1; i >= 0; i--)
             {
                 var target = combatTargets[i];
@@ -171,8 +171,9 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                var distance = (target.Position - position).sqrMagnitude;
-                if (distance <= bestDistance)
+                var allowedRange = range + Mathf.Max(0f, target.CombatRadius);
+                var distance = XzDistanceSq(target.Position, position);
+                if (distance <= allowedRange * allowedRange && distance <= bestDistance)
                 {
                     best = target;
                     bestDistance = distance;
@@ -193,6 +194,13 @@ namespace TowerDefense.Runtime
         public void UnregisterCombatTarget(ICombatTarget target)
         {
             combatTargets.Remove(target);
+        }
+
+        private static float XzDistanceSq(Vector3 a, Vector3 b)
+        {
+            var x = a.x - b.x;
+            var z = a.z - b.z;
+            return x * x + z * z;
         }
 
         public void HealEnemiesInRadius(Vector3 center, float radius, float amount, EnemyActor excludedEnemy)
