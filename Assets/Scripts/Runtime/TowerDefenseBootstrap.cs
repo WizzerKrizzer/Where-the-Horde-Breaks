@@ -641,66 +641,46 @@ namespace TowerDefense.Runtime
                 new SkillNodeDefinition
                 {
                     id = "barracks_capacity_01",
-                    displayName = "Extra Bunks",
-                    description = "Each rank lets barracks hold one more troop slot.",
+                    displayName = "Knight Bunks",
+                    description = "Each rank lets Knight Barracks hold one more troop slot.",
                     radialPosition = new Vector2(466f, 326f),
                     maxRanks = 4,
                     prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "archer_barracks", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "paladin_barracks", value = 1f }
-                    }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "barracks_damage_01",
-                    displayName = "Better Steel",
-                    description = "Each rank increases barracks troop damage by 5%.",
+                    displayName = "Knight Steel",
+                    description = "Each rank increases knight damage by 5%.",
                     radialPosition = new Vector2(466f, 228f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 65) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 5f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "archer_barracks", value = 5f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "paladin_barracks", value = 5f }
-                    }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 5f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "barracks_health_01",
-                    displayName = "Thicker Mail",
-                    description = "Each rank increases barracks troop health by 5%.",
+                    displayName = "Knight Mail",
+                    description = "Each rank increases knight health by 5%.",
                     radialPosition = new Vector2(618f, 300f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "barracks_capacity_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 70) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 5f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "archer_barracks", value = 5f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "paladin_barracks", value = 5f }
-                    }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 5f } }
                 },
                 new SkillNodeDefinition
                 {
                     id = "barracks_respawn_01",
-                    displayName = "Fresh Recruits",
-                    description = "Each rank reduces barracks respawn time by 4%.",
+                    displayName = "Knight Muster",
+                    description = "Each rank reduces Knight Barracks respawn time by 4%.",
                     radialPosition = new Vector2(618f, 202f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "barracks_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 76) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 4f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "archer_barracks", value = 4f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "paladin_barracks", value = 4f }
-                    }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 4f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -716,6 +696,50 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "archer_post_capacity_01",
+                    displayName = "Arrow Racks",
+                    description = "Each rank lets Archer Post hold one more troop slot.",
+                    radialPosition = new Vector2(930f, 350f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 105) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "archer_barracks", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_post_damage_01",
+                    displayName = "War Arrows",
+                    description = "Each rank increases archer damage by 5%.",
+                    radialPosition = new Vector2(930f, 258f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 82) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "archer_barracks", value = 5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_post_health_01",
+                    displayName = "Leather Jacks",
+                    description = "Each rank increases archer health by 5%.",
+                    radialPosition = new Vector2(1084f, 350f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "archer_post_capacity_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 88) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "archer_barracks", value = 5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_post_respawn_01",
+                    displayName = "Ready Quivers",
+                    description = "Each rank reduces Archer Post respawn time by 4%.",
+                    radialPosition = new Vector2(1084f, 258f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "archer_post_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 96) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "archer_barracks", value = 4f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "paladin_barracks_unlock",
                     displayName = "Paladin Chapter",
                     description = "Unlock barracks that respawn durable paladins.",
@@ -725,6 +749,50 @@ namespace TowerDefense.Runtime
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 160), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "paladin_barracks", value = 1f } },
                     isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_chapter_capacity_01",
+                    displayName = "Chapter Cells",
+                    description = "Each rank lets Paladin Chapter hold one more troop slot.",
+                    radialPosition = new Vector2(930f, 156f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 132) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "paladin_barracks", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_chapter_damage_01",
+                    displayName = "Blessed Maces",
+                    description = "Each rank increases paladin damage by 5%.",
+                    radialPosition = new Vector2(930f, 64f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 118) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "paladin_barracks", value = 5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_chapter_health_01",
+                    displayName = "Plate Vows",
+                    description = "Each rank increases paladin health by 5%.",
+                    radialPosition = new Vector2(1084f, 156f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "paladin_chapter_capacity_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 124) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "paladin_barracks", value = 5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_chapter_respawn_01",
+                    displayName = "Chapter Bells",
+                    description = "Each rank reduces Paladin Chapter respawn time by 4%.",
+                    radialPosition = new Vector2(1084f, 64f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "paladin_chapter_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 136) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "paladin_barracks", value = 4f } }
                 }
             };
 
