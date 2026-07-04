@@ -12,7 +12,9 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyActor> blockers = new();
         private Vector3 rallyPoint;
         private float health;
+        private float maxHealth;
         private float attackCooldown;
+        private Transform healthFill;
 
         public Vector3 Position => transform.position;
         public bool IsAlive => health > 0f && gameObject.activeSelf;
@@ -26,12 +28,15 @@ namespace TowerDefense.Runtime
             owner = ownerTower;
             definition = towerDefinition;
             enemies = enemyManager;
-            health = Mathf.Max(1f, towerDefinition.alliedUnitHealth);
+            maxHealth = Mathf.Max(1f, towerDefinition.alliedUnitHealth);
+            health = maxHealth;
             attackCooldown = Random.Range(0f, Mathf.Max(0.1f, towerDefinition.alliedUnitAttackInterval));
             transform.position = position;
             rallyPoint = enemies != null ? enemies.GetNearestPathPosition(position) : position;
             transform.localScale = GetScale(towerDefinition);
             GetComponent<Renderer>().material = BootstrapMaterials.Get(GetColor(towerDefinition));
+            EnsureHealthBar();
+            UpdateHealthBar();
             enemies.RegisterCombatTarget(this);
             gameObject.SetActive(true);
         }
@@ -71,6 +76,7 @@ namespace TowerDefense.Runtime
 
             var appliedDamage = target.ApplyDamage(definition.alliedUnitDamage);
             owner?.RecordDamage(appliedDamage);
+            DamagePopup.Show(target.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }
 
@@ -81,7 +87,10 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            health -= Mathf.Max(0f, damage - definition.alliedUnitDefense);
+            var appliedDamage = Mathf.Max(0f, damage - definition.alliedUnitDefense);
+            health -= appliedDamage;
+            UpdateHealthBar();
+            DamagePopup.Show(transform.position, appliedDamage, new Color(1f, 0.25f, 0.18f, 1f));
             if (health > 0f)
             {
                 return;
@@ -193,6 +202,47 @@ namespace TowerDefense.Runtime
                 default:
                     return new Color(0.62f, 0.72f, 0.95f);
             }
+        }
+
+        private void EnsureHealthBar()
+        {
+            if (healthFill != null)
+            {
+                return;
+            }
+
+            var root = new GameObject("AlliedHealthBar");
+            root.transform.SetParent(transform, false);
+            root.transform.localPosition = new Vector3(0f, 1.15f, 0f);
+            root.transform.localRotation = Quaternion.identity;
+            root.transform.localScale = Vector3.one;
+
+            var background = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            background.name = "AlliedHealthBarBackground";
+            background.transform.SetParent(root.transform, false);
+            background.transform.localPosition = Vector3.zero;
+            background.transform.localScale = new Vector3(1.05f, 0.075f, 0.12f);
+            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.025f, 0.03f, 0.04f, 1f));
+
+            var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fill.name = "AlliedHealthBarFill";
+            fill.transform.SetParent(root.transform, false);
+            fill.transform.localPosition = new Vector3(-0.525f, 0.011f, 0f);
+            fill.transform.localScale = new Vector3(1.05f, 0.085f, 0.14f);
+            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.35f, 0.88f, 1f, 1f));
+            healthFill = fill.transform;
+        }
+
+        private void UpdateHealthBar()
+        {
+            if (healthFill == null)
+            {
+                return;
+            }
+
+            var normalizedHealth = Mathf.Clamp01(health / Mathf.Max(1f, maxHealth));
+            healthFill.localScale = new Vector3(1.05f * normalizedHealth, 0.085f, 0.14f);
+            healthFill.localPosition = new Vector3(-0.525f + 0.525f * normalizedHealth, 0.011f, 0f);
         }
     }
 }

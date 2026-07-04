@@ -205,9 +205,12 @@ namespace TowerDefense.Runtime
 
             health -= damage;
             UpdateBarrierDamageVisual();
+            DamagePopup.Show(transform.position, damage, new Color(1f, 0.25f, 0.18f, 1f));
             if (definition.thornsDamage > 0f && source != null && source.IsAlive)
             {
-                RecordDamage(source.ApplyDamage(definition.thornsDamage));
+                var thornDamage = source.ApplyDamage(definition.thornsDamage);
+                RecordDamage(thornDamage);
+                DamagePopup.Show(source.transform.position, thornDamage, new Color(1f, 0.92f, 0.22f, 1f));
             }
 
             if (health > 0f)
