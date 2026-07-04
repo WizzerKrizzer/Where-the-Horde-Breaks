@@ -695,7 +695,7 @@ namespace TowerDefense.UI
                 case TowerBehavior.Barrier:
                     return $"Health: {tower.health:0}   Thorns: {tower.thornsDamage:0.0}\nPhysical blocker";
                 case TowerBehavior.Barracks:
-                    return $"Unit: {tower.barracksUnitType}   Capacity: {tower.barracksCapacity}\nUnit dmg: {tower.alliedUnitDamage:0.0}   Respawn: {tower.barracksRespawnSeconds:0.0}s";
+                    return $"Unit: {tower.barracksUnitType}   Capacity: {tower.barracksCapacity}\nUnit dmg: {tower.alliedUnitDamage:0.0}   Block: {tower.alliedUnitBlockCapacity:0.0}";
                 default:
                     return $"Damage: {tower.damage:0.0}   Range: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec";
             }
@@ -1324,7 +1324,9 @@ namespace TowerDefense.UI
                     text.AppendLine($"Unit health: {tower.alliedUnitHealth:0.0}");
                     text.AppendLine($"Unit damage: {tower.alliedUnitDamage:0.0}");
                     text.AppendLine($"Unit defense: {tower.alliedUnitDefense:0.0}");
-                    text.Append($"Unit range: {tower.alliedUnitRange:0.0}");
+                    text.AppendLine($"Unit range: {tower.alliedUnitRange:0.0}");
+                    text.AppendLine($"Move speed: {tower.alliedUnitMoveSpeed:0.0}");
+                    text.Append($"Block capacity: {tower.alliedUnitBlockCapacity:0.0} mass");
                     break;
                 default:
                     var projectileLine = tower.projectilePattern == ProjectilePattern.ArcSplash

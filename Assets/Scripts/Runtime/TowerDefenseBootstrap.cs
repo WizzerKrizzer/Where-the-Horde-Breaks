@@ -148,15 +148,21 @@ namespace TowerDefense.Runtime
                 "Weak to sustained damage after its revival has been spent.",
                 34f, 2.05f, 1, 2, new Color(0.38f, 0.5f, 0.34f), 0.5f);
             runner.alliedDamageMultiplier = 1.7f;
+            runner.mass = 1f;
             brute.wallDamageMultiplier = 1.8f;
+            brute.mass = 3f;
             shaman.healsEnemies = true;
             shaman.healAmount = 4f;
+            shaman.mass = 1.5f;
             vampire.alliedDamageMultiplier = 2.1f;
             vampire.drainsAllies = true;
             vampire.drainHealMultiplier = 1.4f;
+            vampire.mass = 2f;
             harpy.isFlying = true;
+            harpy.mass = 1f;
             zombie.revivesOnce = true;
             zombie.infectsAllies = true;
+            zombie.mass = 1.4f;
 
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine,
                 "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.",
@@ -191,6 +197,9 @@ namespace TowerDefense.Runtime
             knightBarracks.barracksUnitType = AlliedUnitType.Knight;
             knightBarracks.alliedUnitHealth = 26f;
             knightBarracks.alliedUnitDamage = 4.5f;
+            knightBarracks.alliedUnitBlockCapacity = 3f;
+            knightBarracks.alliedUnitMoveSpeed = 3.2f;
+            knightBarracks.alliedUnitAggroRange = 6f;
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
                 "Spawns archers that can shoot flying enemies from a short distance.",
                 "Weak if enemies reach the archers directly.",
@@ -201,6 +210,9 @@ namespace TowerDefense.Runtime
             archerBarracks.alliedUnitRange = 3.4f;
             archerBarracks.alliedUnitHealth = 16f;
             archerBarracks.alliedUnitDamage = 3.2f;
+            archerBarracks.alliedUnitBlockCapacity = 1f;
+            archerBarracks.alliedUnitMoveSpeed = 3f;
+            archerBarracks.alliedUnitAggroRange = 7f;
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
                 "Spawns a durable paladin. Paladins take more space but bring higher defense.",
                 "Weak because each paladin takes extra capacity and respawns slowly.",
@@ -212,6 +224,9 @@ namespace TowerDefense.Runtime
             paladinBarracks.alliedUnitHealth = 44f;
             paladinBarracks.alliedUnitDamage = 5.8f;
             paladinBarracks.alliedUnitDefense = 1.4f;
+            paladinBarracks.alliedUnitBlockCapacity = 10f;
+            paladinBarracks.alliedUnitMoveSpeed = 2.65f;
+            paladinBarracks.alliedUnitAggroRange = 6f;
             paladinBarracks.barracksRespawnSeconds = 12f;
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();

@@ -40,6 +40,9 @@ namespace TowerDefense.Data
         public float alliedUnitDefense;
         public float alliedUnitAttackInterval = 0.8f;
         public float alliedUnitRange = 1.4f;
+        public float alliedUnitMoveSpeed = 3.2f;
+        public float alliedUnitAggroRange = 5.5f;
+        public float alliedUnitBlockCapacity = 3f;
         public bool alliedUnitCanHitFlying;
         public int alliedUnitSlots = 1;
         public bool appliesFire;

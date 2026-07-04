@@ -158,7 +158,7 @@ namespace TowerDefense.Runtime
             return best;
         }
 
-        public ICombatTarget GetNearestCombatTarget(Vector3 position, float range)
+        public ICombatTarget GetNearestCombatTarget(Vector3 position, float range, float enemyMass)
         {
             ICombatTarget best = null;
             var bestDistance = float.PositiveInfinity;
@@ -168,6 +168,11 @@ namespace TowerDefense.Runtime
                 if (target == null || !target.IsAlive)
                 {
                     combatTargets.RemoveAt(i);
+                    continue;
+                }
+
+                if (target.CurrentBlockedMass + enemyMass > target.BlockCapacity)
+                {
                     continue;
                 }
 
@@ -194,6 +199,16 @@ namespace TowerDefense.Runtime
         public void UnregisterCombatTarget(ICombatTarget target)
         {
             combatTargets.Remove(target);
+        }
+
+        public Vector3 GetNearestPathPosition(Vector3 position)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return position;
+            }
+
+            return path.Sample(EstimatePathDistance(position));
         }
 
         private static float XzDistanceSq(Vector3 a, Vector3 b)
@@ -353,7 +368,7 @@ namespace TowerDefense.Runtime
             EnemySpawned?.Invoke(enemyDefinition);
         }
 
-        private float EstimatePathDistance(Vector3 position)
+        public float EstimatePathDistance(Vector3 position)
         {
             if (path == null || path.TotalLength <= 0f)
             {

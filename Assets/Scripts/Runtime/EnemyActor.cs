@@ -24,6 +24,7 @@ namespace TowerDefense.Runtime
         private float reviveTimer;
         private float currentMaxHealth;
         private bool active;
+        private ICombatTarget currentCombatTarget;
         private Transform healthFill;
 
         public EnemyDefinition Definition => definition;
@@ -50,6 +51,7 @@ namespace TowerDefense.Runtime
             waitingToRevive = false;
             reviveTimer = 0f;
             active = true;
+            currentCombatTarget = null;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
             var renderer = GetComponent<Renderer>();
             if (renderer != null)
@@ -118,6 +120,7 @@ namespace TowerDefense.Runtime
             if (pathDistance >= path.TotalLength)
             {
                 active = false;
+                ReleaseCombatTarget();
                 owner.NotifyEnemyEscaped(this);
                 gameObject.SetActive(false);
                 return;
@@ -200,12 +203,14 @@ namespace TowerDefense.Runtime
             {
                 reviveUsed = true;
                 active = false;
+                ReleaseCombatTarget();
                 waitingToRevive = true;
                 reviveTimer = Mathf.Max(0.1f, definition.reviveDelay);
             }
             else
             {
                 active = false;
+                ReleaseCombatTarget();
                 Died?.Invoke(this);
                 owner.NotifyEnemyKilled(this);
                 gameObject.SetActive(false);
@@ -213,9 +218,26 @@ namespace TowerDefense.Runtime
             return appliedDamage;
         }
 
+        private void OnDisable()
+        {
+            ReleaseCombatTarget();
+        }
+
         private bool TryAttackCombatTarget()
         {
-            var target = owner.GetNearestCombatTarget(transform.position, 0.85f);
+            var target = currentCombatTarget;
+            if (target == null || !target.IsAlive || !IsInCombatRange(target))
+            {
+                ReleaseCombatTarget();
+                target = owner.GetNearestCombatTarget(transform.position, 0.85f, definition.mass);
+                if (target != null && !target.TryAddBlocker(this))
+                {
+                    target = null;
+                }
+
+                currentCombatTarget = target;
+            }
+
             if (target == null)
             {
                 return false;
@@ -238,6 +260,20 @@ namespace TowerDefense.Runtime
 
             attackCooldown = Mathf.Max(0.1f, definition.attackInterval);
             return true;
+        }
+
+        private bool IsInCombatRange(ICombatTarget target)
+        {
+            var allowedRange = 0.85f + Mathf.Max(0f, target.CombatRadius);
+            var offset = target.Position - transform.position;
+            var distanceSq = offset.x * offset.x + offset.z * offset.z;
+            return distanceSq <= allowedRange * allowedRange;
+        }
+
+        private void ReleaseCombatTarget()
+        {
+            currentCombatTarget?.RemoveBlocker(this);
+            currentCombatTarget = null;
         }
 
         private void MoveToPathPosition()

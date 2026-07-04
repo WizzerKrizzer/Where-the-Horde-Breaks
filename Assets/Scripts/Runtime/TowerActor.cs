@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
         private float maxHealth;
         private float respawnTimer;
         private readonly List<AlliedUnitActor> alliedUnits = new();
+        private readonly List<EnemyActor> blockers = new();
         private GameObject auraDisc;
         private GameObject selectionDisc;
 
@@ -24,6 +25,8 @@ namespace TowerDefense.Runtime
         public bool IsAlive => gameObject.activeSelf && (definition == null || definition.behavior != TowerBehavior.Barrier || health > 0f);
         public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
         public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? 1.25f : 0.7f;
+        public float BlockCapacity => definition != null && definition.behavior == TowerBehavior.Barrier ? 9999f : 0f;
+        public float CurrentBlockedMass => GetBlockedMass();
 
         public void SetDamageMultiplier(float multiplier)
         {
@@ -215,6 +218,41 @@ namespace TowerDefense.Runtime
             health = 0f;
             enemies?.UnregisterCombatTarget(this);
             gameObject.SetActive(false);
+        }
+
+        public bool TryAddBlocker(EnemyActor enemy)
+        {
+            if (enemy == null || blockers.Contains(enemy))
+            {
+                return enemy != null;
+            }
+
+            blockers.Add(enemy);
+            return true;
+        }
+
+        public void RemoveBlocker(EnemyActor enemy)
+        {
+            blockers.Remove(enemy);
+        }
+
+        private float GetBlockedMass()
+        {
+            for (var i = blockers.Count - 1; i >= 0; i--)
+            {
+                if (blockers[i] == null || !blockers[i].IsAlive)
+                {
+                    blockers.RemoveAt(i);
+                }
+            }
+
+            var mass = 0f;
+            foreach (var enemy in blockers)
+            {
+                mass += enemy.Definition != null ? enemy.Definition.mass : 1f;
+            }
+
+            return mass;
         }
 
         private void UpdateBarrierDamageVisual()
