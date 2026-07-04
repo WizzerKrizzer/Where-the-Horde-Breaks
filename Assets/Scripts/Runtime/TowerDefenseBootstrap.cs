@@ -144,10 +144,10 @@ namespace TowerDefense.Runtime
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
                 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
-            var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine,
-                "Very fast light turret. Best for cleaning up low-health enemies and smoothing leaks near bends.",
-                "Weak against armor-style health pools because each hit is small even though it fires quickly.",
-                0, 1, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
+            var clock = CreateTower("clock", "Clock Tower", TowerRole.ControlLine,
+                "Fast precision turret built around time-control tech. For now it chips enemies down quickly; later it will become the first true slow/control tower.",
+                "Weak against heavy enemies until its future slow effects exist, because each hit is still light.",
+                0, 1, 6.5f, 2.4f, 0.24f, 22f, new Color(0.45f, 0.72f, 1f));
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
@@ -295,6 +295,40 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 55) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "ballista", value = 4f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "clock_unlock",
+                    displayName = "Clock Tower",
+                    description = "Unlock the Clock Tower, a fast control-line turret that will later grow into time-slow utility.",
+                    radialPosition = new Vector2(438f, -70f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_radius_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "clock", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "clock_limit_01",
+                    displayName = "Clockwork Crews",
+                    description = "Each rank increases the Clock Tower limit by 1.",
+                    radialPosition = new Vector2(586f, -122f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "clock_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 58) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "clock", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "clock_damage_01",
+                    displayName = "Sharper Gears",
+                    description = "Each rank increases Clock Tower damage by 3%.",
+                    radialPosition = new Vector2(586f, 8f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "clock_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 42) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "clock", value = 3f } }
                 }
             };
 
@@ -302,7 +336,7 @@ namespace TowerDefense.Runtime
             {
                 Level = level,
                 SkillTree = tree,
-                Towers = new[] { archer, ballista, watch }
+                Towers = new[] { archer, ballista, clock }
             };
         }
 
