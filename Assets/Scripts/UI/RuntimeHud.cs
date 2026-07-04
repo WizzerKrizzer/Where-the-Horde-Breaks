@@ -1092,7 +1092,7 @@ namespace TowerDefense.UI
                     break;
                 case CodexSector.ActiveWeapons:
                     entries.Add(new CodexEntry("volley_of_arrows", "Volley of Arrows",
-                        $"Volley of Arrows\n\nDamage: {activeWeapon.Damage:0.0} per target\nRadius: {activeWeapon.Radius:0.0}\nPierce cap: {activeWeapon.MaxTargets}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nProjectile: area volley\nRole: manual burst damage"));
+                        $"Volley of Arrows\n\nManual burst weapon. Fires into a target area and damages only a capped number of enemies inside it, so timing and target choice matter.\n\nDamage: {activeWeapon.Damage:0.0} per target\nRadius: {activeWeapon.Radius:0.0}\nPierce cap: {activeWeapon.MaxTargets}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nProjectile: area volley\nRole: manual burst damage"));
                     break;
                 case CodexSector.Enemies:
                     AddEnemyCodexEntries(entries, includeBosses: false);
@@ -1117,7 +1117,7 @@ namespace TowerDefense.UI
             {
                 var tower = towerDefinitions[i];
                 entries.Add(new CodexEntry(tower.id, tower.displayName,
-                    $"{tower.displayName}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\nProjectile: single target\nBase limit: {tower.perTypeLimit}"));
+                    $"{tower.displayName}\n\n{tower.shortDescription}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\nProjectile: single target\nBase limit: {tower.perTypeLimit}"));
             }
         }
 
@@ -1139,7 +1139,7 @@ namespace TowerDefense.UI
                 }
 
                 entries.Add(new CodexEntry(enemy.id, enemy.displayName,
-                    $"{enemy.displayName}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} Essence"));
+                    $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} Essence"));
             }
         }
 

@@ -123,13 +123,13 @@ namespace TowerDefense.Runtime
 
         public static SampleContent Create()
         {
-            var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner, 14f, 5.2f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.38f);
-            var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy, 58f, 2.35f, 2, 3, new Color(0.05f, 0.45f, 0.08f), 0.62f);
-            var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support, 32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
+            var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner, "Fast and fragile. Dangerous in large groups because it slips past slow towers.", 14f, 5.2f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.38f);
+            var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy, "Slow but durable. It soaks repeated hits and punishes weak single-target damage.", 58f, 2.35f, 2, 3, new Color(0.05f, 0.45f, 0.08f), 0.62f);
+            var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support, "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.", 32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
 
-            var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine, 0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
-            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
-            var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine, 0, 1, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
+            var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine, "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.", 0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
+            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.", 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
+            var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine, "Very fast light turret. Best for cleaning up low-health enemies and smoothing leaks near bends.", 0, 1, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
@@ -288,11 +288,12 @@ namespace TowerDefense.Runtime
             };
         }
 
-        private static EnemyDefinition CreateEnemy(string id, string name, EnemyRole role, float hp, float speed, int lifeDamage, int killReward, Color color, float scale)
+        private static EnemyDefinition CreateEnemy(string id, string name, EnemyRole role, string shortDescription, float hp, float speed, int lifeDamage, int killReward, Color color, float scale)
         {
             var enemy = ScriptableObject.CreateInstance<EnemyDefinition>();
             enemy.id = id;
             enemy.displayName = name;
+            enemy.shortDescription = shortDescription;
             enemy.role = role;
             enemy.maxHealth = hp;
             enemy.speed = speed;
@@ -303,11 +304,12 @@ namespace TowerDefense.Runtime
             return enemy;
         }
 
-        private static TowerDefinition CreateTower(string id, string name, TowerRole role, int era, int limit, float range, float damage, float fireInterval, float projectileSpeed, Color color)
+        private static TowerDefinition CreateTower(string id, string name, TowerRole role, string shortDescription, int era, int limit, float range, float damage, float fireInterval, float projectileSpeed, Color color)
         {
             var tower = ScriptableObject.CreateInstance<TowerDefinition>();
             tower.id = id;
             tower.displayName = name;
+            tower.shortDescription = shortDescription;
             tower.role = role;
             tower.eraIndex = era;
             tower.perTypeLimit = limit;

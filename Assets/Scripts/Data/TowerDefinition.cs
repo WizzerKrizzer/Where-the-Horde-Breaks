@@ -7,6 +7,8 @@ namespace TowerDefense.Data
     {
         public string id = "tower";
         public string displayName = "Tower";
+        [TextArea(2, 4)]
+        public string shortDescription = "A defensive tower.";
         public TowerRole role = TowerRole.ArcherLine;
         public int eraIndex;
         public int perTypeLimit = 6;

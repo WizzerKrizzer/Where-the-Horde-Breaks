@@ -7,6 +7,8 @@ namespace TowerDefense.Data
     {
         public string id = "enemy";
         public string displayName = "Enemy";
+        [TextArea(2, 4)]
+        public string shortDescription = "A hostile creature marching toward the gate.";
         public EnemyRole role = EnemyRole.Runner;
         public float maxHealth = 10f;
         public float speed = 3f;
