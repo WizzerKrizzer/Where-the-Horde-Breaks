@@ -496,7 +496,7 @@ namespace TowerDefense.UI
         private void OnUpgradeTreeScrolled(float scrollDelta)
         {
             var previousZoom = upgradeTreeZoom;
-            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom + scrollDelta * 0.12f, 0.55f, 1.85f);
+            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom + scrollDelta * 0.12f, GetMinimumUpgradeTreeZoom(), 1.85f);
             if (!Mathf.Approximately(previousZoom, upgradeTreeZoom))
             {
                 ApplyUpgradeTreeTransform();
@@ -510,6 +510,7 @@ namespace TowerDefense.UI
                 return;
             }
 
+            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom, GetMinimumUpgradeTreeZoom(), 1.85f);
             upgradeTreePan = ClampUpgradeTreePan(upgradeTreePan);
             upgradeTreeContent.anchoredPosition = upgradeTreePan;
             upgradeTreeContent.localScale = Vector3.one * upgradeTreeZoom;
@@ -537,6 +538,25 @@ namespace TowerDefense.UI
             return new Vector2(
                 Mathf.Clamp(pan.x, -maxPanX, maxPanX),
                 Mathf.Clamp(pan.y, -maxPanY, maxPanY));
+        }
+
+        private float GetMinimumUpgradeTreeZoom()
+        {
+            if (upgradeTreeViewport == null || upgradeTreeContent == null)
+            {
+                return 0.35f;
+            }
+
+            var viewportSize = upgradeTreeViewport.rect.size;
+            var contentSize = upgradeTreeContent.rect.size;
+            if (viewportSize.x <= 0f || viewportSize.y <= 0f || contentSize.x <= 0f || contentSize.y <= 0f)
+            {
+                return 0.35f;
+            }
+
+            var fitX = viewportSize.x / contentSize.x;
+            var fitY = viewportSize.y / contentSize.y;
+            return Mathf.Clamp(Mathf.Min(fitX, fitY) * 0.92f, 0.25f, 0.55f);
         }
 
         private void SetUpgradePanelVisible(bool visible)
