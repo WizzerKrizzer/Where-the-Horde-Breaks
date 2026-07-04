@@ -43,6 +43,17 @@ namespace TowerDefense.Runtime
             ClearAll();
         }
 
+        public void SpawnDebug(EnemyDefinition enemyDefinition, PathRoute route)
+        {
+            if (enemyDefinition == null || route == null)
+            {
+                return;
+            }
+
+            path = route;
+            Spawn(enemyDefinition);
+        }
+
         private void Update()
         {
             if (wave == null || wave.entries == null)

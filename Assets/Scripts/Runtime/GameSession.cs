@@ -45,6 +45,31 @@ namespace TowerDefense.Runtime
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
 
+        public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
+        {
+            var result = new List<EnemyDefinition>();
+            var entries = level?.wave?.entries;
+            if (entries == null)
+            {
+                return result;
+            }
+
+            foreach (var entry in entries)
+            {
+                if (entry.enemy != null && !result.Contains(entry.enemy))
+                {
+                    result.Add(entry.enemy);
+                }
+            }
+
+            return result;
+        }
+
+        public void SpawnDebugEnemy(EnemyDefinition enemyDefinition)
+        {
+            enemies?.SpawnDebug(enemyDefinition, path);
+        }
+
         public void AddCurrency(CurrencyType currency, int amount)
         {
             profile.AddCurrency(currency, amount);

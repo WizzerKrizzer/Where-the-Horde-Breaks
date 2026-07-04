@@ -47,6 +47,9 @@ namespace TowerDefense.UI
         private bool devPanelVisible;
         private Button statsToggleButton;
         private Button codexToggleButton;
+        private Button debugSpawnToggleButton;
+        private GameObject debugSpawnPanel;
+        private bool debugSpawnPanelVisible;
         private GameObject statsPanel;
         private readonly Dictionary<TowerDefinition, Text> statsRows = new();
         private readonly Dictionary<TowerDefinition, Button> statsRowButtons = new();
@@ -99,6 +102,7 @@ namespace TowerDefense.UI
             CreateResultPanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
+            CreateDebugSpawnPanel(parent);
             CreateCodexPanel(parent);
             CreateDevPanel(parent);
             CreateTopRightToggles(parent);
@@ -472,6 +476,11 @@ namespace TowerDefense.UI
             {
                 codexPanel.SetActive(!visible && codexPanelVisible);
             }
+
+            if (debugSpawnPanel != null)
+            {
+                debugSpawnPanel.SetActive(!visible && debugSpawnPanelVisible);
+            }
         }
 
         private void SetMainHudVisible(bool visible)
@@ -499,6 +508,11 @@ namespace TowerDefense.UI
             if (statsToggleButton != null)
             {
                 statsToggleButton.gameObject.SetActive(visible);
+            }
+
+            if (debugSpawnToggleButton != null)
+            {
+                debugSpawnToggleButton.gameObject.SetActive(visible);
             }
 
             if (codexToggleButton != null)
@@ -574,6 +588,9 @@ namespace TowerDefense.UI
             statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS [TAB]", new Vector2(-70f, -18f), new Vector2(102f, 28f), new Vector2(1f, 1f), 11);
             statsToggleButton.onClick.AddListener(ToggleStatsPanel);
 
+            debugSpawnToggleButton = CreateAnchoredButton("DebugSpawnToggle", parent, "SPAWN", new Vector2(-70f, -50f), new Vector2(102f, 24f), new Vector2(1f, 1f), 10);
+            debugSpawnToggleButton.onClick.AddListener(ToggleDebugSpawnPanel);
+
             codexToggleButton = CreateAnchoredButton("CodexToggle", parent, "GRIMOIRE [G]", new Vector2(-186f, -18f), new Vector2(122f, 28f), new Vector2(1f, 1f), 10);
             codexToggleButton.onClick.AddListener(ToggleCodexPanel);
 
@@ -599,6 +616,7 @@ namespace TowerDefense.UI
             if (statsPanelVisible)
             {
                 codexPanelVisible = false;
+                debugSpawnPanelVisible = false;
             }
 
             if (statsPanel != null)
@@ -610,6 +628,11 @@ namespace TowerDefense.UI
             {
                 codexPanel.SetActive(false);
             }
+
+            if (debugSpawnPanel != null)
+            {
+                debugSpawnPanel.SetActive(false);
+            }
         }
 
         private void ToggleCodexPanel()
@@ -618,6 +641,7 @@ namespace TowerDefense.UI
             if (codexPanelVisible)
             {
                 statsPanelVisible = false;
+                debugSpawnPanelVisible = false;
                 codexListDirty = true;
             }
 
@@ -629,6 +653,37 @@ namespace TowerDefense.UI
             if (statsPanel != null)
             {
                 statsPanel.SetActive(false);
+            }
+
+            if (debugSpawnPanel != null)
+            {
+                debugSpawnPanel.SetActive(false);
+            }
+        }
+
+        private void ToggleDebugSpawnPanel()
+        {
+            debugSpawnPanelVisible = !debugSpawnPanelVisible;
+            if (debugSpawnPanelVisible)
+            {
+                statsPanelVisible = false;
+                codexPanelVisible = false;
+                RebuildDebugSpawnPanel();
+            }
+
+            if (debugSpawnPanel != null)
+            {
+                debugSpawnPanel.SetActive(debugSpawnPanelVisible && !IsUpgradePanelOpen());
+            }
+
+            if (statsPanel != null)
+            {
+                statsPanel.SetActive(false);
+            }
+
+            if (codexPanel != null)
+            {
+                codexPanel.SetActive(false);
             }
         }
 
@@ -671,6 +726,53 @@ namespace TowerDefense.UI
 
             statsPanelVisible = false;
             statsPanel.SetActive(false);
+        }
+
+        private void CreateDebugSpawnPanel(Transform parent)
+        {
+            debugSpawnPanel = CreatePanel("DebugSpawnPanel", parent, new Vector2(-14f, -78f), new Vector2(220f, 220f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            input.RegisterBlockingUiRect(debugSpawnPanel.GetComponent<RectTransform>());
+
+            var title = CreateText("DebugSpawnTitle", debugSpawnPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -16f), new Vector2(190f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            title.text = "SPAWN ENEMY";
+
+            debugSpawnPanelVisible = false;
+            debugSpawnPanel.SetActive(false);
+        }
+
+        private void RebuildDebugSpawnPanel()
+        {
+            if (debugSpawnPanel == null)
+            {
+                return;
+            }
+
+            for (var i = debugSpawnPanel.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = debugSpawnPanel.transform.GetChild(i);
+                if (child.name != "DebugSpawnTitle")
+                {
+                    Destroy(child.gameObject);
+                }
+            }
+
+            var spawnableEnemies = session.GetDebugSpawnableEnemies();
+            if (spawnableEnemies.Count == 0)
+            {
+                var empty = CreateText("DebugSpawnEmpty", debugSpawnPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+                ConfigureCenteredRect(empty.GetComponent<RectTransform>(), new Vector2(0f, -70f), new Vector2(180f, 38f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+                empty.text = "No enemies in this level";
+                empty.color = new Color(0.72f, 0.8f, 0.88f, 1f);
+                return;
+            }
+
+            for (var i = 0; i < spawnableEnemies.Count; i++)
+            {
+                var enemy = spawnableEnemies[i];
+                var button = CreateButton($"DebugSpawn_{enemy.id}", debugSpawnPanel.transform, enemy.displayName, new Vector2(0f, -52f - i * 30f), new Vector2(174f, 24f), 10);
+                button.onClick.AddListener(() => session.SpawnDebugEnemy(enemy));
+            }
         }
 
         private void CreateCodexPanel(Transform parent)
@@ -755,6 +857,7 @@ namespace TowerDefense.UI
             HighlightToggleButton(devToggleButton, devPanelVisible);
             HighlightToggleButton(statsToggleButton, statsPanelVisible);
             HighlightToggleButton(codexToggleButton, codexPanelVisible);
+            HighlightToggleButton(debugSpawnToggleButton, debugSpawnPanelVisible);
         }
 
         private static void HighlightSpeedButton(Button button, bool active)
