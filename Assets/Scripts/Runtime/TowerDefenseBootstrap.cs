@@ -324,17 +324,6 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "tower_speed_01",
-                    displayName = "Ready Crews",
-                    description = "Each rank makes all projectile towers shoot 3% faster.",
-                    radialPosition = new Vector2(150f, 188f),
-                    maxRanks = 10,
-                    prerequisiteNodeIds = new[] { "base_health_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 55) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, value = 3f } }
-                },
-                new SkillNodeDefinition
-                {
                     id = "archer_unlock",
                     displayName = "Archer Tower",
                     description = "Unlock the Archer Tower for future runs.",
@@ -380,6 +369,17 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "archer_speed_01",
+                    displayName = "Quick Nocks",
+                    description = "Each rank makes Archer Towers shoot 3% faster.",
+                    radialPosition = new Vector2(-420f, 74f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "archer_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 42) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "archer", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "ballista_unlock",
                     displayName = "Ballista",
                     description = "Unlock a slow tower with heavy single-target damage.",
@@ -406,7 +406,7 @@ namespace TowerDefense.Runtime
                     id = "ballista_damage_01",
                     displayName = "Heavy Bolts",
                     description = "Each rank increases Ballista damage by 4%.",
-                    radialPosition = new Vector2(-232f, -208f),
+                    radialPosition = new Vector2(-298f, -190f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 55) },
@@ -417,11 +417,22 @@ namespace TowerDefense.Runtime
                     id = "ballista_pierce_01",
                     displayName = "Skewering Bolts",
                     description = "Each rank lets Ballista bolts pierce 1 additional nearby enemy.",
-                    radialPosition = new Vector2(-384f, -210f),
+                    radialPosition = new Vector2(-452f, -190f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "ballista_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 85) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "ballista", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "ballista_speed_01",
+                    displayName = "Winch Drills",
+                    description = "Each rank makes Ballista shoot 4% faster.",
+                    radialPosition = new Vector2(-326f, -292f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "ballista_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 76) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "ballista", value = 4f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -489,7 +500,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_unlock",
                     displayName = "Catapult",
                     description = "Unlock the Catapult, an arcing splash tower that knocks enemies away from the impact.",
-                    radialPosition = new Vector2(-454f, -236f),
+                    radialPosition = new Vector2(-150f, -306f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 125), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
@@ -501,7 +512,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_limit_01",
                     displayName = "Siege Yard",
                     description = "Each rank increases the Catapult limit by 1.",
-                    radialPosition = new Vector2(-610f, -264f),
+                    radialPosition = new Vector2(-306f, -338f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "catapult_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 90) },
@@ -512,7 +523,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_damage_01",
                     displayName = "Heavier Stones",
                     description = "Each rank increases Catapult damage by 4%.",
-                    radialPosition = new Vector2(-544f, -374f),
+                    radialPosition = new Vector2(-150f, -430f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "catapult_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 78) },
@@ -520,10 +531,21 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "catapult_speed_01",
+                    displayName = "Trained Winches",
+                    description = "Each rank makes Catapult shoot 4% faster.",
+                    radialPosition = new Vector2(-306f, -446f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "catapult_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 92) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "catapult", value = 4f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "catapult_fire_unlock",
                     displayName = "Pitch-Soaked Stones",
                     description = "Catapult boulders ignite enemies hit by the splash.",
-                    radialPosition = new Vector2(-454f, -504f),
+                    radialPosition = new Vector2(-150f, -562f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "catapult_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 140), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
@@ -542,7 +564,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_fire_damage_01",
                     displayName = "Hotter Pitch",
                     description = "Each rank increases Catapult burn damage per tick by 0.25.",
-                    radialPosition = new Vector2(-610f, -542f),
+                    radialPosition = new Vector2(-306f, -610f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
@@ -553,7 +575,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_fire_rate_01",
                     displayName = "Hungry Flames",
                     description = "Each rank increases Catapult burn tick rate by 0.15 per second.",
-                    radialPosition = new Vector2(-312f, -542f),
+                    radialPosition = new Vector2(6f, -610f),
                     maxRanks = 6,
                     prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 88) },
@@ -564,7 +586,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_fire_stacks_01",
                     displayName = "Layered Pitch",
                     description = "Each rank lets Catapult fire stack one additional time.",
-                    radialPosition = new Vector2(-704f, -430f),
+                    radialPosition = new Vector2(-458f, -684f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "catapult_fire_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 125) },
@@ -575,7 +597,7 @@ namespace TowerDefense.Runtime
                     id = "catapult_fire_duration_01",
                     displayName = "Clinging Tar",
                     description = "Each rank makes Catapult fire last 0.5 seconds longer.",
-                    radialPosition = new Vector2(-200f, -430f),
+                    radialPosition = new Vector2(158f, -684f),
                     maxRanks = 6,
                     prerequisiteNodeIds = new[] { "catapult_fire_rate_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 95) },
@@ -633,7 +655,7 @@ namespace TowerDefense.Runtime
                     description = "Unlock barracks that respawn one knight defender.",
                     radialPosition = new Vector2(310f, 292f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "tower_speed_01" },
+                    prerequisiteNodeIds = new[] { "base_health_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 90) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
                     isMajorUnlock = true

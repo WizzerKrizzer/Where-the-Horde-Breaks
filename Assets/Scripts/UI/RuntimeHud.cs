@@ -1671,6 +1671,11 @@ namespace TowerDefense.UI
                 return groupedText;
             }
 
+            if (TryFormatCatapultFireUnlock(effects, out groupedText))
+            {
+                return groupedText;
+            }
+
             var text = new StringBuilder();
             for (var i = 0; i < effects.Length; i++)
             {
@@ -1696,7 +1701,9 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.TowerDamagePercent:
                     return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} damage";
                 case UpgradeEffectType.TowerFireRatePercent:
-                    return $"+{effect.value:0}% tower fire rate";
+                    return string.IsNullOrWhiteSpace(effect.targetId)
+                        ? $"+{effect.value:0}% tower fire rate"
+                        : $"+{effect.value:0}% {FormatTargetName(effect.targetId)} fire rate";
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"+{effect.value:0} {FormatTargetName(effect.targetId)} pierce";
                 case UpgradeEffectType.TowerDoubleShotChancePercent:
@@ -1786,6 +1793,33 @@ namespace TowerDefense.UI
                 default:
                     return false;
             }
+        }
+
+        private static bool TryFormatCatapultFireUnlock(UpgradeEffect[] effects, out string text)
+        {
+            text = null;
+            if (effects == null || effects.Length == 0)
+            {
+                return false;
+            }
+
+            var enablesCatapultFire = false;
+            for (var i = 0; i < effects.Length; i++)
+            {
+                if (effects[i].type == UpgradeEffectType.EnableTowerFire && effects[i].targetId == "catapult")
+                {
+                    enablesCatapultFire = true;
+                    break;
+                }
+            }
+
+            if (!enablesCatapultFire)
+            {
+                return false;
+            }
+
+            text = "Catapult boulders ignite enemies on impact";
+            return true;
         }
 
         private static bool IsBarracksUnitEffect(UpgradeEffectType type)

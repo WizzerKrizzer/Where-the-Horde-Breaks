@@ -12,6 +12,7 @@ namespace TowerDefense.Runtime
         private readonly List<TowerActor> towers = new();
         private readonly Dictionary<string, int> perTypeLimitBonuses = new();
         private readonly Dictionary<string, float> perTypeDamageMultipliers = new();
+        private readonly Dictionary<string, float> perTypeFireRateMultipliers = new();
         private EnemyManager enemies;
         private PathRoute route;
         private float towerDamageMultiplier = 1f;
@@ -50,7 +51,7 @@ namespace TowerDefense.Runtime
             towerFireRateMultiplier = Mathf.Max(0.05f, multiplier);
             foreach (var tower in towers)
             {
-                tower.SetFireRateMultiplier(towerFireRateMultiplier);
+                tower.SetFireRateMultiplier(GetFireRateMultiplier(tower.Definition));
             }
         }
 
@@ -74,6 +75,28 @@ namespace TowerDefense.Runtime
         public void ClearPerTypeDamageMultipliers()
         {
             perTypeDamageMultipliers.Clear();
+        }
+
+        public void SetPerTypeFireRateMultiplier(string towerId, float multiplier)
+        {
+            if (string.IsNullOrEmpty(towerId))
+            {
+                return;
+            }
+
+            perTypeFireRateMultipliers[towerId] = Mathf.Max(0.05f, multiplier);
+            foreach (var tower in towers)
+            {
+                if (tower.Definition != null && tower.Definition.id == towerId)
+                {
+                    tower.SetFireRateMultiplier(GetFireRateMultiplier(tower.Definition));
+                }
+            }
+        }
+
+        public void ClearPerTypeFireRateMultipliers()
+        {
+            perTypeFireRateMultipliers.Clear();
         }
 
         public void SetPerTypeLimitBonus(string towerId, int bonus)
@@ -143,7 +166,7 @@ namespace TowerDefense.Runtime
             go.transform.position = position;
             var tower = go.AddComponent<TowerActor>();
             tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
-            tower.SetFireRateMultiplier(towerFireRateMultiplier);
+            tower.SetFireRateMultiplier(GetFireRateMultiplier(definition));
             towers.Add(tower);
             return true;
         }
@@ -291,6 +314,16 @@ namespace TowerDefense.Runtime
             }
 
             return towerDamageMultiplier * (perTypeDamageMultipliers.TryGetValue(definition.id, out var multiplier) ? multiplier : 1f);
+        }
+
+        private float GetFireRateMultiplier(TowerDefinition definition)
+        {
+            if (definition == null)
+            {
+                return towerFireRateMultiplier;
+            }
+
+            return towerFireRateMultiplier * (perTypeFireRateMultipliers.TryGetValue(definition.id, out var multiplier) ? multiplier : 1f);
         }
 
         private bool IsTooCloseToPath(Vector3 position)

@@ -351,6 +351,7 @@ namespace TowerDefense.Runtime
             towers.SetAvailableTowers(GetUnlockedTowers());
             towers.ClearPerTypeLimitBonuses();
             towers.ClearPerTypeDamageMultipliers();
+            towers.ClearPerTypeFireRateMultipliers();
             if (allTowerDefinitions != null)
             {
                 foreach (var towerDefinition in allTowerDefinitions)
@@ -358,8 +359,10 @@ namespace TowerDefense.Runtime
                     RestoreBaseTowerStats(towerDefinition);
                     var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
                     var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
+                    var perTypeFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent, towerDefinition.id) / 100f;
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
                     towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
+                    towers.SetPerTypeFireRateMultiplier(towerDefinition.id, perTypeFireRateMultiplier);
                     towerDefinition.pierce = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerPierceFlat, towerDefinition.id));
                     towerDefinition.doubleShotChance = progression.GetEffectTotal(UpgradeEffectType.TowerDoubleShotChancePercent, towerDefinition.id) / 100f;
                     towerDefinition.slowPercent = progression.GetEffectTotal(UpgradeEffectType.TowerSlowPercentFlat, towerDefinition.id) / 100f;
