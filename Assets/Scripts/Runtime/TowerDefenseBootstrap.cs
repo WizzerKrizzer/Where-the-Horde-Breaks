@@ -201,8 +201,8 @@ namespace TowerDefense.Runtime
             knightBarracks.alliedUnitMoveSpeed = 3.2f;
             knightBarracks.alliedUnitAggroRange = 6f;
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
-                "Spawns archers that can shoot flying enemies from a short distance.",
-                "Weak if enemies reach the archers directly.",
+                "Spawns archers that stand beside the road and fire arrows into the path.",
+                "Weak to future ranged enemies and enemies that bypass the melee line.",
                 0, 1, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
             archerBarracks.behavior = TowerBehavior.Barracks;
             archerBarracks.barracksUnitType = AlliedUnitType.Archer;
@@ -210,7 +210,7 @@ namespace TowerDefense.Runtime
             archerBarracks.alliedUnitRange = 3.4f;
             archerBarracks.alliedUnitHealth = 16f;
             archerBarracks.alliedUnitDamage = 3.2f;
-            archerBarracks.alliedUnitBlockCapacity = 1f;
+            archerBarracks.alliedUnitBlockCapacity = 0f;
             archerBarracks.alliedUnitMoveSpeed = 3f;
             archerBarracks.alliedUnitAggroRange = 7f;
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,

@@ -20,8 +20,9 @@ namespace TowerDefense.Runtime
         public bool IsAlive => health > 0f && gameObject.activeSelf;
         public CombatTargetKind TargetKind => CombatTargetKind.AlliedUnit;
         public float CombatRadius => definition != null && definition.barracksUnitType == AlliedUnitType.Paladin ? 0.72f : 0.55f;
-        public float BlockCapacity => definition != null ? Mathf.Max(0f, definition.alliedUnitBlockCapacity) : 0f;
+        public float BlockCapacity => IsRangedArcher ? 0f : definition != null ? Mathf.Max(0f, definition.alliedUnitBlockCapacity) : 0f;
         public float CurrentBlockedMass => GetBlockedMass();
+        private bool IsRangedArcher => definition != null && definition.barracksUnitType == AlliedUnitType.Archer;
 
         public void Initialize(TowerActor ownerTower, TowerDefinition towerDefinition, EnemyManager enemyManager, Vector3 position)
         {
@@ -32,12 +33,17 @@ namespace TowerDefense.Runtime
             health = maxHealth;
             attackCooldown = Random.Range(0f, Mathf.Max(0.1f, towerDefinition.alliedUnitAttackInterval));
             transform.position = position;
-            rallyPoint = enemies != null ? enemies.GetNearestPathPosition(position) : position;
+            rallyPoint = enemies != null
+                ? towerDefinition.barracksUnitType == AlliedUnitType.Archer ? enemies.GetPathSidePosition(position, 1.85f) : enemies.GetNearestPathPosition(position)
+                : position;
             transform.localScale = GetScale(towerDefinition);
             GetComponent<Renderer>().material = BootstrapMaterials.Get(GetColor(towerDefinition));
             EnsureHealthBar();
             UpdateHealthBar();
-            enemies.RegisterCombatTarget(this);
+            if (!IsRangedArcher)
+            {
+                enemies.RegisterCombatTarget(this);
+            }
             gameObject.SetActive(true);
         }
 
@@ -62,6 +68,12 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (IsRangedArcher)
+            {
+                UpdateArcherCombat(target);
+                return;
+            }
+
             var attackRange = Mathf.Max(definition.alliedUnitRange, CombatRadius + target.Definition.visualScale * 0.5f + 0.2f);
             if (!IsWithinXzRange(target.transform.position, attackRange))
             {
@@ -78,6 +90,34 @@ namespace TowerDefense.Runtime
             owner?.RecordDamage(appliedDamage);
             DamagePopup.Show(target.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
+        }
+
+        private void UpdateArcherCombat(EnemyActor target)
+        {
+            MoveToward(rallyPoint);
+            if (!IsWithinXzRange(rallyPoint, 0.15f) || !IsWithinXzRange(target.transform.position, definition.alliedUnitRange))
+            {
+                return;
+            }
+
+            if (attackCooldown > 0f)
+            {
+                return;
+            }
+
+            FireArrow(target);
+            attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
+        }
+
+        private void FireArrow(EnemyActor target)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            go.name = "AlliedArrow";
+            go.transform.position = transform.position + Vector3.up * 0.65f;
+            go.transform.localScale = new Vector3(0.08f, 0.08f, 0.34f);
+            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.88f, 0.32f, 1f));
+            var projectile = go.AddComponent<AlliedArrowProjectile>();
+            projectile.Fire(owner, target, definition.alliedUnitDamage, 16f);
         }
 
         public void TakeDamage(float damage, EnemyActor source)

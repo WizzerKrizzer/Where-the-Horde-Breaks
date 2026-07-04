@@ -211,6 +211,29 @@ namespace TowerDefense.Runtime
             return path.Sample(EstimatePathDistance(position));
         }
 
+        public Vector3 GetPathSidePosition(Vector3 position, float sideDistance)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return position;
+            }
+
+            var distance = EstimatePathDistance(position);
+            var center = path.Sample(distance);
+            var before = path.Sample(Mathf.Max(0f, distance - 0.5f));
+            var after = path.Sample(Mathf.Min(path.TotalLength, distance + 0.5f));
+            var tangent = after - before;
+            tangent.y = 0f;
+            if (tangent.sqrMagnitude < 0.001f)
+            {
+                tangent = Vector3.forward;
+            }
+
+            var side = Vector3.Cross(Vector3.up, tangent.normalized);
+            var desiredSide = Vector3.Dot(position - center, side) >= 0f ? side : -side;
+            return center + desiredSide * Mathf.Max(0f, sideDistance);
+        }
+
         private static float XzDistanceSq(Vector3 a, Vector3 b)
         {
             var x = a.x - b.x;
