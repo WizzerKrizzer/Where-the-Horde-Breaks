@@ -22,6 +22,7 @@ namespace TowerDefense.UI
         private Image activeWeaponIcon;
         private Image activeWeaponCooldownFill;
         private Text activeWeaponCooldownText;
+        private Button startBattleButton;
         private Button devSpeed1Button;
         private Button devSpeed2Button;
         private Button devSpeed5Button;
@@ -99,6 +100,7 @@ namespace TowerDefense.UI
             towerText = CreateText("TowerSelection", parent, new Vector2(12f, -84f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(320f, 100f);
             CreateActiveWeaponSlot(parent);
+            CreateStartBattleButton(parent);
             CreateResultPanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
@@ -134,6 +136,7 @@ namespace TowerDefense.UI
             UpdateActiveWeaponSlot();
             UpdateDevSpeedButtons();
             UpdateResultPanel();
+            UpdateStartBattleButton();
             UpdateUpgradeShortcutButton();
             UpdateUpgradePanel();
             UpdateStatsPanel();
@@ -561,6 +564,11 @@ namespace TowerDefense.UI
                 resultPanel.SetActive(visible && session.Finished);
             }
 
+            if (startBattleButton != null)
+            {
+                startBattleButton.gameObject.SetActive(visible && session.IsPlanning);
+            }
+
             if (statsToggleButton != null)
             {
                 statsToggleButton.gameObject.SetActive(visible);
@@ -595,6 +603,24 @@ namespace TowerDefense.UI
             }
 
             upgradeToggleButton.gameObject.SetActive(!session.IsRunning);
+        }
+
+        private void CreateStartBattleButton(Transform parent)
+        {
+            startBattleButton = CreateAnchoredButton("StartBattleButton", parent, "START BATTLE", new Vector2(-92f, 52f), new Vector2(154f, 34f), new Vector2(1f, 0f), 13);
+            RegisterBlockingButton(startBattleButton);
+            startBattleButton.onClick.AddListener(() => session.StartLevel());
+            startBattleButton.gameObject.SetActive(false);
+        }
+
+        private void UpdateStartBattleButton()
+        {
+            if (startBattleButton == null || IsUpgradePanelOpen())
+            {
+                return;
+            }
+
+            startBattleButton.gameObject.SetActive(session.IsPlanning);
         }
 
         private void CreateDevPanel(Transform parent)
