@@ -13,6 +13,7 @@ namespace TowerDefense.Runtime
         private EnemyManager owner;
         private float health;
         private float pathDistance;
+        private float laneOffset;
         private Vector3 knockbackOffset;
         private readonly List<BurnStack> burnStacks = new();
         private float attackCooldown;
@@ -42,6 +43,7 @@ namespace TowerDefense.Runtime
             currentMaxHealth = enemyDefinition.maxHealth;
             health = currentMaxHealth;
             pathDistance = initialOffset;
+            laneOffset = UnityEngine.Random.Range(-0.52f, 0.52f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
             knockbackOffset = Vector3.zero;
             burnStacks.Clear();
             attackCooldown = 0f;
@@ -102,6 +104,7 @@ namespace TowerDefense.Runtime
             {
                 UpdateBurns();
                 UpdateHealthBar();
+                ApplyLocalSeparation();
                 return;
             }
 
@@ -299,7 +302,71 @@ namespace TowerDefense.Runtime
 
         private void MoveToPathPosition()
         {
-            transform.position = path.Sample(pathDistance) + knockbackOffset;
+            var pathPosition = path.Sample(pathDistance);
+            transform.position = pathPosition + GetPathSide(pathDistance) * laneOffset + GetSeparationOffset(pathPosition) + knockbackOffset;
+        }
+
+        private void ApplyLocalSeparation()
+        {
+            var separation = GetSeparationOffset(transform.position);
+            if (separation.sqrMagnitude > 0.001f)
+            {
+                transform.position += separation * Mathf.Min(1f, Time.deltaTime * 4f);
+            }
+        }
+
+        private Vector3 GetSeparationOffset(Vector3 origin)
+        {
+            if (owner?.ActiveEnemies == null)
+            {
+                return Vector3.zero;
+            }
+
+            var offset = Vector3.zero;
+            foreach (var other in owner.ActiveEnemies)
+            {
+                if (other == null || other == this || !other.IsAlive)
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(other.PathDistance - pathDistance) > 1.8f)
+                {
+                    continue;
+                }
+
+                var away = origin - other.transform.position;
+                away.y = 0f;
+                var distance = away.magnitude;
+                var desiredDistance = Mathf.Max(0.38f, (definition.visualScale + other.Definition.visualScale) * 0.54f);
+                if (distance <= 0.001f || distance >= desiredDistance)
+                {
+                    continue;
+                }
+
+                offset += away.normalized * (desiredDistance - distance);
+            }
+
+            return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.42f : 0.72f);
+        }
+
+        private Vector3 GetPathSide(float distance)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return Vector3.right;
+            }
+
+            var before = path.Sample(Mathf.Max(0f, distance - 0.45f));
+            var after = path.Sample(Mathf.Min(path.TotalLength, distance + 0.45f));
+            var tangent = after - before;
+            tangent.y = 0f;
+            if (tangent.sqrMagnitude < 0.001f)
+            {
+                tangent = Vector3.forward;
+            }
+
+            return Vector3.Cross(Vector3.up, tangent.normalized);
         }
 
         private void UpdateBurns()
