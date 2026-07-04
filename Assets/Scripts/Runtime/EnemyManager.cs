@@ -13,6 +13,7 @@ namespace TowerDefense.Runtime
         private WaveDefinition wave;
         private PathRoute path;
         private int[] spawnedByEntry;
+        private readonly List<EnemyDistance> damageCandidates = new();
         private float elapsed;
         private int totalSpawned;
         private int totalResolved;
@@ -107,20 +108,32 @@ namespace TowerDefense.Runtime
             return best;
         }
 
-        public float DamageInRadius(Vector3 center, float radius, float damage, out int hitCount)
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
         {
             var radiusSq = radius * radius;
             hitCount = 0;
             var appliedDamage = 0f;
+            damageCandidates.Clear();
             for (var i = activeEnemies.Count - 1; i >= 0; i--)
             {
                 var enemy = activeEnemies[i];
-                if (!enemy.IsAlive || (enemy.transform.position - center).sqrMagnitude > radiusSq)
+                if (!enemy.IsAlive)
                 {
                     continue;
                 }
 
-                appliedDamage += enemy.ApplyDamage(damage);
+                var distanceSq = (enemy.transform.position - center).sqrMagnitude;
+                if (distanceSq <= radiusSq)
+                {
+                    damageCandidates.Add(new EnemyDistance(enemy, distanceSq));
+                }
+            }
+
+            damageCandidates.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+            var targetCount = Mathf.Min(Mathf.Max(0, maxTargets), damageCandidates.Count);
+            for (var i = 0; i < targetCount; i++)
+            {
+                appliedDamage += damageCandidates[i].enemy.ApplyDamage(damage);
                 hitCount++;
             }
 
@@ -157,6 +170,18 @@ namespace TowerDefense.Runtime
             var renderer = go.GetComponent<Renderer>();
             renderer.material = BootstrapMaterials.Get(enemyDefinition.color);
             return go.AddComponent<EnemyActor>();
+        }
+
+        private readonly struct EnemyDistance
+        {
+            public readonly EnemyActor enemy;
+            public readonly float distanceSq;
+
+            public EnemyDistance(EnemyActor enemy, float distanceSq)
+            {
+                this.enemy = enemy;
+                this.distanceSq = distanceSq;
+            }
         }
     }
 }

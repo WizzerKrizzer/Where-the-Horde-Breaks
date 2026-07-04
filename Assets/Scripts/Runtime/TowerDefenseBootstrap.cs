@@ -174,8 +174,19 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(150f, 54f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "volley_pierce_01",
+                    displayName = "Arrow Rain",
+                    description = "Each rank lets Volley of Arrows hit 2 additional enemies.",
+                    radialPosition = new Vector2(156f, -84f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 30) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponPierceFlat, value = 2f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -185,7 +196,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(285f, 116f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "volley_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 22) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 32) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponCooldownPercent, value = 2f } }
                 },
                 new SkillNodeDefinition
@@ -195,8 +206,8 @@ namespace TowerDefense.Runtime
                     description = "Each rank increases active weapon radius by 0.15.",
                     radialPosition = new Vector2(292f, -28f),
                     maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "volley_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 28) },
+                    prerequisiteNodeIds = new[] { "volley_pierce_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 38) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponRadiusFlat, value = 0.15f } }
                 },
                 new SkillNodeDefinition

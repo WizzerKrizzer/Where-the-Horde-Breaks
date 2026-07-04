@@ -9,9 +9,10 @@ namespace TowerDefense.Runtime
         private PlayerInputRouter input;
         private float cooldown;
 
-        public float Damage { get; set; } = 18f;
+        public float Damage { get; set; } = 8f;
         public float Radius { get; set; } = 2.8f;
-        public float CooldownSeconds { get; set; } = 1.2f;
+        public float CooldownSeconds { get; set; } = 1.6f;
+        public int MaxTargets { get; set; } = 10;
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
         public bool CanFire { get; set; }
@@ -39,7 +40,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = enemies.DamageInRadius(input.Current.PointerWorld, Radius, Damage, out var hitCount);
+            var appliedDamage = enemies.DamageInRadius(input.Current.PointerWorld, Radius, Damage, MaxTargets, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds;

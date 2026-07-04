@@ -29,6 +29,7 @@ namespace TowerDefense.Runtime
         private float baseActiveWeaponDamage;
         private float baseActiveWeaponCooldown;
         private float baseActiveWeaponRadius;
+        private int baseActiveWeaponMaxTargets;
         private bool running;
         private bool finished;
         private bool won;
@@ -132,6 +133,7 @@ namespace TowerDefense.Runtime
             baseActiveWeaponDamage = activeWeapon.Damage;
             baseActiveWeaponCooldown = activeWeapon.CooldownSeconds;
             baseActiveWeaponRadius = activeWeapon.Radius;
+            baseActiveWeaponMaxTargets = activeWeapon.MaxTargets;
 
             enemiesKilled = 0;
             running = false;
@@ -281,6 +283,7 @@ namespace TowerDefense.Runtime
             var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
             var activeRadiusBonus = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRadiusFlat);
+            var activePierceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponPierceFlat));
 
             maxLivesForRun = level.startingLives + bonusLives;
             towers.SetAvailableTowers(GetUnlockedTowers());
@@ -300,6 +303,7 @@ namespace TowerDefense.Runtime
             activeWeapon.Damage = baseActiveWeaponDamage * activeDamageMultiplier;
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
             activeWeapon.Radius = baseActiveWeaponRadius + activeRadiusBonus;
+            activeWeapon.MaxTargets = baseActiveWeaponMaxTargets + activePierceBonus;
         }
 
         private IReadOnlyList<TowerDefinition> GetUnlockedTowers()

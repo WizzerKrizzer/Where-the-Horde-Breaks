@@ -725,6 +725,7 @@ namespace TowerDefense.UI
                     "Volley of Arrows\n" +
                     $"Damage: {activeWeapon.Damage:0.0} per target\n" +
                     $"Radius: {activeWeapon.Radius:0.0}\n" +
+                    $"Pierce cap: {activeWeapon.MaxTargets}\n" +
                     $"Cooldown: {activeWeapon.CooldownSeconds:0.0}s\n" +
                     $"Run damage: {activeWeapon.TotalDamageDealt:0} ({activePercent:0}%)";
                 return;
@@ -954,6 +955,8 @@ namespace TowerDefense.UI
                     return $"-{effect.value:0}% active weapon cooldown";
                 case UpgradeEffectType.ActiveWeaponRadiusFlat:
                     return $"+{effect.value:0.00} active weapon radius";
+                case UpgradeEffectType.ActiveWeaponPierceFlat:
+                    return $"+{effect.value:0} active weapon targets";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"+{effect.value:0} base lives";
                 case UpgradeEffectType.UnlockEra:
