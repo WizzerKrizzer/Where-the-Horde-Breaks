@@ -56,6 +56,12 @@ namespace TowerDefense.Runtime
             profileStore.Save(profile);
         }
 
+        public void ClearLevelRewardProgress()
+        {
+            profile.ClearLevelRewardProgress();
+            profileStore.Save(profile);
+        }
+
         public void RefundAndResetUpgrades()
         {
             progression.RefundAndResetPurchasedUpgrades();

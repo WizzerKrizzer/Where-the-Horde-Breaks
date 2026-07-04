@@ -37,6 +37,12 @@ namespace TowerDefense.Save
             currencies.Clear();
         }
 
+        public void ClearLevelRewardProgress()
+        {
+            clearedLevelIds.Clear();
+            perfectClearedLevelIds.Clear();
+        }
+
         public bool TrySpend(CurrencyAmount cost)
         {
             if (GetCurrency(cost.currency) < cost.amount)
