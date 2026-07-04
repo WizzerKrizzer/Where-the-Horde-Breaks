@@ -53,8 +53,21 @@ namespace TowerDefense.UI
         private Button activeWeaponStatsButton;
         private bool statsPanelVisible;
         private GameObject codexPanel;
-        private Text codexBodyText;
+        private RectTransform codexListContent;
+        private Text codexDetailText;
+        private CodexSector codexSector = CodexSector.Turrets;
+        private string selectedCodexId;
+        private float codexScroll;
+        private bool codexListDirty = true;
         private bool codexPanelVisible;
+
+        private enum CodexSector
+        {
+            Turrets,
+            ActiveWeapons,
+            Enemies,
+            Bosses
+        }
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
         {
@@ -575,6 +588,7 @@ namespace TowerDefense.UI
             if (codexPanelVisible)
             {
                 statsPanelVisible = false;
+                codexListDirty = true;
             }
 
             if (codexPanel != null)
@@ -631,15 +645,40 @@ namespace TowerDefense.UI
 
         private void CreateCodexPanel(Transform parent)
         {
-            codexPanel = CreatePanel("BreakerGrimoirePanel", parent, new Vector2(-14f, -48f), new Vector2(430f, 520f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            codexPanel = CreatePanel("BreakerGrimoirePanel", parent, new Vector2(-14f, -48f), new Vector2(520f, 520f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(codexPanel.GetComponent<RectTransform>());
             var title = CreateText("CodexTitle", codexPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 15);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(390f, 24f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(480f, 24f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "THE BREAKER'S GRIMOIRE";
 
-            codexBodyText = CreateText("CodexBody", codexPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
-            ConfigureCenteredRect(codexBodyText.GetComponent<RectTransform>(), new Vector2(0f, -48f), new Vector2(390f, 450f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            codexBodyText.color = new Color(0.86f, 0.93f, 1f, 1f);
+            CreateButton("CodexTurrets", codexPanel.transform, "TURRETS", new Vector2(-180f, -50f), new Vector2(96f, 24f), 10)
+                .onClick.AddListener(() => SetCodexSector(CodexSector.Turrets));
+            CreateButton("CodexActive", codexPanel.transform, "ACTIVE", new Vector2(-60f, -50f), new Vector2(96f, 24f), 10)
+                .onClick.AddListener(() => SetCodexSector(CodexSector.ActiveWeapons));
+            CreateButton("CodexEnemies", codexPanel.transform, "ENEMIES", new Vector2(60f, -50f), new Vector2(96f, 24f), 10)
+                .onClick.AddListener(() => SetCodexSector(CodexSector.Enemies));
+            CreateButton("CodexBosses", codexPanel.transform, "BOSSES", new Vector2(180f, -50f), new Vector2(96f, 24f), 10)
+                .onClick.AddListener(() => SetCodexSector(CodexSector.Bosses));
+
+            var listViewport = CreatePanel("CodexListViewport", codexPanel.transform, new Vector2(-145f, -82f), new Vector2(190f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            listViewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.28f);
+            listViewport.AddComponent<Mask>().showMaskGraphic = false;
+            var scrollInput = listViewport.AddComponent<CodexListScrollInput>();
+            scrollInput.Initialize(OnCodexListScrolled);
+
+            var listContentObject = new GameObject("CodexListContent");
+            listContentObject.transform.SetParent(listViewport.transform, false);
+            codexListContent = listContentObject.AddComponent<RectTransform>();
+            codexListContent.anchorMin = new Vector2(0.5f, 1f);
+            codexListContent.anchorMax = new Vector2(0.5f, 1f);
+            codexListContent.pivot = new Vector2(0.5f, 1f);
+            codexListContent.sizeDelta = new Vector2(178f, 400f);
+
+            var detailPanel = CreatePanel("CodexDetails", codexPanel.transform, new Vector2(118f, -82f), new Vector2(286f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.36f);
+            codexDetailText = CreateText("CodexDetailText", detailPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
+            ConfigureCenteredRect(codexDetailText.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(250f, 360f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            codexDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
 
             codexPanelVisible = false;
             codexPanel.SetActive(false);
@@ -759,83 +798,167 @@ namespace TowerDefense.UI
 
         private void UpdateCodexPanel()
         {
-            if (codexPanel == null || !codexPanel.activeSelf || codexBodyText == null)
+            if (codexPanel == null || !codexPanel.activeSelf || codexDetailText == null || codexListContent == null)
             {
                 return;
             }
 
-            var text = new StringBuilder();
-            text.AppendLine("TOWERS");
-            var towerDefinitions = session.AllTowerDefinitions;
-            if (towerDefinitions == null || towerDefinitions.Count == 0)
+            if (codexListDirty)
             {
-                text.AppendLine("No towers catalogued.");
+                RebuildCodexList();
+                codexListDirty = false;
             }
-            else
+
+            UpdateCodexDetails();
+        }
+
+        private void SetCodexSector(CodexSector sector)
+        {
+            codexSector = sector;
+            selectedCodexId = null;
+            codexScroll = 0f;
+            codexListDirty = true;
+            UpdateCodexDetails();
+        }
+
+        private void RebuildCodexList()
+        {
+            for (var i = codexListContent.childCount - 1; i >= 0; i--)
             {
-                for (var i = 0; i < towerDefinitions.Count; i++)
+                Destroy(codexListContent.GetChild(i).gameObject);
+            }
+
+            var entries = GetCodexEntries();
+            if (entries.Count == 0)
+            {
+                var empty = CreateText("EmptyCodexList", codexListContent, Vector2.zero, TextAnchor.MiddleCenter, 11);
+                ConfigureCenteredRect(empty.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(168f, 32f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+                empty.text = "Nothing catalogued";
+                empty.color = new Color(0.7f, 0.78f, 0.86f, 1f);
+                selectedCodexId = null;
+                ApplyCodexScroll(entries.Count);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(selectedCodexId))
+            {
+                selectedCodexId = entries[0].id;
+            }
+
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                var button = CreateButton($"CodexEntry_{entry.id}", codexListContent, entry.displayName, new Vector2(0f, -18f - i * 30f), new Vector2(168f, 24f), 10);
+                button.onClick.AddListener(() =>
                 {
-                    var tower = towerDefinitions[i];
-                    text.AppendLine($"{tower.displayName}");
-                    text.AppendLine($"  Role: {tower.role}");
-                    text.AppendLine($"  Damage: {tower.damage:0.0} per hit");
-                    text.AppendLine($"  Range: {tower.range:0.0}");
-                    text.AppendLine($"  Fire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec");
-                    text.AppendLine($"  Projectile: single target");
+                    selectedCodexId = entry.id;
+                    codexListDirty = true;
+                    UpdateCodexDetails();
+                });
+                if (button.targetGraphic is Image image && entry.id == selectedCodexId)
+                {
+                    image.color = new Color(0.25f, 0.7f, 1f, 1f);
                 }
             }
 
-            text.AppendLine();
-            text.AppendLine("ACTIVE WEAPONS");
-            text.AppendLine("Volley of Arrows");
-            text.AppendLine($"  Damage: {activeWeapon.Damage:0.0} per target");
-            text.AppendLine($"  Radius: {activeWeapon.Radius:0.0}");
-            text.AppendLine($"  Pierce cap: {activeWeapon.MaxTargets}");
-            text.AppendLine($"  Cooldown: {activeWeapon.CooldownSeconds:0.0}s");
-
-            text.AppendLine();
-            text.AppendLine("ENEMIES");
-            AppendEnemyEntries(text, includeBosses: false);
-
-            text.AppendLine();
-            text.AppendLine("BOSSES");
-            AppendEnemyEntries(text, includeBosses: true);
-
-            codexBodyText.text = text.ToString();
+            ApplyCodexScroll(entries.Count);
         }
 
-        private void AppendEnemyEntries(StringBuilder text, bool includeBosses)
+        private void UpdateCodexDetails()
         {
-            var entries = session.Level?.wave?.entries;
-            if (entries == null || entries.Length == 0)
+            var entries = GetCodexEntries();
+            CodexEntry selected = null;
+            for (var i = 0; i < entries.Count; i++)
             {
-                text.AppendLine(includeBosses ? "No bosses catalogued." : "No enemies catalogued.");
+                if (entries[i].id == selectedCodexId)
+                {
+                    selected = entries[i];
+                    break;
+                }
+            }
+
+            codexDetailText.text = selected?.details ?? "Select an entry.";
+        }
+
+        private List<CodexEntry> GetCodexEntries()
+        {
+            var entries = new List<CodexEntry>();
+            switch (codexSector)
+            {
+                case CodexSector.Turrets:
+                    AddTurretCodexEntries(entries);
+                    break;
+                case CodexSector.ActiveWeapons:
+                    entries.Add(new CodexEntry("volley_of_arrows", "Volley of Arrows",
+                        $"Volley of Arrows\n\nDamage: {activeWeapon.Damage:0.0} per target\nRadius: {activeWeapon.Radius:0.0}\nPierce cap: {activeWeapon.MaxTargets}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nProjectile: area volley\nRole: manual burst damage"));
+                    break;
+                case CodexSector.Enemies:
+                    AddEnemyCodexEntries(entries, includeBosses: false);
+                    break;
+                case CodexSector.Bosses:
+                    AddEnemyCodexEntries(entries, includeBosses: true);
+                    break;
+            }
+
+            return entries;
+        }
+
+        private void AddTurretCodexEntries(List<CodexEntry> entries)
+        {
+            var towerDefinitions = session.AllTowerDefinitions;
+            if (towerDefinitions == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < towerDefinitions.Count; i++)
+            {
+                var tower = towerDefinitions[i];
+                entries.Add(new CodexEntry(tower.id, tower.displayName,
+                    $"{tower.displayName}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\nProjectile: single target\nBase limit: {tower.perTypeLimit}"));
+            }
+        }
+
+        private void AddEnemyCodexEntries(List<CodexEntry> entries, bool includeBosses)
+        {
+            var waveEntries = session.Level?.wave?.entries;
+            if (waveEntries == null || waveEntries.Length == 0)
+            {
                 return;
             }
 
             var seen = new HashSet<string>();
-            var added = false;
-            for (var i = 0; i < entries.Length; i++)
+            for (var i = 0; i < waveEntries.Length; i++)
             {
-                var enemy = entries[i].enemy;
+                var enemy = waveEntries[i].enemy;
                 if (enemy == null || !seen.Add(enemy.id) || (enemy.role == EnemyRole.Boss) != includeBosses)
                 {
                     continue;
                 }
 
-                added = true;
-                text.AppendLine($"{enemy.displayName}");
-                text.AppendLine($"  Role: {enemy.role}");
-                text.AppendLine($"  Health: {enemy.maxHealth:0}");
-                text.AppendLine($"  Speed: {enemy.speed:0.0}");
-                text.AppendLine($"  Life damage: {enemy.lifeDamage}");
-                text.AppendLine($"  Kill reward: {enemy.killReward} Essence");
+                entries.Add(new CodexEntry(enemy.id, enemy.displayName,
+                    $"{enemy.displayName}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} Essence"));
+            }
+        }
+
+        private void OnCodexListScrolled(float scrollDelta)
+        {
+            codexScroll -= scrollDelta * 28f;
+            ApplyCodexScroll(GetCodexEntries().Count);
+        }
+
+        private void ApplyCodexScroll(int entryCount)
+        {
+            if (codexListContent == null)
+            {
+                return;
             }
 
-            if (!added)
-            {
-                text.AppendLine(includeBosses ? "No bosses catalogued yet." : "No enemies catalogued.");
-            }
+            var contentHeight = Mathf.Max(400f, entryCount * 30f + 18f);
+            codexListContent.sizeDelta = new Vector2(codexListContent.sizeDelta.x, contentHeight);
+            var maxScroll = Mathf.Max(0f, contentHeight - 400f);
+            codexScroll = Mathf.Clamp(codexScroll, 0f, maxScroll);
+            codexListContent.anchoredPosition = new Vector2(0f, codexScroll);
         }
 
         private static bool ContainsTower(IReadOnlyList<TowerDefinition> towerList, TowerDefinition tower)
@@ -1215,6 +1338,35 @@ namespace TowerDefense.UI
             public void OnScroll(PointerEventData eventData)
             {
                 onScrolled?.Invoke(eventData.scrollDelta.y);
+            }
+        }
+
+        private sealed class CodexListScrollInput : MonoBehaviour, IScrollHandler
+        {
+            private System.Action<float> onScrolled;
+
+            public void Initialize(System.Action<float> scrolled)
+            {
+                onScrolled = scrolled;
+            }
+
+            public void OnScroll(PointerEventData eventData)
+            {
+                onScrolled?.Invoke(eventData.scrollDelta.y);
+            }
+        }
+
+        private sealed class CodexEntry
+        {
+            public readonly string id;
+            public readonly string displayName;
+            public readonly string details;
+
+            public CodexEntry(string id, string displayName, string details)
+            {
+                this.id = id;
+                this.displayName = displayName;
+                this.details = details;
             }
         }
     }
