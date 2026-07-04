@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TowerDefense.Data;
 using TowerDefense.Input;
 using TowerDefense.Runtime;
+using TowerDefense.Save;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -123,8 +124,8 @@ namespace TowerDefense.UI
             var text = new StringBuilder();
             text.AppendLine($"{session.Level.displayName}   Lives: {session.Lives}");
             text.AppendLine($"Spawned: {enemies.TotalSpawned}");
-            text.AppendLine($"Essence: {profile.GetCurrency(CurrencyType.KillEssence)}  Victory: {profile.GetCurrency(CurrencyType.VictorySigil)}  Perfect: {profile.GetCurrency(CurrencyType.PerfectSigil)}");
-            text.AppendLine($"Challenge: {profile.GetCurrency(CurrencyType.ChallengeToken)}  Boss: {profile.GetCurrency(CurrencyType.BossCore)}");
+            text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.KillEssence)}   {FormatCurrencyBalance(profile, CurrencyType.VictorySigil)}   {FormatCurrencyBalance(profile, CurrencyType.PerfectSigil)}");
+            text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.ChallengeToken)}   {FormatCurrencyBalance(profile, CurrencyType.BossCore)}");
 
             if (session.Finished)
             {
@@ -655,15 +656,15 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "DEV WALLET";
 
-            CreateButton("AddKillEssence", devPanel.transform, "+100 Essence", new Vector2(0f, -42f), new Vector2(178f, 24f), 12)
+            CreateButton("AddKillEssence", devPanel.transform, $"+100 {FormatCurrencySymbol(CurrencyType.KillEssence)}", new Vector2(0f, -42f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.KillEssence, 100));
-            CreateButton("AddVictorySigil", devPanel.transform, "+10 Victory", new Vector2(0f, -70f), new Vector2(178f, 24f), 12)
+            CreateButton("AddVictorySigil", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.VictorySigil)}", new Vector2(0f, -70f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.VictorySigil, 10));
-            CreateButton("AddPerfectSigil", devPanel.transform, "+10 Perfect", new Vector2(0f, -98f), new Vector2(178f, 24f), 12)
+            CreateButton("AddPerfectSigil", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.PerfectSigil)}", new Vector2(0f, -98f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.PerfectSigil, 10));
-            CreateButton("AddChallengeToken", devPanel.transform, "+10 Challenge", new Vector2(0f, -126f), new Vector2(178f, 24f), 12)
+            CreateButton("AddChallengeToken", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.ChallengeToken)}", new Vector2(0f, -126f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.ChallengeToken, 10));
-            CreateButton("AddBossCore", devPanel.transform, "+5 Boss Core", new Vector2(0f, -154f), new Vector2(178f, 24f), 12)
+            CreateButton("AddBossCore", devPanel.transform, $"+5 {FormatCurrencySymbol(CurrencyType.BossCore)}", new Vector2(0f, -154f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.BossCore, 5));
 
             var speedLabel = CreateText("DevSpeedTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
@@ -1195,7 +1196,7 @@ namespace TowerDefense.UI
                 }
 
                 entries.Add(new CodexEntry(enemy.id, enemy.displayName,
-                    $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nWeakness: {enemy.weaknessDescription}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} Essence"));
+                    $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nWeakness: {enemy.weaknessDescription}\n\nRole: {enemy.role}\nHealth: {enemy.maxHealth:0}\nSpeed: {enemy.speed:0.0}\nLife damage: {enemy.lifeDamage}\nKill reward: {enemy.killReward} {FormatCurrencySymbol(CurrencyType.KillEssence)}"));
             }
         }
 
@@ -1245,7 +1246,7 @@ namespace TowerDefense.UI
             }
 
             var profile = session.Profile;
-            upgradeCurrencyText.text = $"Essence {profile.GetCurrency(CurrencyType.KillEssence)}   Victory {profile.GetCurrency(CurrencyType.VictorySigil)}   Perfect {profile.GetCurrency(CurrencyType.PerfectSigil)}   Challenge {profile.GetCurrency(CurrencyType.ChallengeToken)}   Boss {profile.GetCurrency(CurrencyType.BossCore)}";
+            upgradeCurrencyText.text = $"{FormatCurrencyBalance(profile, CurrencyType.KillEssence)}   {FormatCurrencyBalance(profile, CurrencyType.VictorySigil)}   {FormatCurrencyBalance(profile, CurrencyType.PerfectSigil)}   {FormatCurrencyBalance(profile, CurrencyType.ChallengeToken)}   {FormatCurrencyBalance(profile, CurrencyType.BossCore)}";
 
             foreach (var button in upgradePanel.GetComponentsInChildren<Button>())
             {
@@ -1415,6 +1416,11 @@ namespace TowerDefense.UI
                 default:
                     return "?";
             }
+        }
+
+        private static string FormatCurrencyBalance(PlayerProfile profile, CurrencyType currency)
+        {
+            return $"{profile.GetCurrency(currency)} {FormatCurrencySymbol(currency)}";
         }
 
         private static string FormatEffects(UpgradeEffect[] effects)
