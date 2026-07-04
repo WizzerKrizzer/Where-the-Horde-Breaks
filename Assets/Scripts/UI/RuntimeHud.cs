@@ -1317,7 +1317,7 @@ namespace TowerDefense.UI
             upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text = "Locked\n\nPurchase connected previous upgrades to reveal this node.";
+                upgradeDetailBody.text = "Locked";
                 var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
                 upgradeBuyButton.interactable = false;
                 lockedLabel.text = "LOCKED";
