@@ -151,6 +151,32 @@ namespace TowerDefense.Runtime
             return appliedDamage;
         }
 
+        public float DamageAndKnockbackInRadius(Vector3 center, float radius, float damage, float knockbackDistance, out int hitCount)
+        {
+            var radiusSq = radius * radius;
+            hitCount = 0;
+            var appliedDamage = 0f;
+            for (var i = activeEnemies.Count - 1; i >= 0; i--)
+            {
+                var enemy = activeEnemies[i];
+                if (!enemy.IsAlive)
+                {
+                    continue;
+                }
+
+                if ((enemy.transform.position - center).sqrMagnitude > radiusSq)
+                {
+                    continue;
+                }
+
+                enemy.ApplyKnockback(center, knockbackDistance);
+                appliedDamage += enemy.ApplyDamage(damage);
+                hitCount++;
+            }
+
+            return appliedDamage;
+        }
+
         public void ClearAll()
         {
             foreach (var enemy in activeEnemies)

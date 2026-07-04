@@ -26,6 +26,12 @@ namespace TowerDefense.Data
         ControlLine
     }
 
+    public enum ProjectilePattern
+    {
+        Direct,
+        ArcSplash
+    }
+
     public enum UpgradeEffectType
     {
         ActiveWeaponDamagePercent,

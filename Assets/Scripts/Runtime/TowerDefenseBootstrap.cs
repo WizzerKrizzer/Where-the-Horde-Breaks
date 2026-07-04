@@ -144,10 +144,14 @@ namespace TowerDefense.Runtime
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
                 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
-            var clock = CreateTower("clock", "Clock Tower", TowerRole.ControlLine,
-                "Fast precision turret built around time-control tech. For now it chips enemies down quickly; later it will become the first true slow/control tower.",
-                "Weak against heavy enemies until its future slow effects exist, because each hit is still light.",
+            var bell = CreateTower("bell", "Bell Tower", TowerRole.ControlLine,
+                "A lookout and alarm tower with fast light shots. It fits the medieval base and helps clean up enemies near bends.",
+                "Weak against heavy enemies because each hit is small, and its control identity is still only a prototype.",
                 0, 1, 6.5f, 2.4f, 0.24f, 22f, new Color(0.45f, 0.72f, 1f));
+            var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
+                "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
+                "Weak against single fast enemies because the shot lands where the target was when fired.",
+                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f);
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
@@ -298,37 +302,71 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "clock_unlock",
-                    displayName = "Clock Tower",
-                    description = "Unlock the Clock Tower, a fast control-line turret that will later grow into time-slow utility.",
+                    id = "bell_unlock",
+                    displayName = "Bell Tower",
+                    description = "Unlock the Bell Tower, a fast medieval lookout turret for cleaning up leaks.",
                     radialPosition = new Vector2(438f, -70f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_radius_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "clock", value = 1f } },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f } },
                     isMajorUnlock = true
                 },
                 new SkillNodeDefinition
                 {
-                    id = "clock_limit_01",
-                    displayName = "Clockwork Crews",
-                    description = "Each rank increases the Clock Tower limit by 1.",
+                    id = "bell_limit_01",
+                    displayName = "Signal Crews",
+                    description = "Each rank increases the Bell Tower limit by 1.",
                     radialPosition = new Vector2(586f, -122f),
                     maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "clock_unlock" },
+                    prerequisiteNodeIds = new[] { "bell_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 58) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "clock", value = 1f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "bell", value = 1f } }
                 },
                 new SkillNodeDefinition
                 {
-                    id = "clock_damage_01",
-                    displayName = "Sharper Gears",
-                    description = "Each rank increases Clock Tower damage by 3%.",
+                    id = "bell_damage_01",
+                    displayName = "Sharper Watch",
+                    description = "Each rank increases Bell Tower damage by 3%.",
                     radialPosition = new Vector2(586f, 8f),
                     maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "clock_unlock" },
+                    prerequisiteNodeIds = new[] { "bell_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 42) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "clock", value = 3f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "bell", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_unlock",
+                    displayName = "Catapult",
+                    description = "Unlock the Catapult, an arcing splash tower that knocks enemies away from the impact.",
+                    radialPosition = new Vector2(-454f, -236f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "ballista_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 125), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "catapult", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_limit_01",
+                    displayName = "Siege Yard",
+                    description = "Each rank increases the Catapult limit by 1.",
+                    radialPosition = new Vector2(-610f, -264f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "catapult_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 90) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "catapult", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_damage_01",
+                    displayName = "Heavier Stones",
+                    description = "Each rank increases Catapult damage by 4%.",
+                    radialPosition = new Vector2(-544f, -374f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "catapult_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 78) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "catapult", value = 4f } }
                 }
             };
 
@@ -336,7 +374,7 @@ namespace TowerDefense.Runtime
             {
                 Level = level,
                 SkillTree = tree,
-                Towers = new[] { archer, ballista, clock }
+                Towers = new[] { archer, ballista, bell, catapult }
             };
         }
 
@@ -357,7 +395,22 @@ namespace TowerDefense.Runtime
             return enemy;
         }
 
-        private static TowerDefinition CreateTower(string id, string name, TowerRole role, string shortDescription, string weaknessDescription, int era, int limit, float range, float damage, float fireInterval, float projectileSpeed, Color color)
+        private static TowerDefinition CreateTower(
+            string id,
+            string name,
+            TowerRole role,
+            string shortDescription,
+            string weaknessDescription,
+            int era,
+            int limit,
+            float range,
+            float damage,
+            float fireInterval,
+            float projectileSpeed,
+            Color color,
+            ProjectilePattern projectilePattern = ProjectilePattern.Direct,
+            float splashRadius = 0f,
+            float knockbackDistance = 0f)
         {
             var tower = ScriptableObject.CreateInstance<TowerDefinition>();
             tower.id = id;
@@ -371,6 +424,9 @@ namespace TowerDefense.Runtime
             tower.damage = damage;
             tower.fireInterval = fireInterval;
             tower.projectileSpeed = projectileSpeed;
+            tower.projectilePattern = projectilePattern;
+            tower.splashRadius = splashRadius;
+            tower.knockbackDistance = knockbackDistance;
             tower.color = color;
             return tower;
         }

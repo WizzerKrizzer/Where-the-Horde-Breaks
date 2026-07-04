@@ -6,24 +6,53 @@ namespace TowerDefense.Runtime
     public sealed class ProjectileActor : MonoBehaviour
     {
         private TowerActor source;
+        private TowerDefinition sourceTower;
         private EnemyActor target;
+        private EnemyManager enemies;
         private float damage;
         private float speed;
+        private Vector3 startPosition;
+        private Vector3 impactPosition;
+        private float flightTime;
+        private float flightElapsed;
         private bool active;
 
-        public void Fire(TowerActor sourceTowerActor, TowerDefinition sourceTower, EnemyActor targetEnemy, float projectileDamage)
+        public void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
         {
             source = sourceTowerActor;
+            sourceTower = towerDefinition;
             target = targetEnemy;
+            enemies = enemyManager;
             damage = projectileDamage;
-            speed = sourceTower.projectileSpeed;
+            speed = towerDefinition.projectileSpeed;
+            startPosition = transform.position;
+            impactPosition = targetEnemy != null ? targetEnemy.transform.position : transform.position;
+            flightElapsed = 0f;
+            flightTime = Mathf.Max(0.25f, Vector3.Distance(startPosition, impactPosition) / Mathf.Max(0.01f, speed));
             active = true;
             gameObject.SetActive(true);
         }
 
         private void Update()
         {
-            if (!active || target == null || !target.IsAlive)
+            if (!active)
+            {
+                Deactivate();
+                return;
+            }
+
+            if (sourceTower != null && sourceTower.projectilePattern == ProjectilePattern.ArcSplash)
+            {
+                UpdateArcSplash();
+                return;
+            }
+
+            UpdateDirect();
+        }
+
+        private void UpdateDirect()
+        {
+            if (target == null || !target.IsAlive)
             {
                 Deactivate();
                 return;
@@ -38,6 +67,44 @@ namespace TowerDefense.Runtime
             var appliedDamage = target.ApplyDamage(damage);
             source?.RecordDamage(appliedDamage);
             Deactivate();
+        }
+
+        private void UpdateArcSplash()
+        {
+            flightElapsed += Time.deltaTime;
+            var t = Mathf.Clamp01(flightElapsed / flightTime);
+            var position = Vector3.Lerp(startPosition, impactPosition, t);
+            position.y += Mathf.Sin(t * Mathf.PI) * 3.4f;
+            transform.position = position;
+
+            if (t < 1f)
+            {
+                return;
+            }
+
+            var radius = sourceTower != null ? sourceTower.splashRadius : 0f;
+            var knockback = sourceTower != null ? sourceTower.knockbackDistance : 0f;
+            var appliedDamage = enemies != null
+                ? enemies.DamageAndKnockbackInRadius(impactPosition, radius, damage, knockback, out _)
+                : 0f;
+            source?.RecordDamage(appliedDamage);
+            SpawnImpactMarker(radius);
+            Deactivate();
+        }
+
+        private void SpawnImpactMarker(float radius)
+        {
+            if (radius <= 0f)
+            {
+                return;
+            }
+
+            var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            marker.name = "CatapultImpact";
+            marker.transform.position = impactPosition + Vector3.up * 0.03f;
+            marker.transform.localScale = new Vector3(radius * 2f, 0.04f, radius * 2f);
+            marker.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.58f, 0.44f, 0.27f, 0.35f));
+            Destroy(marker, 0.25f);
         }
 
         private void Deactivate()

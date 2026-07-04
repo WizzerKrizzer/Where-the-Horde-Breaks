@@ -18,6 +18,9 @@ namespace TowerDefense.Data
         public float damage = 3f;
         public float fireInterval = 0.65f;
         public float projectileSpeed = 18f;
+        public ProjectilePattern projectilePattern = ProjectilePattern.Direct;
+        public float splashRadius;
+        public float knockbackDistance;
         public Color color = Color.white;
         public TowerDefinition nextEvolution;
     }

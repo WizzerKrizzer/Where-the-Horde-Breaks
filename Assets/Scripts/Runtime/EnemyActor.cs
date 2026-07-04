@@ -12,6 +12,7 @@ namespace TowerDefense.Runtime
         private EnemyManager owner;
         private float health;
         private float pathDistance;
+        private Vector3 knockbackOffset;
         private bool active;
         private Transform healthFill;
 
@@ -28,6 +29,7 @@ namespace TowerDefense.Runtime
             owner = enemyOwner;
             health = enemyDefinition.maxHealth;
             pathDistance = initialOffset;
+            knockbackOffset = Vector3.zero;
             active = true;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
             EnsureHealthBar();
@@ -44,6 +46,7 @@ namespace TowerDefense.Runtime
             }
 
             pathDistance += definition.speed * Time.deltaTime;
+            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 4f);
             UpdateHealthBar();
             if (pathDistance >= path.TotalLength)
             {
@@ -54,6 +57,23 @@ namespace TowerDefense.Runtime
             }
 
             MoveToPathPosition();
+        }
+
+        public void ApplyKnockback(Vector3 origin, float distance)
+        {
+            if (!IsAlive || distance <= 0f)
+            {
+                return;
+            }
+
+            var direction = transform.position - origin;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.001f)
+            {
+                direction = Vector3.right;
+            }
+
+            knockbackOffset += direction.normalized * distance;
         }
 
         public float ApplyDamage(float damage)
@@ -80,7 +100,7 @@ namespace TowerDefense.Runtime
 
         private void MoveToPathPosition()
         {
-            transform.position = path.Sample(pathDistance);
+            transform.position = path.Sample(pathDistance) + knockbackOffset;
         }
 
         private void EnsureHealthBar()

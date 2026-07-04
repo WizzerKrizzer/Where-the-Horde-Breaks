@@ -55,6 +55,10 @@ namespace TowerDefense.Input
             {
                 selectedTowerIndex = 2;
             }
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha4))
+            {
+                selectedTowerIndex = 3;
+            }
 
             var leftClick = UnityEngine.Input.GetMouseButtonDown(0) && !IsPointerOverBlockingUi();
             Current = new GameInputState
