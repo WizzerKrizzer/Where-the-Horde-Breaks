@@ -1646,6 +1646,11 @@ namespace TowerDefense.UI
                 return "Unlock or milestone";
             }
 
+            if (TryFormatGroupedBarracksEffect(effects, out var groupedText))
+            {
+                return groupedText;
+            }
+
             var text = new StringBuilder();
             for (var i = 0; i < effects.Length; i++)
             {
@@ -1665,45 +1670,45 @@ namespace TowerDefense.UI
             switch (effect.type)
             {
                 case UpgradeEffectType.UnlockTower:
-                    return $"Unlock {effect.targetId} tower";
+                    return $"Unlock {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
-                    return $"+{effect.value:0} {effect.targetId} tower limit";
+                    return $"+{effect.value:0} {FormatTargetName(effect.targetId)} limit";
                 case UpgradeEffectType.TowerDamagePercent:
-                    return $"+{effect.value:0}% {effect.targetId} tower damage";
+                    return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} damage";
                 case UpgradeEffectType.TowerFireRatePercent:
                     return $"+{effect.value:0}% tower fire rate";
                 case UpgradeEffectType.TowerPierceFlat:
-                    return $"+{effect.value:0} {effect.targetId} pierce";
+                    return $"+{effect.value:0} {FormatTargetName(effect.targetId)} pierce";
                 case UpgradeEffectType.TowerDoubleShotChancePercent:
-                    return $"+{effect.value:0}% {effect.targetId} double shot chance";
+                    return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} double shot chance";
                 case UpgradeEffectType.TowerSlowPercentFlat:
-                    return $"+{effect.value:0}% {effect.targetId} slow";
+                    return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} slow";
                 case UpgradeEffectType.TowerSlowCapacityFlat:
-                    return $"+{effect.value:0} {effect.targetId} slow capacity";
+                    return $"+{effect.value:0} {FormatTargetName(effect.targetId)} slow capacity";
                 case UpgradeEffectType.TowerRangeFlat:
-                    return $"+{effect.value:0.0} {effect.targetId} range";
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} range";
                 case UpgradeEffectType.TowerHealthFlat:
-                    return $"+{effect.value:0} {effect.targetId} health";
+                    return $"+{effect.value:0} {FormatTargetName(effect.targetId)} health";
                 case UpgradeEffectType.TowerThornsDamageFlat:
-                    return $"+{effect.value:0.0} {effect.targetId} thorns damage";
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} thorns damage";
                 case UpgradeEffectType.BarracksUnitCapacityFlat:
-                    return $"+{effect.value:0} {effect.targetId} troop capacity";
+                    return $"+{effect.value:0} troop slot for {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.BarracksUnitDamagePercent:
-                    return $"+{effect.value:0}% {effect.targetId} troop damage";
+                    return $"+{effect.value:0}% troop damage for {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.BarracksUnitHealthPercent:
-                    return $"+{effect.value:0}% {effect.targetId} troop health";
+                    return $"+{effect.value:0}% troop health for {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.BarracksRespawnCooldownPercent:
-                    return $"-{effect.value:0}% {effect.targetId} respawn time";
+                    return $"-{effect.value:0}% respawn time for {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.EnableTowerFire:
-                    return $"Enable {effect.targetId} fire";
+                    return $"Enable {FormatTargetName(effect.targetId)} fire";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:
-                    return $"+{effect.value:0.00} {effect.targetId} fire damage/tick";
+                    return $"+{effect.value:0.00} {FormatTargetName(effect.targetId)} fire damage/tick";
                 case UpgradeEffectType.TowerFireTicksPerSecondFlat:
-                    return $"+{effect.value:0.00} {effect.targetId} fire ticks/sec";
+                    return $"+{effect.value:0.00} {FormatTargetName(effect.targetId)} fire ticks/sec";
                 case UpgradeEffectType.TowerFireMaxStacksFlat:
-                    return $"+{effect.value:0} {effect.targetId} fire stacks";
+                    return $"+{effect.value:0} {FormatTargetName(effect.targetId)} fire stacks";
                 case UpgradeEffectType.TowerFireDurationFlat:
-                    return $"+{effect.value:0.0}s {effect.targetId} fire duration";
+                    return $"+{effect.value:0.0}s {FormatTargetName(effect.targetId)} fire duration";
                 case UpgradeEffectType.ActiveWeaponDamagePercent:
                     return $"+{effect.value:0}% active weapon damage";
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:
@@ -1718,6 +1723,86 @@ namespace TowerDefense.UI
                     return $"Unlock {effect.targetId} era";
                 default:
                     return effect.type.ToString();
+            }
+        }
+
+        private static bool TryFormatGroupedBarracksEffect(UpgradeEffect[] effects, out string text)
+        {
+            text = null;
+            if (effects.Length < 2)
+            {
+                return false;
+            }
+
+            var type = effects[0].type;
+            var value = effects[0].value;
+            if (!IsBarracksUnitEffect(type))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < effects.Length; i++)
+            {
+                if (effects[i].type != type || !Mathf.Approximately(effects[i].value, value) || !IsBarracksTarget(effects[i].targetId))
+                {
+                    return false;
+                }
+            }
+
+            switch (type)
+            {
+                case UpgradeEffectType.BarracksUnitCapacityFlat:
+                    text = $"+{value:0} troop slot for every barracks";
+                    return true;
+                case UpgradeEffectType.BarracksUnitDamagePercent:
+                    text = $"+{value:0}% damage for all barracks troops";
+                    return true;
+                case UpgradeEffectType.BarracksUnitHealthPercent:
+                    text = $"+{value:0}% health for all barracks troops";
+                    return true;
+                case UpgradeEffectType.BarracksRespawnCooldownPercent:
+                    text = $"-{value:0}% respawn time for every barracks";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsBarracksUnitEffect(UpgradeEffectType type)
+        {
+            return type == UpgradeEffectType.BarracksUnitCapacityFlat
+                || type == UpgradeEffectType.BarracksUnitDamagePercent
+                || type == UpgradeEffectType.BarracksUnitHealthPercent
+                || type == UpgradeEffectType.BarracksRespawnCooldownPercent;
+        }
+
+        private static bool IsBarracksTarget(string targetId)
+        {
+            return targetId == "knight_barracks" || targetId == "archer_barracks" || targetId == "paladin_barracks";
+        }
+
+        private static string FormatTargetName(string targetId)
+        {
+            switch (targetId)
+            {
+                case "archer":
+                    return "Archer Tower";
+                case "ballista":
+                    return "Ballista";
+                case "bell":
+                    return "Bell Tower";
+                case "catapult":
+                    return "Catapult";
+                case "barrier":
+                    return "Timber Barrier";
+                case "knight_barracks":
+                    return "Knight Barracks";
+                case "archer_barracks":
+                    return "Archer Post";
+                case "paladin_barracks":
+                    return "Paladin Chapter";
+                default:
+                    return string.IsNullOrWhiteSpace(targetId) ? "target" : targetId.Replace('_', ' ');
             }
         }
 
