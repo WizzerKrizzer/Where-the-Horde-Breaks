@@ -11,6 +11,7 @@ namespace TowerDefense.Save
         public List<string> unlockedLevelIds = new();
         public List<string> clearedLevelIds = new();
         public List<string> perfectClearedLevelIds = new();
+        public List<string> encounteredEnemyIds = new();
         public List<string> purchasedUpgradeIds = new();
         public List<LevelTowerLayout> towerLayouts = new();
 

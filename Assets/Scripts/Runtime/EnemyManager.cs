@@ -23,6 +23,7 @@ namespace TowerDefense.Runtime
         public int TotalResolved => totalResolved;
         public bool HasWave => wave != null;
         public bool IsWaveComplete => wave != null && totalSpawned >= wave.totalEnemyCount && totalResolved >= totalSpawned;
+        public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyActor> EnemyKilled;
         public event Action<EnemyActor> EnemyEscaped;
 
@@ -208,6 +209,7 @@ namespace TowerDefense.Runtime
             actor.Initialize(enemyDefinition, path, this, 0f);
             activeEnemies.Add(actor);
             totalSpawned++;
+            EnemySpawned?.Invoke(enemyDefinition);
         }
 
         private EnemyActor CreateEnemyActor(EnemyDefinition enemyDefinition)

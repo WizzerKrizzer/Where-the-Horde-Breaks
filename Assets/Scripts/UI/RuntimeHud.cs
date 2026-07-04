@@ -1050,6 +1050,19 @@ namespace TowerDefense.UI
                 text.color = Color.white;
             }
 
+            var visibleTowerIndex = 0;
+            var towersForOrdering = session.AllTowerDefinitions ?? unlockedTowers;
+            foreach (var tower in towersForOrdering)
+            {
+                if (!ContainsTower(unlockedTowers, tower) || !statsRowButtons.TryGetValue(tower, out var button))
+                {
+                    continue;
+                }
+
+                button.GetComponent<RectTransform>().anchoredPosition = new Vector2(-96f, -60f - visibleTowerIndex * 28f);
+                visibleTowerIndex++;
+            }
+
             if (statsEmptyTowerText != null)
             {
                 statsEmptyTowerText.gameObject.SetActive(unlockedTowers.Count == 0);
@@ -1176,7 +1189,7 @@ namespace TowerDefense.UI
 
         private void AddTurretCodexEntries(List<CodexEntry> entries)
         {
-            var towerDefinitions = session.AllTowerDefinitions;
+            var towerDefinitions = session.UnlockedTowerDefinitions;
             if (towerDefinitions == null)
             {
                 return;
@@ -1209,6 +1222,11 @@ namespace TowerDefense.UI
             {
                 var enemy = waveEntries[i].enemy;
                 if (enemy == null || !seen.Add(enemy.id) || (enemy.role == EnemyRole.Boss) != includeBosses)
+                {
+                    continue;
+                }
+
+                if (!session.HasEncounteredEnemy(enemy))
                 {
                     continue;
                 }

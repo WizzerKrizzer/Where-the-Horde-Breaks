@@ -44,6 +44,7 @@ namespace TowerDefense.Runtime
         public bool Won => finished && won;
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
+        public IReadOnlyList<TowerDefinition> UnlockedTowerDefinitions => towers?.AvailableTowers ?? System.Array.Empty<TowerDefinition>();
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -68,6 +69,12 @@ namespace TowerDefense.Runtime
         public void SpawnDebugEnemy(EnemyDefinition enemyDefinition)
         {
             enemies?.SpawnDebug(enemyDefinition, path);
+        }
+
+        public bool HasEncounteredEnemy(EnemyDefinition enemyDefinition)
+        {
+            EnsureEncounteredEnemyList();
+            return enemyDefinition != null && profile.encounteredEnemyIds.Contains(enemyDefinition.id);
         }
 
         public void AddCurrency(CurrencyType currency, int amount)
@@ -168,6 +175,7 @@ namespace TowerDefense.Runtime
 
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
+            enemies.EnemySpawned += OnEnemySpawned;
             towers.Initialize(enemies, path, GetUnlockedTowers());
             ApplyProgressionStats();
             lives = maxLivesForRun;
@@ -292,6 +300,26 @@ namespace TowerDefense.Runtime
         private void OnEnemyEscaped(EnemyActor enemy)
         {
             lives -= enemy.Definition.lifeDamage;
+        }
+
+        private void OnEnemySpawned(EnemyDefinition enemy)
+        {
+            EnsureEncounteredEnemyList();
+            if (enemy == null || profile.encounteredEnemyIds.Contains(enemy.id))
+            {
+                return;
+            }
+
+            profile.encounteredEnemyIds.Add(enemy.id);
+            profileStore.Save(profile);
+        }
+
+        private void EnsureEncounteredEnemyList()
+        {
+            if (profile.encounteredEnemyIds == null)
+            {
+                profile.encounteredEnemyIds = new List<string>();
+            }
         }
 
         private void SaveLayout()
