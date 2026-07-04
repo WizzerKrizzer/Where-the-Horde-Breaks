@@ -50,6 +50,12 @@ namespace TowerDefense.Runtime
             profileStore.Save(profile);
         }
 
+        public void ClearCurrencies()
+        {
+            profile.ClearCurrencies();
+            profileStore.Save(profile);
+        }
+
         public void RefundAndResetUpgrades()
         {
             progression.RefundAndResetPurchasedUpgrades();

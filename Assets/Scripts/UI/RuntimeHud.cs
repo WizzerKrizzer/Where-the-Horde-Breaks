@@ -471,7 +471,7 @@ namespace TowerDefense.UI
 
         private void CreateDevPanel(Transform parent)
         {
-            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 262f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 292f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(devPanel.GetComponent<RectTransform>());
             var title = CreateText("DevTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -502,6 +502,8 @@ namespace TowerDefense.UI
 
             CreateButton("RefundUpgrades", devPanel.transform, "RESET UPGRADES", new Vector2(0f, -240f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
+            CreateButton("ClearCurrencies", devPanel.transform, "CLEAR CURRENCIES", new Vector2(0f, -268f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.ClearCurrencies());
 
             devPanelVisible = false;
             devPanel.SetActive(false);

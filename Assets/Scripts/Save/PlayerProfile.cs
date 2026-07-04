@@ -32,6 +32,11 @@ namespace TowerDefense.Save
             }
         }
 
+        public void ClearCurrencies()
+        {
+            currencies.Clear();
+        }
+
         public bool TrySpend(CurrencyAmount cost)
         {
             if (GetCurrency(cost.currency) < cost.amount)
