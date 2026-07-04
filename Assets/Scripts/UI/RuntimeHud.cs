@@ -309,12 +309,12 @@ namespace TowerDefense.UI
             upgradeTreeContent.anchorMin = new Vector2(0.5f, 0.5f);
             upgradeTreeContent.anchorMax = new Vector2(0.5f, 0.5f);
             upgradeTreeContent.pivot = new Vector2(0.5f, 0.5f);
-            upgradeTreeContent.sizeDelta = new Vector2(900f, 580f);
+            var nodes = session.UpgradeNodes;
+            upgradeTreeContent.sizeDelta = CalculateUpgradeTreeContentSize(nodes);
             upgradeTreeLabels.Clear();
             upgradeTreePan = Vector2.zero;
             upgradeTreeZoom = 1f;
 
-            var nodes = session.UpgradeNodes;
             CreateUpgradeLinks(upgradeTreeContent, nodes);
             for (var i = 0; i < nodes.Count; i++)
             {
@@ -360,6 +360,26 @@ namespace TowerDefense.UI
                     }
                 }
             }
+        }
+
+        private static Vector2 CalculateUpgradeTreeContentSize(IReadOnlyList<SkillNodeDefinition> nodes)
+        {
+            if (nodes == null || nodes.Count == 0)
+            {
+                return new Vector2(900f, 580f);
+            }
+
+            var maxAbsX = 0f;
+            var maxAbsY = 0f;
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(nodes[i].radialPosition.x));
+                maxAbsY = Mathf.Max(maxAbsY, Mathf.Abs(nodes[i].radialPosition.y));
+            }
+
+            return new Vector2(
+                Mathf.Max(900f, maxAbsX * 2f + 360f),
+                Mathf.Max(580f, maxAbsY * 2f + 300f));
         }
 
         private void CreateUpgradeLink(Transform parent, Vector2 from, Vector2 to, SkillNodeDefinition target)
