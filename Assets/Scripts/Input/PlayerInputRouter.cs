@@ -40,7 +40,7 @@ namespace TowerDefense.Input
             var pan = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
             if (UnityEngine.Input.GetMouseButton(1))
             {
-                pan += new Vector2(-UnityEngine.Input.GetAxisRaw("Mouse X"), -UnityEngine.Input.GetAxisRaw("Mouse Y")) * 9f;
+                pan += new Vector2(-UnityEngine.Input.GetAxisRaw("Mouse X"), -UnityEngine.Input.GetAxisRaw("Mouse Y")) * 14f;
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha1))
