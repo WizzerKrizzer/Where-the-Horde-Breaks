@@ -28,7 +28,10 @@ namespace TowerDefense.Runtime
             startPosition = transform.position;
             impactPosition = targetEnemy != null ? targetEnemy.transform.position : transform.position;
             flightElapsed = 0f;
-            flightTime = Mathf.Max(0.25f, Vector3.Distance(startPosition, impactPosition) / Mathf.Max(0.01f, speed));
+            var flightMultiplier = towerDefinition.projectilePattern == ProjectilePattern.ArcSplash
+                ? Mathf.Max(1f, towerDefinition.arcFlightTimeMultiplier)
+                : 1f;
+            flightTime = Mathf.Max(0.25f, Vector3.Distance(startPosition, impactPosition) / Mathf.Max(0.01f, speed) * flightMultiplier);
             active = true;
             gameObject.SetActive(true);
         }
@@ -84,8 +87,12 @@ namespace TowerDefense.Runtime
 
             var radius = sourceTower != null ? sourceTower.splashRadius : 0f;
             var knockback = sourceTower != null ? sourceTower.knockbackDistance : 0f;
+            var burnDamage = sourceTower != null && sourceTower.appliesFire ? sourceTower.fireDamagePerTick : 0f;
+            var burnRate = sourceTower != null && sourceTower.appliesFire ? sourceTower.fireTicksPerSecond : 0f;
+            var burnDuration = sourceTower != null && sourceTower.appliesFire ? sourceTower.fireDuration : 0f;
+            var burnStacks = sourceTower != null && sourceTower.appliesFire ? sourceTower.fireMaxStacks : 0;
             var appliedDamage = enemies != null
-                ? enemies.DamageAndKnockbackInRadius(impactPosition, radius, damage, knockback, out _)
+                ? enemies.DamageAndKnockbackInRadius(impactPosition, radius, damage, knockback, out _, source, burnDamage, burnRate, burnDuration, burnStacks)
                 : 0f;
             source?.RecordDamage(appliedDamage);
             SpawnImpactMarker(radius);
@@ -103,7 +110,9 @@ namespace TowerDefense.Runtime
             marker.name = "CatapultImpact";
             marker.transform.position = impactPosition + Vector3.up * 0.03f;
             marker.transform.localScale = new Vector3(radius * 2f, 0.04f, radius * 2f);
-            marker.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.58f, 0.44f, 0.27f, 0.35f));
+            marker.GetComponent<Renderer>().material = BootstrapMaterials.Get(sourceTower != null && sourceTower.appliesFire
+                ? new Color(1f, 0.32f, 0.05f, 0.42f)
+                : new Color(0.58f, 0.44f, 0.27f, 0.35f));
             Destroy(marker, 0.25f);
         }
 

@@ -322,6 +322,11 @@ namespace TowerDefense.Runtime
                     var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
                     towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
+                    towerDefinition.appliesFire = progression.GetEffectTotal(UpgradeEffectType.EnableTowerFire, towerDefinition.id) > 0f;
+                    towerDefinition.fireDamagePerTick = progression.GetEffectTotal(UpgradeEffectType.TowerFireDamagePerTickFlat, towerDefinition.id);
+                    towerDefinition.fireTicksPerSecond = progression.GetEffectTotal(UpgradeEffectType.TowerFireTicksPerSecondFlat, towerDefinition.id);
+                    towerDefinition.fireMaxStacks = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerFireMaxStacksFlat, towerDefinition.id));
+                    towerDefinition.fireDuration = progression.GetEffectTotal(UpgradeEffectType.TowerFireDurationFlat, towerDefinition.id);
                 }
             }
             towers.SetTowerDamageMultiplier(towerDamageMultiplier);

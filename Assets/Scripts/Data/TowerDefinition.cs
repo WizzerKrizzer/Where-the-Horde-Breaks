@@ -21,6 +21,12 @@ namespace TowerDefense.Data
         public ProjectilePattern projectilePattern = ProjectilePattern.Direct;
         public float splashRadius;
         public float knockbackDistance;
+        public float arcFlightTimeMultiplier = 1f;
+        public bool appliesFire;
+        public float fireDamagePerTick;
+        public float fireTicksPerSecond = 1f;
+        public int fireMaxStacks = 1;
+        public float fireDuration = 3f;
         public Color color = Color.white;
         public TowerDefinition nextEvolution;
     }

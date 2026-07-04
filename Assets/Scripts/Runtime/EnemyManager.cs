@@ -151,7 +151,17 @@ namespace TowerDefense.Runtime
             return appliedDamage;
         }
 
-        public float DamageAndKnockbackInRadius(Vector3 center, float radius, float damage, float knockbackDistance, out int hitCount)
+        public float DamageAndKnockbackInRadius(
+            Vector3 center,
+            float radius,
+            float damage,
+            float knockbackDistance,
+            out int hitCount,
+            TowerActor burnSource = null,
+            float burnDamagePerTick = 0f,
+            float burnTicksPerSecond = 0f,
+            float burnDuration = 0f,
+            int maxBurnStacks = 0)
         {
             var radiusSq = radius * radius;
             hitCount = 0;
@@ -171,6 +181,7 @@ namespace TowerDefense.Runtime
 
                 enemy.ApplyKnockback(center, knockbackDistance);
                 appliedDamage += enemy.ApplyDamage(damage);
+                enemy.ApplyBurn(burnSource, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks);
                 hitCount++;
             }
 

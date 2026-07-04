@@ -40,6 +40,11 @@ namespace TowerDefense.Data
         ActiveWeaponPierceFlat,
         PerTypeTowerLimitFlat,
         TowerDamagePercent,
+        EnableTowerFire,
+        TowerFireDamagePerTickFlat,
+        TowerFireTicksPerSecondFlat,
+        TowerFireMaxStacksFlat,
+        TowerFireDurationFlat,
         BaseLivesFlat,
         UnlockTower,
         UnlockEra

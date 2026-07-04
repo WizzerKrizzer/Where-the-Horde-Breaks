@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TowerDefense.Data;
 using TowerDefense.Simulation;
 using UnityEngine;
@@ -13,6 +14,7 @@ namespace TowerDefense.Runtime
         private float health;
         private float pathDistance;
         private Vector3 knockbackOffset;
+        private readonly List<BurnStack> burnStacks = new();
         private bool active;
         private Transform healthFill;
 
@@ -30,6 +32,7 @@ namespace TowerDefense.Runtime
             health = enemyDefinition.maxHealth;
             pathDistance = initialOffset;
             knockbackOffset = Vector3.zero;
+            burnStacks.Clear();
             active = true;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
             EnsureHealthBar();
@@ -47,6 +50,7 @@ namespace TowerDefense.Runtime
 
             pathDistance += definition.speed * Time.deltaTime;
             knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 4f);
+            UpdateBurns();
             UpdateHealthBar();
             if (pathDistance >= path.TotalLength)
             {
@@ -76,6 +80,22 @@ namespace TowerDefense.Runtime
             knockbackOffset += direction.normalized * distance;
         }
 
+        public void ApplyBurn(TowerActor source, float damagePerTick, float ticksPerSecond, float duration, int maxStacks)
+        {
+            if (!IsAlive || source == null || damagePerTick <= 0f || ticksPerSecond <= 0f || duration <= 0f || maxStacks <= 0)
+            {
+                return;
+            }
+
+            if (burnStacks.Count >= maxStacks)
+            {
+                burnStacks.Sort((a, b) => a.remainingDuration.CompareTo(b.remainingDuration));
+                burnStacks.RemoveAt(0);
+            }
+
+            burnStacks.Add(new BurnStack(source, damagePerTick, ticksPerSecond, duration));
+        }
+
         public float ApplyDamage(float damage)
         {
             if (!IsAlive)
@@ -101,6 +121,32 @@ namespace TowerDefense.Runtime
         private void MoveToPathPosition()
         {
             transform.position = path.Sample(pathDistance) + knockbackOffset;
+        }
+
+        private void UpdateBurns()
+        {
+            for (var i = burnStacks.Count - 1; i >= 0; i--)
+            {
+                var burn = burnStacks[i];
+                burn.remainingDuration -= Time.deltaTime;
+                burn.tickTimer -= Time.deltaTime;
+
+                while (burn.tickTimer <= 0f && burn.remainingDuration > 0f && IsAlive)
+                {
+                    var appliedDamage = ApplyDamage(burn.damagePerTick);
+                    burn.source?.RecordDamage(appliedDamage);
+                    burn.tickTimer += burn.tickInterval;
+                }
+
+                if (!IsAlive || burn.remainingDuration <= 0f)
+                {
+                    burnStacks.RemoveAt(i);
+                }
+                else
+                {
+                    burnStacks[i] = burn;
+                }
+            }
         }
 
         private void EnsureHealthBar()
@@ -142,6 +188,24 @@ namespace TowerDefense.Runtime
             var normalizedHealth = Mathf.Clamp01(health / definition.maxHealth);
             healthFill.localScale = new Vector3(1.15f * normalizedHealth, 0.09f, 0.14f);
             healthFill.localPosition = new Vector3(-0.575f + 0.575f * normalizedHealth, 0.012f, 0f);
+        }
+
+        private struct BurnStack
+        {
+            public readonly TowerActor source;
+            public readonly float damagePerTick;
+            public readonly float tickInterval;
+            public float remainingDuration;
+            public float tickTimer;
+
+            public BurnStack(TowerActor source, float damagePerTick, float ticksPerSecond, float duration)
+            {
+                this.source = source;
+                this.damagePerTick = damagePerTick;
+                tickInterval = 1f / Mathf.Max(0.01f, ticksPerSecond);
+                remainingDuration = duration;
+                tickTimer = tickInterval;
+            }
         }
     }
 }

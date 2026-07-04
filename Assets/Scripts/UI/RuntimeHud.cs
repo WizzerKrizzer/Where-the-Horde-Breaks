@@ -1165,8 +1165,11 @@ namespace TowerDefense.UI
                 var projectileLine = tower.projectilePattern == ProjectilePattern.ArcSplash
                     ? $"Projectile: arcing splash\nSplash radius: {tower.splashRadius:0.0}\nKnockback: {tower.knockbackDistance:0.0}"
                     : "Projectile: single target";
+                var fireLine = tower.appliesFire
+                    ? $"\nFire: {tower.fireDamagePerTick:0.00} damage/tick, {tower.fireTicksPerSecond:0.00} ticks/sec, {tower.fireMaxStacks} max stacks, {tower.fireDuration:0.0}s"
+                    : string.Empty;
                 entries.Add(new CodexEntry(tower.id, tower.displayName,
-                    $"{tower.displayName}\n\n{tower.shortDescription}\n\nWeakness: {tower.weaknessDescription}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\n{projectileLine}\nBase limit: {tower.perTypeLimit}"));
+                    $"{tower.displayName}\n\n{tower.shortDescription}\n\nWeakness: {tower.weaknessDescription}\n\nRole: {tower.role}\nDamage: {tower.damage:0.0} per hit\nRange: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec\n{projectileLine}{fireLine}\nBase limit: {tower.perTypeLimit}"));
             }
         }
 
@@ -1412,6 +1415,16 @@ namespace TowerDefense.UI
                     return $"+{effect.value:0} {effect.targetId} tower limit";
                 case UpgradeEffectType.TowerDamagePercent:
                     return $"+{effect.value:0}% {effect.targetId} tower damage";
+                case UpgradeEffectType.EnableTowerFire:
+                    return $"Enable {effect.targetId} fire";
+                case UpgradeEffectType.TowerFireDamagePerTickFlat:
+                    return $"+{effect.value:0.00} {effect.targetId} fire damage/tick";
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat:
+                    return $"+{effect.value:0.00} {effect.targetId} fire ticks/sec";
+                case UpgradeEffectType.TowerFireMaxStacksFlat:
+                    return $"+{effect.value:0} {effect.targetId} fire stacks";
+                case UpgradeEffectType.TowerFireDurationFlat:
+                    return $"+{effect.value:0.0}s {effect.targetId} fire duration";
                 case UpgradeEffectType.ActiveWeaponDamagePercent:
                     return $"+{effect.value:0}% active weapon damage";
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:

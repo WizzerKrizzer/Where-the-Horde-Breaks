@@ -60,7 +60,10 @@ namespace TowerDefense.Runtime
             go.name = $"Projectile_{definition.id}";
             go.transform.position = transform.position + Vector3.up * 0.45f;
             go.transform.localScale = Vector3.one * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.34f : 0.16f);
-            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow);
+            var projectileColor = definition.appliesFire
+                ? new Color(1f, 0.32f, 0.05f)
+                : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
+            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(projectileColor);
             var projectile = go.AddComponent<ProjectileActor>();
             projectile.Fire(this, definition, target, enemies, definition.damage * damageMultiplier);
         }

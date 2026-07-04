@@ -151,7 +151,7 @@ namespace TowerDefense.Runtime
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
-                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f);
+                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
@@ -367,6 +367,69 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "catapult_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 78) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "catapult", value = 4f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_fire_unlock",
+                    displayName = "Pitch-Soaked Stones",
+                    description = "Catapult boulders ignite enemies hit by the splash.",
+                    radialPosition = new Vector2(-454f, -504f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "catapult_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 140), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.EnableTowerFire, targetId = "catapult", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerFireDamagePerTickFlat, targetId = "catapult", value = 0.7f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerFireTicksPerSecondFlat, targetId = "catapult", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerFireMaxStacksFlat, targetId = "catapult", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerFireDurationFlat, targetId = "catapult", value = 3f }
+                    },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_fire_damage_01",
+                    displayName = "Hotter Pitch",
+                    description = "Each rank increases Catapult burn damage per tick by 0.25.",
+                    radialPosition = new Vector2(-610f, -542f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 80) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireDamagePerTickFlat, targetId = "catapult", value = 0.25f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_fire_rate_01",
+                    displayName = "Hungry Flames",
+                    description = "Each rank increases Catapult burn tick rate by 0.15 per second.",
+                    radialPosition = new Vector2(-312f, -542f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 88) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireTicksPerSecondFlat, targetId = "catapult", value = 0.15f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_fire_stacks_01",
+                    displayName = "Layered Pitch",
+                    description = "Each rank lets Catapult fire stack one additional time.",
+                    radialPosition = new Vector2(-704f, -430f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "catapult_fire_damage_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 125) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireMaxStacksFlat, targetId = "catapult", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "catapult_fire_duration_01",
+                    displayName = "Clinging Tar",
+                    description = "Each rank makes Catapult fire last 0.5 seconds longer.",
+                    radialPosition = new Vector2(-200f, -430f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "catapult_fire_rate_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 95) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireDurationFlat, targetId = "catapult", value = 0.5f } }
                 }
             };
 
@@ -410,7 +473,8 @@ namespace TowerDefense.Runtime
             Color color,
             ProjectilePattern projectilePattern = ProjectilePattern.Direct,
             float splashRadius = 0f,
-            float knockbackDistance = 0f)
+            float knockbackDistance = 0f,
+            float arcFlightTimeMultiplier = 1f)
         {
             var tower = ScriptableObject.CreateInstance<TowerDefinition>();
             tower.id = id;
@@ -427,6 +491,7 @@ namespace TowerDefense.Runtime
             tower.projectilePattern = projectilePattern;
             tower.splashRadius = splashRadius;
             tower.knockbackDistance = knockbackDistance;
+            tower.arcFlightTimeMultiplier = arcFlightTimeMultiplier;
             tower.color = color;
             return tower;
         }
