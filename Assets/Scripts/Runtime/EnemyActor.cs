@@ -14,6 +14,7 @@ namespace TowerDefense.Runtime
         private float health;
         private float pathDistance;
         private float laneOffset;
+        private Vector3 crowdOffset;
         private Vector3 knockbackOffset;
         private readonly List<BurnStack> burnStacks = new();
         private float attackCooldown;
@@ -44,6 +45,7 @@ namespace TowerDefense.Runtime
             health = currentMaxHealth;
             pathDistance = initialOffset;
             laneOffset = UnityEngine.Random.Range(-0.52f, 0.52f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
+            crowdOffset = Vector3.zero;
             knockbackOffset = Vector3.zero;
             burnStacks.Clear();
             attackCooldown = 0f;
@@ -102,9 +104,10 @@ namespace TowerDefense.Runtime
 
             if (TryAttackCombatTarget())
             {
+                UpdateCrowdOffset();
                 UpdateBurns();
                 UpdateHealthBar();
-                ApplyLocalSeparation();
+                MoveToPathPosition();
                 return;
             }
 
@@ -120,6 +123,7 @@ namespace TowerDefense.Runtime
 
             pathDistance += definition.speed * slowMultiplier * Time.deltaTime;
             knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 4f);
+            UpdateCrowdOffset();
             UpdateBurns();
             UpdateHealthBar();
             if (pathDistance >= path.TotalLength)
@@ -303,16 +307,14 @@ namespace TowerDefense.Runtime
         private void MoveToPathPosition()
         {
             var pathPosition = path.Sample(pathDistance);
-            transform.position = pathPosition + GetPathSide(pathDistance) * laneOffset + GetSeparationOffset(pathPosition) + knockbackOffset;
+            transform.position = pathPosition + GetPathSide(pathDistance) * laneOffset + crowdOffset + knockbackOffset;
         }
 
-        private void ApplyLocalSeparation()
+        private void UpdateCrowdOffset()
         {
-            var separation = GetSeparationOffset(transform.position);
-            if (separation.sqrMagnitude > 0.001f)
-            {
-                transform.position += separation * Mathf.Min(1f, Time.deltaTime * 4f);
-            }
+            var desiredOffset = GetSeparationOffset(transform.position);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, desiredOffset, Time.deltaTime * 1.8f);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, Vector3.zero, Time.deltaTime * 0.35f);
         }
 
         private Vector3 GetSeparationOffset(Vector3 origin)
@@ -339,7 +341,13 @@ namespace TowerDefense.Runtime
                 away.y = 0f;
                 var distance = away.magnitude;
                 var desiredDistance = Mathf.Max(0.38f, (definition.visualScale + other.Definition.visualScale) * 0.54f);
-                if (distance <= 0.001f || distance >= desiredDistance)
+                if (distance <= 0.001f)
+                {
+                    away = GetPathSide(pathDistance) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
+                    distance = 0.001f;
+                }
+
+                if (distance >= desiredDistance)
                 {
                     continue;
                 }
