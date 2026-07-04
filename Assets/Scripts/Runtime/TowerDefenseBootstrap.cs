@@ -128,7 +128,7 @@ namespace TowerDefense.Runtime
             var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support, 32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
 
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine, 0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
-            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, 0, 1, 9.5f, 16f, 1.75f, 14f, new Color(0.7f, 0.35f, 0.16f));
+            var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine, 0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
             var watch = CreateTower("watch", "Watch Tower", TowerRole.ControlLine, 0, 1, 6.5f, 2.2f, 0.22f, 22f, new Color(0.45f, 0.72f, 1f));
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();

@@ -45,15 +45,16 @@ namespace TowerDefense.UI
         private GameObject devPanel;
         private bool devPanelVisible;
         private Button statsToggleButton;
+        private Button codexToggleButton;
         private GameObject statsPanel;
         private readonly Dictionary<TowerDefinition, Text> statsRows = new();
         private readonly Dictionary<TowerDefinition, Button> statsRowButtons = new();
-        private Text statsDetailText;
         private Text statsEmptyTowerText;
         private Button activeWeaponStatsButton;
-        private TowerDefinition selectedStatsTower;
-        private bool selectedStatsActiveWeapon;
         private bool statsPanelVisible;
+        private GameObject codexPanel;
+        private Text codexBodyText;
+        private bool codexPanelVisible;
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
         {
@@ -84,6 +85,7 @@ namespace TowerDefense.UI
             CreateResultPanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
+            CreateCodexPanel(parent);
             CreateDevPanel(parent);
             CreateTopRightToggles(parent);
         }
@@ -116,6 +118,7 @@ namespace TowerDefense.UI
             UpdateResultPanel();
             UpdateUpgradePanel();
             UpdateStatsPanel();
+            UpdateCodexPanel();
         }
 
         private void HandleHudShortcuts()
@@ -128,6 +131,11 @@ namespace TowerDefense.UI
             if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
             {
                 ToggleStatsPanel();
+            }
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.G))
+            {
+                ToggleCodexPanel();
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.BackQuote))
@@ -434,6 +442,11 @@ namespace TowerDefense.UI
             {
                 statsPanel.SetActive(!visible && statsPanelVisible);
             }
+
+            if (codexPanel != null)
+            {
+                codexPanel.SetActive(!visible && codexPanelVisible);
+            }
         }
 
         private void SetMainHudVisible(bool visible)
@@ -461,6 +474,11 @@ namespace TowerDefense.UI
             if (statsToggleButton != null)
             {
                 statsToggleButton.gameObject.SetActive(visible);
+            }
+
+            if (codexToggleButton != null)
+            {
+                codexToggleButton.gameObject.SetActive(visible);
             }
 
             if (devToggleButton != null)
@@ -516,7 +534,10 @@ namespace TowerDefense.UI
             statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS [TAB]", new Vector2(-70f, -18f), new Vector2(102f, 28f), new Vector2(1f, 1f), 11);
             statsToggleButton.onClick.AddListener(ToggleStatsPanel);
 
-            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-168f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
+            codexToggleButton = CreateAnchoredButton("CodexToggle", parent, "GRIMOIRE [G]", new Vector2(-186f, -18f), new Vector2(122f, 28f), new Vector2(1f, 1f), 10);
+            codexToggleButton.onClick.AddListener(ToggleCodexPanel);
+
+            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-292f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
             devToggleButton.onClick.AddListener(ToggleDevPanel);
         }
 
@@ -532,9 +553,38 @@ namespace TowerDefense.UI
         private void ToggleStatsPanel()
         {
             statsPanelVisible = !statsPanelVisible;
+            if (statsPanelVisible)
+            {
+                codexPanelVisible = false;
+            }
+
             if (statsPanel != null)
             {
                 statsPanel.SetActive(statsPanelVisible && !IsUpgradePanelOpen());
+            }
+
+            if (codexPanel != null)
+            {
+                codexPanel.SetActive(false);
+            }
+        }
+
+        private void ToggleCodexPanel()
+        {
+            codexPanelVisible = !codexPanelVisible;
+            if (codexPanelVisible)
+            {
+                statsPanelVisible = false;
+            }
+
+            if (codexPanel != null)
+            {
+                codexPanel.SetActive(codexPanelVisible && !IsUpgradePanelOpen());
+            }
+
+            if (statsPanel != null)
+            {
+                statsPanel.SetActive(false);
             }
         }
 
@@ -557,7 +607,6 @@ namespace TowerDefense.UI
             {
                 var tower = towersForStats[i];
                 var row = CreateButton($"Stats_{tower.id}", statsPanel.transform, tower.displayName, new Vector2(-96f, -60f - i * 28f), new Vector2(176f, 24f), 10);
-                row.onClick.AddListener(() => SelectStatsTower(tower));
                 statsRows[tower] = row.GetComponentInChildren<Text>();
                 statsRowButtons[tower] = row;
             }
@@ -570,32 +619,30 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(activeHeader.GetComponent<RectTransform>(), new Vector2(98f, -40f), new Vector2(150f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             activeHeader.text = "ACTIVE";
             activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, "Volley of Arrows", new Vector2(98f, -60f), new Vector2(150f, 24f), 10);
-            activeWeaponStatsButton.onClick.AddListener(SelectActiveWeaponStats);
 
             statsEmptyTowerText = CreateText("StatsNoTowers", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-96f, -62f), new Vector2(176f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             statsEmptyTowerText.text = "No towers unlocked";
             statsEmptyTowerText.color = new Color(0.7f, 0.78f, 0.86f, 1f);
 
-            statsDetailText = CreateText("StatsDetails", statsPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
-            ConfigureCenteredRect(statsDetailText.GetComponent<RectTransform>(), new Vector2(0f, -158f), new Vector2(340f, 92f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            statsDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
             statsPanelVisible = false;
             statsPanel.SetActive(false);
         }
 
-        private void SelectStatsTower(TowerDefinition tower)
+        private void CreateCodexPanel(Transform parent)
         {
-            selectedStatsTower = tower;
-            selectedStatsActiveWeapon = false;
-            UpdateStatsPanel();
-        }
+            codexPanel = CreatePanel("BreakerGrimoirePanel", parent, new Vector2(-14f, -48f), new Vector2(430f, 520f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            input.RegisterBlockingUiRect(codexPanel.GetComponent<RectTransform>());
+            var title = CreateText("CodexTitle", codexPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 15);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(390f, 24f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            title.text = "THE BREAKER'S GRIMOIRE";
 
-        private void SelectActiveWeaponStats()
-        {
-            selectedStatsTower = null;
-            selectedStatsActiveWeapon = true;
-            UpdateStatsPanel();
+            codexBodyText = CreateText("CodexBody", codexPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
+            ConfigureCenteredRect(codexBodyText.GetComponent<RectTransform>(), new Vector2(0f, -48f), new Vector2(390f, 450f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            codexBodyText.color = new Color(0.86f, 0.93f, 1f, 1f);
+
+            codexPanelVisible = false;
+            codexPanel.SetActive(false);
         }
 
         private void UpdateResultPanel()
@@ -638,6 +685,7 @@ namespace TowerDefense.UI
             HighlightSpeedButton(devSpeed10Button, Mathf.Approximately(Time.timeScale, 10f));
             HighlightToggleButton(devToggleButton, devPanelVisible);
             HighlightToggleButton(statsToggleButton, statsPanelVisible);
+            HighlightToggleButton(codexToggleButton, codexPanelVisible);
         }
 
         private static void HighlightSpeedButton(Button button, bool active)
@@ -664,11 +712,6 @@ namespace TowerDefense.UI
             }
 
             var unlockedTowers = towers.AvailableTowers;
-            if (!selectedStatsActiveWeapon && (selectedStatsTower == null || !ContainsTower(unlockedTowers, selectedStatsTower)))
-            {
-                selectedStatsTower = unlockedTowers.Count > 0 ? unlockedTowers[0] : null;
-            }
-
             var totalDamage = 0f;
             foreach (var entry in statsRows)
             {
@@ -697,7 +740,7 @@ namespace TowerDefense.UI
                 var damage = towers.GetDamageDealt(tower);
                 var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
                 text.text = $"{tower.displayName}  {damage:0}  {percent:0}%";
-                text.color = tower == selectedStatsTower ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
+                text.color = Color.white;
             }
 
             if (statsEmptyTowerText != null)
@@ -710,42 +753,88 @@ namespace TowerDefense.UI
                 var label = activeWeaponStatsButton.GetComponentInChildren<Text>();
                 var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
                 label.text = $"Volley of Arrows  {activeWeapon.TotalDamageDealt:0}  {activePercent:0}%";
-                label.color = selectedStatsActiveWeapon ? new Color(1f, 0.86f, 0.35f, 1f) : Color.white;
+                label.color = Color.white;
             }
+        }
 
-            if (statsDetailText == null)
+        private void UpdateCodexPanel()
+        {
+            if (codexPanel == null || !codexPanel.activeSelf || codexBodyText == null)
             {
                 return;
             }
 
-            if (selectedStatsActiveWeapon)
+            var text = new StringBuilder();
+            text.AppendLine("TOWERS");
+            var towerDefinitions = session.AllTowerDefinitions;
+            if (towerDefinitions == null || towerDefinitions.Count == 0)
             {
-                var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
-                statsDetailText.text =
-                    "Volley of Arrows\n" +
-                    $"Damage: {activeWeapon.Damage:0.0} per target\n" +
-                    $"Radius: {activeWeapon.Radius:0.0}\n" +
-                    $"Pierce cap: {activeWeapon.MaxTargets}\n" +
-                    $"Cooldown: {activeWeapon.CooldownSeconds:0.0}s\n" +
-                    $"Run damage: {activeWeapon.TotalDamageDealt:0} ({activePercent:0}%)";
-                return;
-            }
-
-            if (selectedStatsTower != null)
-            {
-                var damage = towers.GetDamageDealt(selectedStatsTower);
-                var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
-                statsDetailText.text =
-                    $"{selectedStatsTower.displayName}\n" +
-                    $"Damage: {selectedStatsTower.damage:0.0} per hit\n" +
-                    $"Range: {selectedStatsTower.range:0.0}\n" +
-                    $"Fire rate: {1f / Mathf.Max(0.01f, selectedStatsTower.fireInterval):0.0}/sec\n" +
-                    $"Projectile: single target\n" +
-                    $"Run damage: {damage:0} ({percent:0}%)";
+                text.AppendLine("No towers catalogued.");
             }
             else
             {
-                statsDetailText.text = "Unlock a tower or select Active Weapon.";
+                for (var i = 0; i < towerDefinitions.Count; i++)
+                {
+                    var tower = towerDefinitions[i];
+                    text.AppendLine($"{tower.displayName}");
+                    text.AppendLine($"  Role: {tower.role}");
+                    text.AppendLine($"  Damage: {tower.damage:0.0} per hit");
+                    text.AppendLine($"  Range: {tower.range:0.0}");
+                    text.AppendLine($"  Fire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec");
+                    text.AppendLine($"  Projectile: single target");
+                }
+            }
+
+            text.AppendLine();
+            text.AppendLine("ACTIVE WEAPONS");
+            text.AppendLine("Volley of Arrows");
+            text.AppendLine($"  Damage: {activeWeapon.Damage:0.0} per target");
+            text.AppendLine($"  Radius: {activeWeapon.Radius:0.0}");
+            text.AppendLine($"  Pierce cap: {activeWeapon.MaxTargets}");
+            text.AppendLine($"  Cooldown: {activeWeapon.CooldownSeconds:0.0}s");
+
+            text.AppendLine();
+            text.AppendLine("ENEMIES");
+            AppendEnemyEntries(text, includeBosses: false);
+
+            text.AppendLine();
+            text.AppendLine("BOSSES");
+            AppendEnemyEntries(text, includeBosses: true);
+
+            codexBodyText.text = text.ToString();
+        }
+
+        private void AppendEnemyEntries(StringBuilder text, bool includeBosses)
+        {
+            var entries = session.Level?.wave?.entries;
+            if (entries == null || entries.Length == 0)
+            {
+                text.AppendLine(includeBosses ? "No bosses catalogued." : "No enemies catalogued.");
+                return;
+            }
+
+            var seen = new HashSet<string>();
+            var added = false;
+            for (var i = 0; i < entries.Length; i++)
+            {
+                var enemy = entries[i].enemy;
+                if (enemy == null || !seen.Add(enemy.id) || (enemy.role == EnemyRole.Boss) != includeBosses)
+                {
+                    continue;
+                }
+
+                added = true;
+                text.AppendLine($"{enemy.displayName}");
+                text.AppendLine($"  Role: {enemy.role}");
+                text.AppendLine($"  Health: {enemy.maxHealth:0}");
+                text.AppendLine($"  Speed: {enemy.speed:0.0}");
+                text.AppendLine($"  Life damage: {enemy.lifeDamage}");
+                text.AppendLine($"  Kill reward: {enemy.killReward} Essence");
+            }
+
+            if (!added)
+            {
+                text.AppendLine(includeBosses ? "No bosses catalogued yet." : "No enemies catalogued.");
             }
         }
 
