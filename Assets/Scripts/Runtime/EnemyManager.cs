@@ -30,7 +30,7 @@ namespace TowerDefense.Runtime
 
         public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
         {
-            ClearAll();
+            ClearAll(clearCombatTargets: false);
             wave = waveDefinition;
             path = route;
             elapsed = 0f;
@@ -42,7 +42,7 @@ namespace TowerDefense.Runtime
         public void StopWave()
         {
             wave = null;
-            ClearAll();
+            ClearAll(clearCombatTargets: true);
         }
 
         public void SpawnDebug(EnemyDefinition enemyDefinition, PathRoute route)
@@ -310,7 +310,7 @@ namespace TowerDefense.Runtime
             return appliedDamage;
         }
 
-        public void ClearAll()
+        public void ClearAll(bool clearCombatTargets = true)
         {
             foreach (var enemy in activeEnemies)
             {
@@ -322,7 +322,10 @@ namespace TowerDefense.Runtime
             }
 
             activeEnemies.Clear();
-            combatTargets.Clear();
+            if (clearCombatTargets)
+            {
+                combatTargets.Clear();
+            }
         }
 
         private void Spawn(EnemyDefinition enemyDefinition)

@@ -51,6 +51,10 @@ namespace TowerDefense.Runtime
             {
                 enemies.RegisterCombatTarget(this);
             }
+            else if (towerDefinition.behavior == TowerBehavior.Barracks)
+            {
+                FillBarracksImmediately();
+            }
 
             UpdateAuraVisual();
         }
@@ -138,13 +142,7 @@ namespace TowerDefense.Runtime
                 }
             }
 
-            var slotUse = 0;
-            foreach (var unit in alliedUnits)
-            {
-                slotUse += unit != null ? Mathf.Max(1, definition.alliedUnitSlots) : 0;
-            }
-
-            if (slotUse >= definition.barracksCapacity)
+            if (GetUsedBarracksSlots() >= definition.barracksCapacity)
             {
                 return;
             }
@@ -159,15 +157,37 @@ namespace TowerDefense.Runtime
             respawnTimer = Mathf.Max(0.5f, definition.barracksRespawnSeconds);
         }
 
+        private int GetUsedBarracksSlots()
+        {
+            var slotUse = 0;
+            foreach (var unit in alliedUnits)
+            {
+                slotUse += unit != null ? Mathf.Max(1, definition.alliedUnitSlots) : 0;
+            }
+
+            return slotUse;
+        }
+
         private void SpawnAlliedUnit(int index)
         {
             var go = GameObject.CreatePrimitive(definition.barracksUnitType == AlliedUnitType.Paladin ? PrimitiveType.Capsule : PrimitiveType.Cube);
             go.name = $"Allied_{definition.barracksUnitType}";
+            go.transform.SetParent(transform, worldPositionStays: true);
             var angle = index * 75f * Mathf.Deg2Rad;
             var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.9f;
             var unit = go.AddComponent<AlliedUnitActor>();
             unit.Initialize(this, definition, enemies, transform.position + offset);
             alliedUnits.Add(unit);
+        }
+
+        private void FillBarracksImmediately()
+        {
+            while (GetUsedBarracksSlots() < definition.barracksCapacity)
+            {
+                SpawnAlliedUnit(alliedUnits.Count);
+            }
+
+            respawnTimer = Mathf.Max(0.5f, definition.barracksRespawnSeconds);
         }
 
         public void TakeDamage(float damage, EnemyActor source)
