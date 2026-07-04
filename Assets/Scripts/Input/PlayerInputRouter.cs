@@ -84,7 +84,7 @@ namespace TowerDefense.Input
             return plane.Raycast(ray, out var enter) ? ray.GetPoint(enter) : Vector3.zero;
         }
 
-        private bool IsPointerOverBlockingUi()
+        public bool IsPointerOverBlockingUi()
         {
             var mousePosition = UnityEngine.Input.mousePosition;
             for (var i = blockingUiRects.Count - 1; i >= 0; i--)

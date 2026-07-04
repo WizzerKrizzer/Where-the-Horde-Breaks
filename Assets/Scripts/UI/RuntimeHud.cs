@@ -586,19 +586,32 @@ namespace TowerDefense.UI
         private void CreateTopRightToggles(Transform parent)
         {
             statsToggleButton = CreateAnchoredButton("StatsToggle", parent, "STATS [TAB]", new Vector2(-70f, -18f), new Vector2(102f, 28f), new Vector2(1f, 1f), 11);
+            RegisterBlockingButton(statsToggleButton);
             statsToggleButton.onClick.AddListener(ToggleStatsPanel);
 
             debugSpawnToggleButton = CreateAnchoredButton("DebugSpawnToggle", parent, "SPAWN", new Vector2(-70f, -50f), new Vector2(102f, 24f), new Vector2(1f, 1f), 10);
+            RegisterBlockingButton(debugSpawnToggleButton);
             debugSpawnToggleButton.onClick.AddListener(ToggleDebugSpawnPanel);
 
             codexToggleButton = CreateAnchoredButton("CodexToggle", parent, "GRIMOIRE [G]", new Vector2(-186f, -18f), new Vector2(122f, 28f), new Vector2(1f, 1f), 10);
+            RegisterBlockingButton(codexToggleButton);
             codexToggleButton.onClick.AddListener(ToggleCodexPanel);
 
             upgradeToggleButton = CreateAnchoredButton("UpgradeToggle", parent, "UPGRADES [U]", new Vector2(-312f, -18f), new Vector2(126f, 28f), new Vector2(1f, 1f), 10);
+            RegisterBlockingButton(upgradeToggleButton);
             upgradeToggleButton.onClick.AddListener(ShowUpgradePanel);
 
             devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-428f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
+            RegisterBlockingButton(devToggleButton);
             devToggleButton.onClick.AddListener(ToggleDevPanel);
+        }
+
+        private void RegisterBlockingButton(Button button)
+        {
+            if (button != null)
+            {
+                input.RegisterBlockingUiRect(button.GetComponent<RectTransform>());
+            }
         }
 
         private void ToggleDevPanel()

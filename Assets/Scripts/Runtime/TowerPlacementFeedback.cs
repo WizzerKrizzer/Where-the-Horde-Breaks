@@ -35,8 +35,20 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (input.IsPointerOverBlockingUi())
+            {
+                SetVisible(false);
+                return;
+            }
+
             var selectedIndex = Mathf.Clamp(input.Current.SelectedTowerIndex, 0, towers.AvailableTowers.Count - 1);
             var definition = towers.AvailableTowers[selectedIndex];
+            if (towers.CountOf(definition) >= towers.GetPerTypeLimit(definition))
+            {
+                SetVisible(false);
+                return;
+            }
+
             var position = input.Current.PointerWorld;
             var canPlace = string.IsNullOrEmpty(towers.GetPlacementBlockReason(definition, position));
 
