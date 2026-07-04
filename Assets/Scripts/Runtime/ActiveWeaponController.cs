@@ -7,6 +7,7 @@ namespace TowerDefense.Runtime
     {
         private EnemyManager enemies;
         private PlayerInputRouter input;
+        private TowerManager towers;
         private float cooldown;
 
         public float Damage { get; set; } = 9.2f;
@@ -20,10 +21,11 @@ namespace TowerDefense.Runtime
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
         public bool IsReady => CanFire && CooldownRemaining <= 0f;
 
-        public void Initialize(EnemyManager enemyManager, PlayerInputRouter router)
+        public void Initialize(EnemyManager enemyManager, PlayerInputRouter router, TowerManager towerManager)
         {
             enemies = enemyManager;
             input = router;
+            towers = towerManager;
         }
 
         public void ResetRunStats()
@@ -36,6 +38,11 @@ namespace TowerDefense.Runtime
         {
             cooldown = Mathf.Max(0f, cooldown - Time.deltaTime);
             if (!CanFire || input == null || enemies == null || !input.Current.FireActive || cooldown > 0f)
+            {
+                return;
+            }
+
+            if (towers != null && towers.GetNearestTower(input.Current.PointerWorld) != null)
             {
                 return;
             }

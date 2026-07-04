@@ -239,6 +239,12 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (state.PlaceTower)
+            {
+                towers.TrySelectNearest(state.PointerWorld);
+                return;
+            }
+
             if (lives <= 0)
             {
                 Finish(false);

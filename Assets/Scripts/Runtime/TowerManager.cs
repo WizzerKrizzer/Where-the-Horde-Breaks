@@ -16,11 +16,13 @@ namespace TowerDefense.Runtime
         private PathRoute route;
         private float towerDamageMultiplier = 1f;
         private float towerFireRateMultiplier = 1f;
+        private TowerActor selectedTower;
         private const float MinimumPathDistance = 1.45f;
 
         public IReadOnlyList<TowerActor> Towers => towers;
         public IReadOnlyList<TowerDefinition> AvailableTowers { get; private set; }
         public int TowerCount => towers.Count;
+        public TowerActor SelectedTower => selectedTower;
 
         public void Initialize(EnemyManager enemyManager, PathRoute pathRoute, IReadOnlyList<TowerDefinition> towerDefinitions)
         {
@@ -170,6 +172,11 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
+            if (selectedTower == closest)
+            {
+                ClearSelectedTower();
+            }
+
             towers.Remove(closest);
             Destroy(closest.gameObject);
             return true;
@@ -186,6 +193,7 @@ namespace TowerDefense.Runtime
             }
 
             towers.Clear();
+            selectedTower = null;
         }
 
         public List<TowerPlacementRecord> CaptureLayout()
@@ -220,6 +228,59 @@ namespace TowerDefense.Runtime
         public float GetDamageDealt(TowerDefinition definition)
         {
             return towers.Where(tower => tower.Definition == definition).Sum(tower => tower.DamageDealt);
+        }
+
+        public bool TrySelectNearest(Vector3 position, float radius = 1.15f)
+        {
+            var tower = GetNearestTower(position, radius);
+            SetSelectedTower(tower);
+            return tower != null;
+        }
+
+        public TowerActor GetNearestTower(Vector3 position, float radius = 1.15f)
+        {
+            TowerActor closest = null;
+            var best = radius * radius;
+            foreach (var tower in towers)
+            {
+                if (tower == null || !tower.gameObject.activeSelf)
+                {
+                    continue;
+                }
+
+                var distance = (tower.transform.position - position).sqrMagnitude;
+                if (distance <= best)
+                {
+                    closest = tower;
+                    best = distance;
+                }
+            }
+
+            return closest;
+        }
+
+        public void ClearSelectedTower()
+        {
+            SetSelectedTower(null);
+        }
+
+        private void SetSelectedTower(TowerActor tower)
+        {
+            if (selectedTower == tower)
+            {
+                return;
+            }
+
+            if (selectedTower != null)
+            {
+                selectedTower.SetSelected(false);
+            }
+
+            selectedTower = tower;
+            if (selectedTower != null)
+            {
+                selectedTower.SetSelected(true);
+            }
         }
 
         private float GetDamageMultiplier(TowerDefinition definition)

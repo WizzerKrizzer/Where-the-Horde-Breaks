@@ -23,6 +23,9 @@ namespace TowerDefense.UI
         private Image activeWeaponIcon;
         private Image activeWeaponCooldownFill;
         private Text activeWeaponCooldownText;
+        private GameObject selectedTowerPanel;
+        private Text selectedTowerTitle;
+        private Text selectedTowerBody;
         private Button startBattleButton;
         private Button devSpeed1Button;
         private Button devSpeed2Button;
@@ -103,6 +106,7 @@ namespace TowerDefense.UI
             towerText = CreateText("TowerSelection", parent, new Vector2(12f, -84f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(320f, 100f);
             CreateActiveWeaponSlot(parent);
+            CreateSelectedTowerPanel(parent);
             CreateStartBattleButton(parent);
             CreateResultPanel(parent);
             CreateUpgradePanel(parent);
@@ -136,6 +140,7 @@ namespace TowerDefense.UI
 
             statusText.text = text.ToString();
             UpdateTowerText();
+            UpdateSelectedTowerPanel();
             UpdateActiveWeaponSlot();
             UpdateDevSpeedButtons();
             UpdateResultPanel();
@@ -586,6 +591,11 @@ namespace TowerDefense.UI
                 activeWeaponSlot.SetActive(visible);
             }
 
+            if (selectedTowerPanel != null)
+            {
+                selectedTowerPanel.SetActive(visible && towers.SelectedTower != null);
+            }
+
             if (resultPanel != null)
             {
                 resultPanel.SetActive(visible && session.Finished);
@@ -630,6 +640,65 @@ namespace TowerDefense.UI
             }
 
             upgradeToggleButton.gameObject.SetActive(!session.IsRunning);
+        }
+
+        private void CreateSelectedTowerPanel(Transform parent)
+        {
+            selectedTowerPanel = CreatePanel("SelectedTowerPanel", parent, new Vector2(12f, 18f), new Vector2(286f, 126f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            var image = selectedTowerPanel.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = new Color(0.02f, 0.025f, 0.03f, 0.74f);
+            }
+
+            selectedTowerTitle = CreateText("SelectedTowerTitle", selectedTowerPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 13);
+            ConfigureCenteredRect(selectedTowerTitle.GetComponent<RectTransform>(), new Vector2(12f, -12f), new Vector2(260f, 22f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            selectedTowerBody = CreateText("SelectedTowerBody", selectedTowerPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
+            ConfigureCenteredRect(selectedTowerBody.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(260f, 78f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            selectedTowerPanel.SetActive(false);
+        }
+
+        private void UpdateSelectedTowerPanel()
+        {
+            if (selectedTowerPanel == null || selectedTowerTitle == null || selectedTowerBody == null || IsUpgradePanelOpen())
+            {
+                return;
+            }
+
+            var tower = towers.SelectedTower;
+            if (tower != null && !tower.IsAlive)
+            {
+                towers.ClearSelectedTower();
+                tower = null;
+            }
+
+            selectedTowerPanel.SetActive(tower != null);
+            if (tower == null || tower.Definition == null)
+            {
+                return;
+            }
+
+            var definition = tower.Definition;
+            selectedTowerTitle.text = definition.displayName;
+            selectedTowerBody.text =
+                $"{FormatShortTowerStats(definition)}\n" +
+                $"This tower damage: {tower.DamageDealt:0}\n" +
+                $"{definition.displayName} type damage: {towers.GetDamageDealt(definition):0}";
+        }
+
+        private static string FormatShortTowerStats(TowerDefinition tower)
+        {
+            switch (tower.behavior)
+            {
+                case TowerBehavior.SlowAura:
+                    return $"Range: {tower.range:0.0}   Slow: {tower.slowPercent * 100f:0}%\nCapacity: {tower.slowCapacity:0.0} mass";
+                case TowerBehavior.Barrier:
+                    return $"Health: {tower.health:0}   Thorns: {tower.thornsDamage:0.0}\nPhysical blocker";
+                case TowerBehavior.Barracks:
+                    return $"Unit: {tower.barracksUnitType}   Capacity: {tower.barracksCapacity}\nUnit dmg: {tower.alliedUnitDamage:0.0}   Respawn: {tower.barracksRespawnSeconds:0.0}s";
+                default:
+                    return $"Damage: {tower.damage:0.0}   Range: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec";
+            }
         }
 
         private void CreateStartBattleButton(Transform parent)

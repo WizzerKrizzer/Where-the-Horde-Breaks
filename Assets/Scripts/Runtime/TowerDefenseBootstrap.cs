@@ -26,7 +26,7 @@ namespace TowerDefense.Runtime
             var enemyManager = new GameObject("EnemyManager").AddComponent<EnemyManager>();
             var towerManager = new GameObject("TowerManager").AddComponent<TowerManager>();
             var activeWeapon = new GameObject("ActiveWeapon").AddComponent<ActiveWeaponController>();
-            activeWeapon.Initialize(enemyManager, input);
+            activeWeapon.Initialize(enemyManager, input, towerManager);
             var popups = new GameObject("WorldPopups").AddComponent<WorldPopupManager>();
             popups.Initialize(camera);
 

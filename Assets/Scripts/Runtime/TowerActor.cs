@@ -14,6 +14,8 @@ namespace TowerDefense.Runtime
         private float health;
         private float respawnTimer;
         private readonly List<AlliedUnitActor> alliedUnits = new();
+        private GameObject auraDisc;
+        private GameObject selectionDisc;
 
         public TowerDefinition Definition => definition;
         public float DamageDealt { get; private set; }
@@ -49,6 +51,8 @@ namespace TowerDefense.Runtime
             {
                 enemies.RegisterCombatTarget(this);
             }
+
+            UpdateAuraVisual();
         }
 
         private void OnDestroy()
@@ -56,6 +60,16 @@ namespace TowerDefense.Runtime
             if (definition != null && definition.behavior == TowerBehavior.Barrier)
             {
                 enemies?.UnregisterCombatTarget(this);
+            }
+
+            if (auraDisc != null)
+            {
+                Destroy(auraDisc);
+            }
+
+            if (selectionDisc != null)
+            {
+                Destroy(selectionDisc);
             }
         }
 
@@ -74,6 +88,7 @@ namespace TowerDefense.Runtime
                     UpdateBarracks();
                     return;
                 case TowerBehavior.SlowAura:
+                    UpdateAuraVisual();
                     enemies.ApplySlowAura(transform.position, definition.range, definition.slowPercent, definition.slowCapacity);
                     return;
             }
@@ -183,9 +198,62 @@ namespace TowerDefense.Runtime
             alliedUnits.Remove(unit);
         }
 
+        public void SetSelected(bool selected)
+        {
+            EnsureSelectionVisual();
+            selectionDisc.SetActive(selected);
+            if (selected)
+            {
+                selectionDisc.transform.position = transform.position + Vector3.up * 0.055f;
+                selectionDisc.transform.localScale = new Vector3(definition.range * 2f, 0.035f, definition.range * 2f);
+            }
+        }
+
         public void RecordDamage(float damage)
         {
             DamageDealt += damage;
+        }
+
+        private void UpdateAuraVisual()
+        {
+            if (definition == null || definition.behavior != TowerBehavior.SlowAura)
+            {
+                if (auraDisc != null)
+                {
+                    auraDisc.SetActive(false);
+                }
+                return;
+            }
+
+            EnsureAuraVisual();
+            auraDisc.SetActive(definition.slowPercent > 0f && definition.slowCapacity > 0f);
+            auraDisc.transform.position = transform.position + Vector3.up * 0.035f;
+            auraDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
+        }
+
+        private void EnsureAuraVisual()
+        {
+            if (auraDisc != null)
+            {
+                return;
+            }
+
+            auraDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            auraDisc.name = "BellSlowAura";
+            auraDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.3f, 0.75f, 1f, 0.12f));
+        }
+
+        private void EnsureSelectionVisual()
+        {
+            if (selectionDisc != null)
+            {
+                return;
+            }
+
+            selectionDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            selectionDisc.name = "TowerSelectionRange";
+            selectionDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.9f, 0.25f, 0.16f));
+            selectionDisc.SetActive(false);
         }
     }
 }
