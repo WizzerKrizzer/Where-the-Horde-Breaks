@@ -747,16 +747,16 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "DEV WALLET";
 
-            CreateButton("AddKillEssence", devPanel.transform, $"+100 {FormatCurrencySymbol(CurrencyType.KillEssence)}", new Vector2(0f, -42f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.AddCurrency(CurrencyType.KillEssence, 100));
-            CreateButton("AddVictorySigil", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.VictorySigil)}", new Vector2(0f, -70f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.AddCurrency(CurrencyType.VictorySigil, 10));
-            CreateButton("AddPerfectSigil", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.PerfectSigil)}", new Vector2(0f, -98f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.AddCurrency(CurrencyType.PerfectSigil, 10));
-            CreateButton("AddChallengeToken", devPanel.transform, $"+10 {FormatCurrencySymbol(CurrencyType.ChallengeToken)}", new Vector2(0f, -126f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.AddCurrency(CurrencyType.ChallengeToken, 10));
-            CreateButton("AddBossCore", devPanel.transform, $"+5 {FormatCurrencySymbol(CurrencyType.BossCore)}", new Vector2(0f, -154f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.AddCurrency(CurrencyType.BossCore, 5));
+            CreateButton("AddKillEssence", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.KillEssence)}", new Vector2(0f, -42f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.AddCurrency(CurrencyType.KillEssence, 10000));
+            CreateButton("AddVictorySigil", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.VictorySigil)}", new Vector2(0f, -70f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.AddCurrency(CurrencyType.VictorySigil, 10000));
+            CreateButton("AddPerfectSigil", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.PerfectSigil)}", new Vector2(0f, -98f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.AddCurrency(CurrencyType.PerfectSigil, 10000));
+            CreateButton("AddChallengeToken", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.ChallengeToken)}", new Vector2(0f, -126f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.AddCurrency(CurrencyType.ChallengeToken, 10000));
+            CreateButton("AddBossCore", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.BossCore)}", new Vector2(0f, -154f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.AddCurrency(CurrencyType.BossCore, 10000));
 
             var speedLabel = CreateText("DevSpeedTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(speedLabel.GetComponent<RectTransform>(), new Vector2(0f, -184f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
