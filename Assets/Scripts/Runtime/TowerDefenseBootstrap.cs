@@ -420,7 +420,7 @@ namespace TowerDefense.Runtime
                     effects = new[]
                     {
                         new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 12f },
+                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 50f },
                         new UpgradeEffect { type = UpgradeEffectType.TowerSlowCapacityFlat, targetId = "bell", value = 10f }
                     },
                     isMajorUnlock = true
