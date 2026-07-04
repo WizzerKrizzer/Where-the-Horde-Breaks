@@ -27,6 +27,7 @@ namespace TowerDefense.UI
         private Button devSpeed5Button;
         private Button devSpeed10Button;
         private Button devToggleButton;
+        private Button upgradeToggleButton;
         private GameObject resultPanel;
         private Text resultTitle;
         private Text resultBody;
@@ -129,6 +130,7 @@ namespace TowerDefense.UI
             UpdateActiveWeaponSlot();
             UpdateDevSpeedButtons();
             UpdateResultPanel();
+            UpdateUpgradeShortcutButton();
             UpdateUpgradePanel();
             UpdateStatsPanel();
             UpdateCodexPanel();
@@ -144,6 +146,11 @@ namespace TowerDefense.UI
             if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
             {
                 ToggleStatsPanel();
+            }
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.U))
+            {
+                ShowUpgradePanel();
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.G))
@@ -325,6 +332,11 @@ namespace TowerDefense.UI
 
         private void ShowUpgradePanel()
         {
+            if (session.IsRunning)
+            {
+                return;
+            }
+
             SetUpgradePanelVisible(true);
             ApplyUpgradeTreeTransform();
             ClearUpgradeDetails();
@@ -494,10 +506,25 @@ namespace TowerDefense.UI
                 codexToggleButton.gameObject.SetActive(visible);
             }
 
+            if (upgradeToggleButton != null)
+            {
+                upgradeToggleButton.gameObject.SetActive(visible && !session.IsRunning);
+            }
+
             if (devToggleButton != null)
             {
                 devToggleButton.gameObject.SetActive(visible);
             }
+        }
+
+        private void UpdateUpgradeShortcutButton()
+        {
+            if (upgradeToggleButton == null || IsUpgradePanelOpen())
+            {
+                return;
+            }
+
+            upgradeToggleButton.gameObject.SetActive(!session.IsRunning);
         }
 
         private void CreateDevPanel(Transform parent)
@@ -550,7 +577,10 @@ namespace TowerDefense.UI
             codexToggleButton = CreateAnchoredButton("CodexToggle", parent, "GRIMOIRE [G]", new Vector2(-186f, -18f), new Vector2(122f, 28f), new Vector2(1f, 1f), 10);
             codexToggleButton.onClick.AddListener(ToggleCodexPanel);
 
-            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-292f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
+            upgradeToggleButton = CreateAnchoredButton("UpgradeToggle", parent, "UPGRADES [U]", new Vector2(-312f, -18f), new Vector2(126f, 28f), new Vector2(1f, 1f), 10);
+            upgradeToggleButton.onClick.AddListener(ShowUpgradePanel);
+
+            devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-428f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
             devToggleButton.onClick.AddListener(ToggleDevPanel);
         }
 
