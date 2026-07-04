@@ -382,6 +382,7 @@ namespace TowerDefense.UI
                 return;
             }
 
+            upgradeTreePan = ClampUpgradeTreePan(upgradeTreePan);
             upgradeTreeContent.anchoredPosition = upgradeTreePan;
             upgradeTreeContent.localScale = Vector3.one * upgradeTreeZoom;
             var labelScale = Vector3.one * Mathf.Clamp(1f / upgradeTreeZoom, 0.72f, 1.65f);
@@ -392,6 +393,22 @@ namespace TowerDefense.UI
                     upgradeTreeLabels[i].localScale = labelScale;
                 }
             }
+        }
+
+        private Vector2 ClampUpgradeTreePan(Vector2 pan)
+        {
+            if (upgradeTreeViewport == null || upgradeTreeContent == null)
+            {
+                return pan;
+            }
+
+            var viewportSize = upgradeTreeViewport.rect.size;
+            var contentSize = upgradeTreeContent.rect.size * upgradeTreeZoom;
+            var maxPanX = Mathf.Max(0f, (contentSize.x - viewportSize.x) * 0.5f);
+            var maxPanY = Mathf.Max(0f, (contentSize.y - viewportSize.y) * 0.5f);
+            return new Vector2(
+                Mathf.Clamp(pan.x, -maxPanX, maxPanX),
+                Mathf.Clamp(pan.y, -maxPanY, maxPanY));
         }
 
         private void SetUpgradePanelVisible(bool visible)
