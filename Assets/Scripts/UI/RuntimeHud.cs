@@ -142,6 +142,11 @@ namespace TowerDefense.UI
 
         private void HandleHudShortcuts()
         {
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) && CloseCurrentOverlay())
+            {
+                return;
+            }
+
             if (IsUpgradePanelOpen())
             {
                 return;
@@ -166,6 +171,57 @@ namespace TowerDefense.UI
             {
                 ToggleDevPanel();
             }
+        }
+
+        private bool CloseCurrentOverlay()
+        {
+            if (IsUpgradePanelOpen())
+            {
+                SetUpgradePanelVisible(false);
+                return true;
+            }
+
+            if (debugSpawnPanelVisible)
+            {
+                debugSpawnPanelVisible = false;
+                if (debugSpawnPanel != null)
+                {
+                    debugSpawnPanel.SetActive(false);
+                }
+                return true;
+            }
+
+            if (statsPanelVisible)
+            {
+                statsPanelVisible = false;
+                if (statsPanel != null)
+                {
+                    statsPanel.SetActive(false);
+                }
+                return true;
+            }
+
+            if (codexPanelVisible)
+            {
+                codexPanelVisible = false;
+                if (codexPanel != null)
+                {
+                    codexPanel.SetActive(false);
+                }
+                return true;
+            }
+
+            if (devPanelVisible)
+            {
+                devPanelVisible = false;
+                if (devPanel != null)
+                {
+                    devPanel.SetActive(false);
+                }
+                return true;
+            }
+
+            return false;
         }
 
         private void UpdateTowerText()
