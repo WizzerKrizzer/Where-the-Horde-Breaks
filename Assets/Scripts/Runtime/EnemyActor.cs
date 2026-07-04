@@ -25,6 +25,7 @@ namespace TowerDefense.Runtime
         private float currentMaxHealth;
         private bool active;
         private ICombatTarget currentCombatTarget;
+        private Renderer bodyRenderer;
         private Transform healthFill;
 
         public EnemyDefinition Definition => definition;
@@ -53,10 +54,10 @@ namespace TowerDefense.Runtime
             active = true;
             currentCombatTarget = null;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
-            var renderer = GetComponent<Renderer>();
-            if (renderer != null)
+            bodyRenderer = GetComponent<Renderer>();
+            if (bodyRenderer != null)
             {
-                renderer.material = BootstrapMaterials.Get(enemyDefinition.color);
+                bodyRenderer.material = BootstrapMaterials.Get(enemyDefinition.color);
             }
 
             EnsureHealthBar();
@@ -94,6 +95,7 @@ namespace TowerDefense.Runtime
             else
             {
                 slowMultiplier = 1f;
+                UpdateSlowVisual(false);
             }
 
             if (TryAttackCombatTarget())
@@ -171,6 +173,7 @@ namespace TowerDefense.Runtime
 
             slowMultiplier = Mathf.Min(slowMultiplier, 1f - Mathf.Clamp(slowPercent, 0f, 0.95f));
             slowTimer = Mathf.Max(slowTimer, duration);
+            UpdateSlowVisual(true);
         }
 
         public void Heal(float amount)
@@ -225,6 +228,12 @@ namespace TowerDefense.Runtime
 
         private bool TryAttackCombatTarget()
         {
+            if (definition.isFlying)
+            {
+                ReleaseCombatTarget();
+                return false;
+            }
+
             var target = currentCombatTarget;
             if (target == null || !target.IsAlive || !IsInCombatRange(target))
             {
@@ -274,6 +283,18 @@ namespace TowerDefense.Runtime
         {
             currentCombatTarget?.RemoveBlocker(this);
             currentCombatTarget = null;
+        }
+
+        private void UpdateSlowVisual(bool slowed)
+        {
+            if (bodyRenderer == null || definition == null)
+            {
+                return;
+            }
+
+            bodyRenderer.material = BootstrapMaterials.Get(slowed
+                ? Color.Lerp(definition.color, new Color(0.28f, 0.72f, 1f), 0.58f)
+                : definition.color);
         }
 
         private void MoveToPathPosition()

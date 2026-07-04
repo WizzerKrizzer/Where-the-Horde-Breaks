@@ -6,11 +6,13 @@ namespace TowerDefense.Runtime
 {
     public sealed class AlliedUnitActor : MonoBehaviour, ICombatTarget
     {
+        private static readonly List<AlliedUnitActor> AllUnits = new();
         private EnemyManager enemies;
         private TowerActor owner;
         private TowerDefinition definition;
         private readonly List<EnemyActor> blockers = new();
         private Vector3 rallyPoint;
+        private Vector3 formationOffset;
         private float health;
         private float maxHealth;
         private float attackCooldown;
@@ -24,7 +26,7 @@ namespace TowerDefense.Runtime
         public float CurrentBlockedMass => GetBlockedMass();
         private bool IsRangedArcher => definition != null && definition.barracksUnitType == AlliedUnitType.Archer;
 
-        public void Initialize(TowerActor ownerTower, TowerDefinition towerDefinition, EnemyManager enemyManager, Vector3 position)
+        public void Initialize(TowerActor ownerTower, TowerDefinition towerDefinition, EnemyManager enemyManager, Vector3 position, int formationIndex)
         {
             owner = ownerTower;
             definition = towerDefinition;
@@ -33,8 +35,9 @@ namespace TowerDefense.Runtime
             health = maxHealth;
             attackCooldown = Random.Range(0f, Mathf.Max(0.1f, towerDefinition.alliedUnitAttackInterval));
             transform.position = position;
+            formationOffset = GetFormationOffset(formationIndex, towerDefinition);
             rallyPoint = enemies != null
-                ? towerDefinition.barracksUnitType == AlliedUnitType.Archer ? enemies.GetPathSidePosition(position, 1.85f) : enemies.GetNearestPathPosition(position)
+                ? towerDefinition.barracksUnitType == AlliedUnitType.Archer ? enemies.GetPathSidePosition(position, 1.85f) + formationOffset : enemies.GetNearestPathPosition(position) + formationOffset
                 : position;
             transform.localScale = GetScale(towerDefinition);
             GetComponent<Renderer>().material = BootstrapMaterials.Get(GetColor(towerDefinition));
@@ -45,10 +48,15 @@ namespace TowerDefense.Runtime
                 enemies.RegisterCombatTarget(this);
             }
             gameObject.SetActive(true);
+            if (!AllUnits.Contains(this))
+            {
+                AllUnits.Add(this);
+            }
         }
 
         private void OnDestroy()
         {
+            AllUnits.Remove(this);
             ReleaseAllBlockers();
             enemies?.UnregisterCombatTarget(this);
         }
@@ -77,7 +85,7 @@ namespace TowerDefense.Runtime
             var attackRange = Mathf.Max(definition.alliedUnitRange, CombatRadius + target.Definition.visualScale * 0.5f + 0.2f);
             if (!IsWithinXzRange(target.transform.position, attackRange))
             {
-                MoveToward(target.transform.position);
+                MoveToward(target.transform.position + formationOffset * 0.45f);
                 return;
             }
 
@@ -179,12 +187,42 @@ namespace TowerDefense.Runtime
         {
             var current = transform.position;
             destination.y = current.y;
+            destination += GetSeparationOffset();
             if (IsWithinXzRange(destination, 0.08f))
             {
                 return;
             }
 
             transform.position = Vector3.MoveTowards(current, destination, definition.alliedUnitMoveSpeed * Time.deltaTime);
+        }
+
+        private Vector3 GetSeparationOffset()
+        {
+            var offset = Vector3.zero;
+            for (var i = AllUnits.Count - 1; i >= 0; i--)
+            {
+                var other = AllUnits[i];
+                if (other == null || other == this || !other.IsAlive)
+                {
+                    if (other == null)
+                    {
+                        AllUnits.RemoveAt(i);
+                    }
+                    continue;
+                }
+
+                var away = transform.position - other.transform.position;
+                away.y = 0f;
+                var distance = away.magnitude;
+                if (distance <= 0.001f || distance > 0.72f)
+                {
+                    continue;
+                }
+
+                offset += away.normalized * (0.72f - distance);
+            }
+
+            return Vector3.ClampMagnitude(offset, 0.85f);
         }
 
         private bool IsWithinXzRange(Vector3 position, float range)
@@ -223,12 +261,21 @@ namespace TowerDefense.Runtime
             switch (towerDefinition.barracksUnitType)
             {
                 case AlliedUnitType.Archer:
-                    return new Vector3(0.32f, 0.7f, 0.32f);
+                    return new Vector3(0.24f, 0.52f, 0.24f);
                 case AlliedUnitType.Paladin:
-                    return new Vector3(0.58f, 0.9f, 0.58f);
+                    return new Vector3(0.42f, 0.72f, 0.42f);
                 default:
-                    return new Vector3(0.45f, 0.75f, 0.45f);
+                    return new Vector3(0.34f, 0.6f, 0.34f);
             }
+        }
+
+        private static Vector3 GetFormationOffset(int index, TowerDefinition towerDefinition)
+        {
+            var row = index / 3;
+            var column = index % 3 - 1;
+            var side = towerDefinition.barracksUnitType == AlliedUnitType.Archer ? 0.55f : 0.42f;
+            var forward = towerDefinition.barracksUnitType == AlliedUnitType.Archer ? 0.42f : 0.34f;
+            return new Vector3(column * side, 0f, row * forward);
         }
 
         private static Color GetColor(TowerDefinition towerDefinition)

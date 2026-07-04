@@ -18,6 +18,7 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyActor> blockers = new();
         private GameObject auraDisc;
         private GameObject selectionDisc;
+        private Transform barrierHealthFill;
 
         public TowerDefinition Definition => definition;
         public float DamageDealt { get; private set; }
@@ -56,6 +57,8 @@ namespace TowerDefense.Runtime
             if (towerDefinition.behavior == TowerBehavior.Barrier)
             {
                 enemies.RegisterCombatTarget(this);
+                EnsureBarrierHealthBar();
+                UpdateBarrierHealthBar();
             }
             else if (towerDefinition.behavior == TowerBehavior.Barracks)
             {
@@ -182,7 +185,7 @@ namespace TowerDefense.Runtime
             var angle = index * 75f * Mathf.Deg2Rad;
             var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.9f;
             var unit = go.AddComponent<AlliedUnitActor>();
-            unit.Initialize(this, definition, enemies, transform.position + offset);
+            unit.Initialize(this, definition, enemies, transform.position + offset, index);
             alliedUnits.Add(unit);
         }
 
@@ -205,6 +208,7 @@ namespace TowerDefense.Runtime
 
             health -= damage;
             UpdateBarrierDamageVisual();
+            UpdateBarrierHealthBar();
             DamagePopup.Show(transform.position, damage, new Color(1f, 0.25f, 0.18f, 1f));
             if (definition.thornsDamage > 0f && source != null && source.IsAlive)
             {
@@ -273,6 +277,47 @@ namespace TowerDefense.Runtime
 
             var healthPercent = Mathf.Clamp01(health / Mathf.Max(1f, maxHealth));
             renderer.material = BootstrapMaterials.Get(Color.Lerp(new Color(0.75f, 0.12f, 0.08f), definition.color, healthPercent));
+        }
+
+        private void EnsureBarrierHealthBar()
+        {
+            if (barrierHealthFill != null)
+            {
+                return;
+            }
+
+            var root = new GameObject("BarrierHealthBar");
+            root.transform.SetParent(transform, false);
+            root.transform.localPosition = new Vector3(0f, 0.78f, 0f);
+            root.transform.localRotation = Quaternion.identity;
+            root.transform.localScale = Vector3.one;
+
+            var background = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            background.name = "BarrierHealthBarBackground";
+            background.transform.SetParent(root.transform, false);
+            background.transform.localPosition = Vector3.zero;
+            background.transform.localScale = new Vector3(1.28f, 0.08f, 0.12f);
+            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.035f, 0.025f, 0.02f, 1f));
+
+            var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fill.name = "BarrierHealthBarFill";
+            fill.transform.SetParent(root.transform, false);
+            fill.transform.localPosition = new Vector3(-0.64f, 0.012f, 0f);
+            fill.transform.localScale = new Vector3(1.28f, 0.09f, 0.14f);
+            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.95f, 0.55f, 0.2f, 1f));
+            barrierHealthFill = fill.transform;
+        }
+
+        private void UpdateBarrierHealthBar()
+        {
+            if (barrierHealthFill == null)
+            {
+                return;
+            }
+
+            var normalizedHealth = Mathf.Clamp01(health / Mathf.Max(1f, maxHealth));
+            barrierHealthFill.localScale = new Vector3(1.28f * normalizedHealth, 0.09f, 0.14f);
+            barrierHealthFill.localPosition = new Vector3(-0.64f + 0.64f * normalizedHealth, 0.012f, 0f);
         }
 
         public void NotifyAlliedUnitLost(AlliedUnitActor unit)
