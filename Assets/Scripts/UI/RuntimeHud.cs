@@ -1315,7 +1315,7 @@ namespace TowerDefense.UI
             var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
             upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
             var priceLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats: {FormatEffects(selectedUpgradeNode.effects)}\n\nPrice: {priceLine}";
+            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats: {FormatEffects(selectedUpgradeNode.effects)}\n\n{priceLine}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
@@ -1382,10 +1382,29 @@ namespace TowerDefense.UI
 
                 text.Append(costs[i].amount);
                 text.Append(' ');
-                text.Append(costs[i].currency);
+                text.Append(FormatCurrencySymbol(costs[i].currency));
             }
 
             return text.ToString();
+        }
+
+        private static string FormatCurrencySymbol(CurrencyType currency)
+        {
+            switch (currency)
+            {
+                case CurrencyType.KillEssence:
+                    return "●";
+                case CurrencyType.VictorySigil:
+                    return "◆";
+                case CurrencyType.PerfectSigil:
+                    return "◇";
+                case CurrencyType.ChallengeToken:
+                    return "▲";
+                case CurrencyType.BossCore:
+                    return "■";
+                default:
+                    return "?";
+            }
         }
 
         private static string FormatEffects(UpgradeEffect[] effects)
