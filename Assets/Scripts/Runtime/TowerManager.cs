@@ -126,11 +126,9 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            go.name = $"Tower_{definition.id}";
+            var go = TowerVisualFactory.CreateTowerVisual(definition, $"Tower_{definition.id}");
             go.transform.SetParent(transform);
             go.transform.position = position;
-            go.transform.localScale = new Vector3(0.8f, 0.7f, 0.8f);
             var tower = go.AddComponent<TowerActor>();
             tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
             towers.Add(tower);

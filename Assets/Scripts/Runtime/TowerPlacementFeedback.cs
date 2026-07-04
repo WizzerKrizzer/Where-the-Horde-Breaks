@@ -12,6 +12,7 @@ namespace TowerDefense.Runtime
         private GameObject rangeDisc;
         private Renderer previewRenderer;
         private Renderer rangeRenderer;
+        private string previewTowerId;
 
         public void Initialize(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager)
         {
@@ -52,9 +53,10 @@ namespace TowerDefense.Runtime
             var position = input.Current.PointerWorld;
             var canPlace = string.IsNullOrEmpty(towers.GetPlacementBlockReason(definition, position));
 
+            EnsurePreviewTower(definition);
             SetVisible(true);
             previewTower.transform.position = position + Vector3.up * 0.35f;
-            previewTower.transform.localScale = new Vector3(0.8f, 0.7f, 0.8f);
+            TowerVisualFactory.ApplyScale(previewTower.transform, definition);
             rangeDisc.transform.position = position + Vector3.up * 0.04f;
             rangeDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
 
@@ -64,15 +66,28 @@ namespace TowerDefense.Runtime
 
         private void CreatePreviewObjects()
         {
-            previewTower = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            previewTower.name = "TowerPlacementPreview";
-            previewRenderer = previewTower.GetComponent<Renderer>();
-
             rangeDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             rangeDisc.name = "TowerRangePreview";
             rangeRenderer = rangeDisc.GetComponent<Renderer>();
 
             SetVisible(false);
+        }
+
+        private void EnsurePreviewTower(TowerDefense.Data.TowerDefinition definition)
+        {
+            if (previewTower != null && previewTowerId == definition.id)
+            {
+                return;
+            }
+
+            if (previewTower != null)
+            {
+                Destroy(previewTower);
+            }
+
+            previewTower = TowerVisualFactory.CreateTowerVisual(definition, "TowerPlacementPreview");
+            previewRenderer = previewTower.GetComponent<Renderer>();
+            previewTowerId = definition.id;
         }
 
         private void SetVisible(bool visible)
