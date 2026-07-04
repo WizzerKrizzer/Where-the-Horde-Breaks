@@ -9,6 +9,8 @@ namespace TowerDefense.Data
         public string displayName = "Enemy";
         [TextArea(2, 4)]
         public string shortDescription = "A hostile creature marching toward the gate.";
+        [TextArea(2, 4)]
+        public string weaknessDescription = "Weaknesses have not been defined yet.";
         public EnemyRole role = EnemyRole.Runner;
         public float maxHealth = 10f;
         public float speed = 3f;

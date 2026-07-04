@@ -9,6 +9,8 @@ namespace TowerDefense.Data
         public string displayName = "Tower";
         [TextArea(2, 4)]
         public string shortDescription = "A defensive tower.";
+        [TextArea(2, 4)]
+        public string weaknessDescription = "Weaknesses have not been defined yet.";
         public TowerRole role = TowerRole.ArcherLine;
         public int eraIndex;
         public int perTypeLimit = 6;
