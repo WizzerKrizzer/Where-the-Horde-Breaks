@@ -60,10 +60,12 @@ namespace TowerDefense.UI
         private bool statsPanelVisible;
         private GameObject codexPanel;
         private RectTransform codexListContent;
+        private RectTransform codexDetailContent;
         private Text codexDetailText;
         private CodexSector codexSector = CodexSector.Turrets;
         private string selectedCodexId;
         private float codexScroll;
+        private float codexDetailScroll;
         private bool codexListDirty = true;
         private bool codexPanelVisible;
 
@@ -928,7 +930,20 @@ namespace TowerDefense.UI
 
             var detailPanel = CreatePanel("CodexDetails", codexPanel.transform, new Vector2(118f, -82f), new Vector2(286f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.36f);
-            codexDetailText = CreateText("CodexDetailText", detailPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
+            detailPanel.AddComponent<Mask>().showMaskGraphic = false;
+            var detailScrollInput = detailPanel.AddComponent<CodexListScrollInput>();
+            detailScrollInput.Initialize(OnCodexDetailScrolled);
+
+            var detailContentObject = new GameObject("CodexDetailContent");
+            detailContentObject.transform.SetParent(detailPanel.transform, false);
+            codexDetailContent = detailContentObject.AddComponent<RectTransform>();
+            codexDetailContent.anchorMin = new Vector2(0.5f, 1f);
+            codexDetailContent.anchorMax = new Vector2(0.5f, 1f);
+            codexDetailContent.pivot = new Vector2(0.5f, 1f);
+            codexDetailContent.anchoredPosition = Vector2.zero;
+            codexDetailContent.sizeDelta = new Vector2(250f, 360f);
+
+            codexDetailText = CreateText("CodexDetailText", codexDetailContent, Vector2.zero, TextAnchor.UpperLeft, 11);
             ConfigureCenteredRect(codexDetailText.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(250f, 360f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             codexDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
 
@@ -1070,6 +1085,7 @@ namespace TowerDefense.UI
             codexSector = sector;
             selectedCodexId = null;
             codexScroll = 0f;
+            codexDetailScroll = 0f;
             codexListDirty = true;
             UpdateCodexDetails();
         }
@@ -1105,6 +1121,7 @@ namespace TowerDefense.UI
                 button.onClick.AddListener(() =>
                 {
                     selectedCodexId = entry.id;
+                    codexDetailScroll = 0f;
                     codexListDirty = true;
                     UpdateCodexDetails();
                 });
@@ -1131,6 +1148,7 @@ namespace TowerDefense.UI
             }
 
             codexDetailText.text = selected?.details ?? "Select an entry.";
+            ApplyCodexDetailScroll();
         }
 
         private List<CodexEntry> GetCodexEntries()
@@ -1206,6 +1224,12 @@ namespace TowerDefense.UI
             ApplyCodexScroll(GetCodexEntries().Count);
         }
 
+        private void OnCodexDetailScrolled(float scrollDelta)
+        {
+            codexDetailScroll -= scrollDelta * 34f;
+            ApplyCodexDetailScroll();
+        }
+
         private void ApplyCodexScroll(int entryCount)
         {
             if (codexListContent == null)
@@ -1218,6 +1242,26 @@ namespace TowerDefense.UI
             var maxScroll = Mathf.Max(0f, contentHeight - 400f);
             codexScroll = Mathf.Clamp(codexScroll, 0f, maxScroll);
             codexListContent.anchoredPosition = new Vector2(0f, codexScroll);
+        }
+
+        private void ApplyCodexDetailScroll()
+        {
+            if (codexDetailContent == null || codexDetailText == null)
+            {
+                return;
+            }
+
+            var textRect = codexDetailText.GetComponent<RectTransform>();
+            var contentHeight = Mathf.Max(360f, codexDetailText.preferredHeight + 34f);
+            codexDetailContent.sizeDelta = new Vector2(codexDetailContent.sizeDelta.x, contentHeight);
+            if (textRect != null)
+            {
+                textRect.sizeDelta = new Vector2(textRect.sizeDelta.x, contentHeight - 28f);
+            }
+
+            var maxScroll = Mathf.Max(0f, contentHeight - 360f);
+            codexDetailScroll = Mathf.Clamp(codexDetailScroll, 0f, maxScroll);
+            codexDetailContent.anchoredPosition = new Vector2(0f, codexDetailScroll);
         }
 
         private static bool ContainsTower(IReadOnlyList<TowerDefinition> towerList, TowerDefinition tower)
