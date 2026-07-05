@@ -770,25 +770,25 @@ namespace TowerDefense.UI
             devSpeed5Button.onClick.AddListener(() => SetTestSpeed(5f));
             devSpeed10Button.onClick.AddListener(() => SetTestSpeed(10f));
 
-            CreateButton("RefundUpgrades", devPanel.transform, "RESET UPGRADES", new Vector2(0f, -240f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateButton("ClearCurrencies", devPanel.transform, "CLEAR CURRENCIES", new Vector2(0f, -268f), new Vector2(178f, 24f), 12)
-                .onClick.AddListener(() => session.ClearCurrencies());
-            CreateButton("ResetRewardProgress", devPanel.transform, "RESET CLEAR REWARDS", new Vector2(0f, -296f), new Vector2(178f, 24f), 11)
-                .onClick.AddListener(() => session.ClearLevelRewardProgress());
-
             var saveLabel = CreateText("DevSaveTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -326f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -240f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             saveLabel.text = "DEV SAVES";
 
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                CreateButton($"SaveDevSlot{slot}", devPanel.transform, $"SAVE {slot}", new Vector2(-48f, -326f - slot * 26f), new Vector2(84f, 22f), 10)
+                CreateButton($"SaveDevSlot{slot}", devPanel.transform, $"SAVE {slot}", new Vector2(-48f, -240f - slot * 26f), new Vector2(84f, 22f), 10)
                     .onClick.AddListener(() => session.SaveDevSnapshot(capturedSlot));
-                CreateButton($"LoadDevSlot{slot}", devPanel.transform, $"LOAD {slot}", new Vector2(48f, -326f - slot * 26f), new Vector2(84f, 22f), 10)
+                CreateButton($"LoadDevSlot{slot}", devPanel.transform, $"LOAD {slot}", new Vector2(48f, -240f - slot * 26f), new Vector2(84f, 22f), 10)
                     .onClick.AddListener(() => { session.TryLoadDevSnapshot(capturedSlot); });
             }
+
+            CreateButton("RefundUpgrades", devPanel.transform, "RESET UPGRADES", new Vector2(0f, -342f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.RefundAndResetUpgrades());
+            CreateButton("ClearCurrencies", devPanel.transform, "CLEAR CURRENCIES", new Vector2(0f, -370f), new Vector2(178f, 24f), 12)
+                .onClick.AddListener(() => session.ClearCurrencies());
+            CreateButton("ResetRewardProgress", devPanel.transform, "RESET CLEAR REWARDS", new Vector2(0f, -398f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.ClearLevelRewardProgress());
 
             devPanelVisible = false;
             devPanel.SetActive(false);
