@@ -28,7 +28,7 @@ namespace TowerDefense.Runtime
             var size = enemy.Definition.visualScale * Random.Range(0.75f, 1.05f);
             corpse.transform.localScale = new Vector3(size * 0.9f, 0.025f, size * 1.25f);
             corpse.GetComponent<Renderer>().material = BootstrapMaterials.Get(Color.Lerp(enemy.Definition.color, new Color(0.08f, 0.06f, 0.045f), 0.62f));
-            Destroy(corpse.GetComponent<Collider>());
+            RemovePrimitiveCollider(corpse);
             corpses.Enqueue(corpse);
             Trim(corpses, maxCorpses);
 
@@ -45,9 +45,27 @@ namespace TowerDefense.Runtime
             var radius = scale * Random.Range(0.65f, 1.25f);
             decal.transform.localScale = new Vector3(radius, 0.01f, radius * Random.Range(0.65f, 1.1f));
             decal.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.32f, 0.015f, 0.01f));
-            Destroy(decal.GetComponent<Collider>());
+            RemovePrimitiveCollider(decal);
             bloodDecals.Enqueue(decal);
             Trim(bloodDecals, maxBloodDecals);
+        }
+
+        private static void RemovePrimitiveCollider(GameObject target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            var components = target.GetComponents<Component>();
+            foreach (var component in components)
+            {
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                    return;
+                }
+            }
         }
 
         private static void Trim(Queue<GameObject> queue, int maxCount)
