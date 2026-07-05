@@ -37,6 +37,11 @@ namespace TowerDefense.Save
             File.WriteAllText(GetDevSnapshotPath(slot), json);
         }
 
+        public bool HasDevSnapshot(int slot)
+        {
+            return File.Exists(GetDevSnapshotPath(slot));
+        }
+
         public bool TryLoadDevSnapshot(int slot, out PlayerProfile profile)
         {
             var snapshotPath = GetDevSnapshotPath(slot);

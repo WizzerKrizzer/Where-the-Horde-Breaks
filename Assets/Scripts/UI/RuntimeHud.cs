@@ -31,6 +31,8 @@ namespace TowerDefense.UI
         private Button devSpeed2Button;
         private Button devSpeed5Button;
         private Button devSpeed10Button;
+        private readonly Button[] devLoadSlotButtons = new Button[4];
+        private readonly Text[] devSaveSlotStatusTexts = new Text[4];
         private Button devToggleButton;
         private Button upgradeToggleButton;
         private GameObject resultPanel;
@@ -800,10 +802,24 @@ namespace TowerDefense.UI
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                CreateButton($"SaveDevSlot{slot}", content.transform, $"SAVE {slot}", new Vector2(-48f, -208f - slot * 26f), new Vector2(84f, 22f), 10)
-                    .onClick.AddListener(() => session.SaveDevSnapshot(capturedSlot));
-                CreateButton($"LoadDevSlot{slot}", content.transform, $"LOAD {slot}", new Vector2(48f, -208f - slot * 26f), new Vector2(84f, 22f), 10)
-                    .onClick.AddListener(() => { session.TryLoadDevSnapshot(capturedSlot); });
+                var rowY = -208f - slot * 26f;
+                var status = CreateText($"DevSaveSlotStatus{slot}", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 9);
+                ConfigureCenteredRect(status.GetComponent<RectTransform>(), new Vector2(0f, rowY), new Vector2(46f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+                devSaveSlotStatusTexts[slot] = status;
+
+                CreateButton($"SaveDevSlot{slot}", content.transform, $"SAVE {slot}", new Vector2(-66f, rowY), new Vector2(64f, 22f), 10)
+                    .onClick.AddListener(() =>
+                    {
+                        session.SaveDevSnapshot(capturedSlot);
+                        UpdateDevSaveSlotIndicators();
+                    });
+                var loadButton = CreateButton($"LoadDevSlot{slot}", content.transform, $"LOAD {slot}", new Vector2(66f, rowY), new Vector2(64f, 22f), 10);
+                devLoadSlotButtons[slot] = loadButton;
+                loadButton.onClick.AddListener(() =>
+                {
+                    session.TryLoadDevSnapshot(capturedSlot);
+                    UpdateDevSaveSlotIndicators();
+                });
             }
 
             CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -310f), new Vector2(178f, 24f), 12)
@@ -815,6 +831,30 @@ namespace TowerDefense.UI
 
             devPanelVisible = false;
             devPanel.SetActive(false);
+            UpdateDevSaveSlotIndicators();
+        }
+
+        private void UpdateDevSaveSlotIndicators()
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            for (var slot = 1; slot <= 3; slot++)
+            {
+                var hasSave = session.HasDevSnapshot(slot);
+                if (devSaveSlotStatusTexts[slot] != null)
+                {
+                    devSaveSlotStatusTexts[slot].text = hasSave ? "SAVED" : "EMPTY";
+                    devSaveSlotStatusTexts[slot].color = hasSave ? new Color(0.55f, 1f, 0.6f, 1f) : new Color(0.85f, 0.85f, 0.85f, 0.72f);
+                }
+
+                if (devLoadSlotButtons[slot] != null)
+                {
+                    devLoadSlotButtons[slot].interactable = hasSave;
+                }
+            }
         }
 
         private void CreateTopRightToggles(Transform parent)
@@ -851,6 +891,11 @@ namespace TowerDefense.UI
         private void ToggleDevPanel()
         {
             devPanelVisible = !devPanelVisible;
+            if (devPanelVisible)
+            {
+                UpdateDevSaveSlotIndicators();
+            }
+
             if (devPanel != null)
             {
                 devPanel.SetActive(devPanelVisible && !IsUpgradePanelOpen());

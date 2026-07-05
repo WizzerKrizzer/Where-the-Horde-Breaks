@@ -110,6 +110,11 @@ namespace TowerDefense.Runtime
             profileStore.SaveDevSnapshot(profile, slot);
         }
 
+        public bool HasDevSnapshot(int slot)
+        {
+            return profileStore.HasDevSnapshot(slot);
+        }
+
         public bool TryLoadDevSnapshot(int slot)
         {
             if (!profileStore.TryLoadDevSnapshot(slot, out var loadedProfile))
