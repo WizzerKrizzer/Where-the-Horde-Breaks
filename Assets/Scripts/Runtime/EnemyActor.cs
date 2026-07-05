@@ -317,7 +317,7 @@ namespace TowerDefense.Runtime
             {
                 var excess = lateral - clampedLateral;
                 knockbackOffset -= side * (excess * 1.25f);
-                knockbackOffset += tangent * Random.Range(-0.18f, 0.18f);
+                knockbackOffset += tangent * UnityEngine.Random.Range(-0.18f, 0.18f);
                 offset -= side * excess;
             }
 
