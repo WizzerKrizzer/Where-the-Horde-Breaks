@@ -37,19 +37,20 @@ namespace TowerDefense.Input
                 return;
             }
 
+            var pointerOverUi = IsPointerOverBlockingUi();
             var pan = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
-            if (UnityEngine.Input.GetMouseButton(1))
+            if (!pointerOverUi && UnityEngine.Input.GetMouseButton(1))
             {
                 pan += new Vector2(-UnityEngine.Input.GetAxisRaw("Mouse X"), -UnityEngine.Input.GetAxisRaw("Mouse Y")) * 14f;
             }
 
             UpdateTowerHotkeySelection();
 
-            var leftClick = UnityEngine.Input.GetMouseButtonDown(0) && !IsPointerOverBlockingUi();
+            var leftClick = UnityEngine.Input.GetMouseButtonDown(0) && !pointerOverUi;
             Current = new GameInputState
             {
                 Pan = pan,
-                Zoom = UnityEngine.Input.mouseScrollDelta.y,
+                Zoom = pointerOverUi ? 0f : UnityEngine.Input.mouseScrollDelta.y,
                 FireActive = leftClick,
                 PlaceTower = leftClick,
                 RemoveTower = UnityEngine.Input.GetKeyDown(KeyCode.Delete),
