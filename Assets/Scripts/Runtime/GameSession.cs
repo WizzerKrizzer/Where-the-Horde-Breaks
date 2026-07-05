@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
         private ProfileStore profileStore;
         private PlayerProfile profile;
         private LevelDefinition level;
+        private SkillTreeDefinition skillTree;
         private ProgressionService progression;
         private EnemyManager enemies;
         private TowerManager towers;
@@ -103,6 +104,26 @@ namespace TowerDefense.Runtime
             ResetToPlanning();
         }
 
+        public void SaveDevSnapshot(int slot)
+        {
+            SaveLayout();
+            profileStore.SaveDevSnapshot(profile, slot);
+        }
+
+        public bool TryLoadDevSnapshot(int slot)
+        {
+            if (!profileStore.TryLoadDevSnapshot(slot, out var loadedProfile))
+            {
+                return false;
+            }
+
+            profile = loadedProfile;
+            progression = new ProgressionService(skillTree, profile);
+            profileStore.Save(profile);
+            ResetToPlanning();
+            return true;
+        }
+
         public bool IsUpgradePurchased(string nodeId)
         {
             return progression.IsPurchased(nodeId);
@@ -153,6 +174,7 @@ namespace TowerDefense.Runtime
             PlayerInputRouter inputRouter)
         {
             level = levelDefinition;
+            this.skillTree = skillTree;
             profileStore = new ProfileStore();
             profile = profileStore.LoadOrCreate();
             progression = new ProgressionService(skillTree, profile);

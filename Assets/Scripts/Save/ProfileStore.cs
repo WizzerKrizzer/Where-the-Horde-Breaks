@@ -31,6 +31,31 @@ namespace TowerDefense.Save
             File.WriteAllText(path, json);
         }
 
+        public void SaveDevSnapshot(PlayerProfile profile, int slot)
+        {
+            var json = JsonUtility.ToJson(profile, true);
+            File.WriteAllText(GetDevSnapshotPath(slot), json);
+        }
+
+        public bool TryLoadDevSnapshot(int slot, out PlayerProfile profile)
+        {
+            var snapshotPath = GetDevSnapshotPath(slot);
+            if (!File.Exists(snapshotPath))
+            {
+                profile = null;
+                return false;
+            }
+
+            var json = File.ReadAllText(snapshotPath);
+            profile = JsonUtility.FromJson<PlayerProfile>(json);
+            return profile != null;
+        }
+
+        private static string GetDevSnapshotPath(int slot)
+        {
+            return Path.Combine(Application.persistentDataPath, $"dev_profile_slot_{Mathf.Clamp(slot, 1, 3)}.json");
+        }
+
         private static PlayerProfile CreateDefaultProfile()
         {
             var profile = new PlayerProfile();

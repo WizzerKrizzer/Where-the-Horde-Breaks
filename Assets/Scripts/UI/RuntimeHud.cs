@@ -741,7 +741,7 @@ namespace TowerDefense.UI
 
         private void CreateDevPanel(Transform parent)
         {
-            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 320f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 426f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(devPanel.GetComponent<RectTransform>());
             var title = CreateText("DevTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -776,6 +776,19 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.ClearCurrencies());
             CreateButton("ResetRewardProgress", devPanel.transform, "RESET CLEAR REWARDS", new Vector2(0f, -296f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
+
+            var saveLabel = CreateText("DevSaveTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -326f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            saveLabel.text = "DEV SAVES";
+
+            for (var slot = 1; slot <= 3; slot++)
+            {
+                var capturedSlot = slot;
+                CreateButton($"SaveDevSlot{slot}", devPanel.transform, $"SAVE {slot}", new Vector2(-48f, -326f - slot * 26f), new Vector2(84f, 22f), 10)
+                    .onClick.AddListener(() => session.SaveDevSnapshot(capturedSlot));
+                CreateButton($"LoadDevSlot{slot}", devPanel.transform, $"LOAD {slot}", new Vector2(48f, -326f - slot * 26f), new Vector2(84f, 22f), 10)
+                    .onClick.AddListener(() => { session.TryLoadDevSnapshot(capturedSlot); });
+            }
 
             devPanelVisible = false;
             devPanel.SetActive(false);
