@@ -741,53 +741,76 @@ namespace TowerDefense.UI
 
         private void CreateDevPanel(Transform parent)
         {
-            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 426f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            devPanel = CreatePanel("DevWalletPanel", parent, new Vector2(-326f, -48f), new Vector2(230f, 386f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(devPanel.GetComponent<RectTransform>());
             var title = CreateText("DevTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 13);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(210f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "DEV WALLET";
 
-            CreateButton("AddKillEssence", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.KillEssence)}", new Vector2(0f, -42f), new Vector2(178f, 24f), 12)
+            var viewport = new GameObject("DevScrollViewport");
+            viewport.transform.SetParent(devPanel.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            ConfigureCenteredRect(viewportRect, new Vector2(0f, -210f), new Vector2(214f, 336f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            viewport.AddComponent<RectMask2D>();
+
+            var content = new GameObject("DevScrollContent");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0.5f, 1f);
+            contentRect.anchorMax = new Vector2(0.5f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.anchoredPosition = Vector2.zero;
+            contentRect.sizeDelta = new Vector2(214f, 432f);
+
+            var scrollRect = devPanel.AddComponent<ScrollRect>();
+            scrollRect.viewport = viewportRect;
+            scrollRect.content = contentRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 28f;
+
+            CreateButton("AddKillEssence", content.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.KillEssence)}", new Vector2(0f, -10f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.KillEssence, 10000));
-            CreateButton("AddVictorySigil", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.VictorySigil)}", new Vector2(0f, -70f), new Vector2(178f, 24f), 12)
+            CreateButton("AddVictorySigil", content.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.VictorySigil)}", new Vector2(0f, -38f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.VictorySigil, 10000));
-            CreateButton("AddPerfectSigil", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.PerfectSigil)}", new Vector2(0f, -98f), new Vector2(178f, 24f), 12)
+            CreateButton("AddPerfectSigil", content.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.PerfectSigil)}", new Vector2(0f, -66f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.PerfectSigil, 10000));
-            CreateButton("AddChallengeToken", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.ChallengeToken)}", new Vector2(0f, -126f), new Vector2(178f, 24f), 12)
+            CreateButton("AddChallengeToken", content.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.ChallengeToken)}", new Vector2(0f, -94f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.ChallengeToken, 10000));
-            CreateButton("AddBossCore", devPanel.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.BossCore)}", new Vector2(0f, -154f), new Vector2(178f, 24f), 12)
+            CreateButton("AddBossCore", content.transform, $"+10000 {FormatCurrencySymbol(CurrencyType.BossCore)}", new Vector2(0f, -122f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.AddCurrency(CurrencyType.BossCore, 10000));
 
-            var speedLabel = CreateText("DevSpeedTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(speedLabel.GetComponent<RectTransform>(), new Vector2(0f, -184f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            var speedLabel = CreateText("DevSpeedTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(speedLabel.GetComponent<RectTransform>(), new Vector2(0f, -152f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             speedLabel.text = "TEST SPEED";
-            devSpeed1Button = CreateButton("DevSpeed1x", devPanel.transform, "1x", new Vector2(-66f, -210f), new Vector2(38f, 22f), 11);
-            devSpeed2Button = CreateButton("DevSpeed2x", devPanel.transform, "2x", new Vector2(-22f, -210f), new Vector2(38f, 22f), 11);
-            devSpeed5Button = CreateButton("DevSpeed5x", devPanel.transform, "5x", new Vector2(22f, -210f), new Vector2(38f, 22f), 11);
-            devSpeed10Button = CreateButton("DevSpeed10x", devPanel.transform, "10x", new Vector2(66f, -210f), new Vector2(38f, 22f), 11);
+            devSpeed1Button = CreateButton("DevSpeed1x", content.transform, "1x", new Vector2(-66f, -178f), new Vector2(38f, 22f), 11);
+            devSpeed2Button = CreateButton("DevSpeed2x", content.transform, "2x", new Vector2(-22f, -178f), new Vector2(38f, 22f), 11);
+            devSpeed5Button = CreateButton("DevSpeed5x", content.transform, "5x", new Vector2(22f, -178f), new Vector2(38f, 22f), 11);
+            devSpeed10Button = CreateButton("DevSpeed10x", content.transform, "10x", new Vector2(66f, -178f), new Vector2(38f, 22f), 11);
             devSpeed1Button.onClick.AddListener(() => SetTestSpeed(1f));
             devSpeed2Button.onClick.AddListener(() => SetTestSpeed(2f));
             devSpeed5Button.onClick.AddListener(() => SetTestSpeed(5f));
             devSpeed10Button.onClick.AddListener(() => SetTestSpeed(10f));
 
-            var saveLabel = CreateText("DevSaveTitle", devPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -240f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            var saveLabel = CreateText("DevSaveTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -208f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             saveLabel.text = "DEV SAVES";
 
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                CreateButton($"SaveDevSlot{slot}", devPanel.transform, $"SAVE {slot}", new Vector2(-48f, -240f - slot * 26f), new Vector2(84f, 22f), 10)
+                CreateButton($"SaveDevSlot{slot}", content.transform, $"SAVE {slot}", new Vector2(-48f, -208f - slot * 26f), new Vector2(84f, 22f), 10)
                     .onClick.AddListener(() => session.SaveDevSnapshot(capturedSlot));
-                CreateButton($"LoadDevSlot{slot}", devPanel.transform, $"LOAD {slot}", new Vector2(48f, -240f - slot * 26f), new Vector2(84f, 22f), 10)
+                CreateButton($"LoadDevSlot{slot}", content.transform, $"LOAD {slot}", new Vector2(48f, -208f - slot * 26f), new Vector2(84f, 22f), 10)
                     .onClick.AddListener(() => { session.TryLoadDevSnapshot(capturedSlot); });
             }
 
-            CreateButton("RefundUpgrades", devPanel.transform, "RESET UPGRADES", new Vector2(0f, -342f), new Vector2(178f, 24f), 12)
+            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -310f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateButton("ClearCurrencies", devPanel.transform, "CLEAR CURRENCIES", new Vector2(0f, -370f), new Vector2(178f, 24f), 12)
+            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -338f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.ClearCurrencies());
-            CreateButton("ResetRewardProgress", devPanel.transform, "RESET CLEAR REWARDS", new Vector2(0f, -398f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -366f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
 
             devPanelVisible = false;
@@ -1965,11 +1988,27 @@ namespace TowerDefense.UI
             image.color = new Color(0.15f, 0.45f, 0.82f, 1f);
             var button = go.AddComponent<Button>();
             button.targetGraphic = image;
+            button.transition = Selectable.Transition.ColorTint;
+            button.colors = CreateButtonColors();
 
             var text = CreateText("Label", go.transform, Vector2.zero, TextAnchor.MiddleCenter, fontSize);
             ConfigureCenteredRect(text.GetComponent<RectTransform>(), Vector2.zero, size, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             text.text = label;
             return button;
+        }
+
+        private static ColorBlock CreateButtonColors()
+        {
+            return new ColorBlock
+            {
+                normalColor = new Color(0.15f, 0.45f, 0.82f, 1f),
+                highlightedColor = new Color(0.28f, 0.68f, 1f, 1f),
+                pressedColor = new Color(0.08f, 0.28f, 0.62f, 1f),
+                selectedColor = new Color(0.22f, 0.58f, 0.94f, 1f),
+                disabledColor = new Color(0.08f, 0.16f, 0.26f, 0.72f),
+                colorMultiplier = 1f,
+                fadeDuration = 0.08f
+            };
         }
 
         private static Text CreateText(string name, Transform parent, Vector2 anchoredPosition, TextAnchor anchor, int fontSize)
