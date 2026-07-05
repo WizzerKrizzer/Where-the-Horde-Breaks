@@ -16,6 +16,7 @@ namespace TowerDefense.Runtime
             CreateLight();
             CreateGround();
             var route = CreatePath();
+            CreateNaturalWalls();
 
             var input = gameObject.AddComponent<PlayerInputRouter>();
             input.Initialize(camera);
@@ -24,6 +25,8 @@ namespace TowerDefense.Runtime
             cameraController.Initialize(camera, input);
 
             var enemyManager = new GameObject("EnemyManager").AddComponent<EnemyManager>();
+            var corpseManager = new GameObject("EnemyCorpses").AddComponent<EnemyCorpseManager>();
+            enemyManager.SetCorpseManager(corpseManager);
             var towerManager = new GameObject("TowerManager").AddComponent<TowerManager>();
             var activeWeapon = new GameObject("ActiveWeapon").AddComponent<ActiveWeaponController>();
             activeWeapon.Initialize(enemyManager, input, towerManager);
@@ -75,7 +78,7 @@ namespace TowerDefense.Runtime
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "BuildableGround";
             ground.transform.position = new Vector3(0f, -0.08f, 0f);
-            ground.transform.localScale = new Vector3(58f, 0.1f, 34f);
+            ground.transform.localScale = new Vector3(72f, 0.1f, 44f);
             ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.15f, 0.23f, 0.18f));
         }
 
@@ -85,12 +88,14 @@ namespace TowerDefense.Runtime
             var route = routeObject.AddComponent<PathRoute>();
             var points = new[]
             {
-                new Vector3(-26f, 0f, -11f),
-                new Vector3(-16f, 0f, -8f),
-                new Vector3(-8f, 0f, 4f),
-                new Vector3(3f, 0f, 7f),
-                new Vector3(13f, 0f, -4f),
-                new Vector3(26f, 0f, -2f)
+                new Vector3(-32f, 0f, -13f),
+                new Vector3(-24f, 0f, -10f),
+                new Vector3(-18f, 0f, 1f),
+                new Vector3(-8f, 0f, 6f),
+                new Vector3(2f, 0f, 2f),
+                new Vector3(9f, 0f, -8f),
+                new Vector3(19f, 0f, -5f),
+                new Vector3(30f, 0f, 7f)
             };
 
             route.SetWaypoints(points);
@@ -113,6 +118,28 @@ namespace TowerDefense.Runtime
             segment.transform.localScale = new Vector3(2.2f, 0.05f, direction.magnitude);
             segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.36f, 0.29f, 0.2f));
         }
+
+        private static void CreateNaturalWalls()
+        {
+            var wallColor = new Color(0.17f, 0.18f, 0.14f);
+            CreateWall("NorthRidgeA", new Vector3(-23f, 0.7f, 4f), new Vector3(15f, 1.4f, 1.2f), 24f, wallColor);
+            CreateWall("NorthRidgeB", new Vector3(-7f, 0.7f, 10.5f), new Vector3(20f, 1.4f, 1.2f), -13f, wallColor);
+            CreateWall("CenterStoneA", new Vector3(5f, 0.75f, -1.2f), new Vector3(8.5f, 1.5f, 1.1f), -48f, wallColor);
+            CreateWall("CenterStoneB", new Vector3(16f, 0.75f, 2.2f), new Vector3(11f, 1.5f, 1.1f), 21f, wallColor);
+            CreateWall("SouthCliffA", new Vector3(-19f, 0.8f, -17.3f), new Vector3(17f, 1.6f, 1.35f), -8f, wallColor);
+            CreateWall("SouthCliffB", new Vector3(4f, 0.8f, -16.4f), new Vector3(18f, 1.6f, 1.35f), 10f, wallColor);
+            CreateWall("ExitRidge", new Vector3(27f, 0.75f, 0.6f), new Vector3(8.5f, 1.5f, 1.2f), -35f, wallColor);
+        }
+
+        private static void CreateWall(string name, Vector3 position, Vector3 scale, float yRotation, Color color)
+        {
+            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.name = name;
+            wall.transform.position = position;
+            wall.transform.rotation = Quaternion.Euler(0f, yRotation, 0f);
+            wall.transform.localScale = scale;
+            wall.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
+        }
     }
 
     internal sealed class SampleContent
@@ -126,11 +153,11 @@ namespace TowerDefense.Runtime
             var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner,
                 "Fast and fragile. Dangerous in large groups because it slips past slow towers.",
                 "Weak to rapid-fire towers, bends with overlapping coverage, and well-timed arrow volleys.",
-                11f, 5.4f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.38f);
+                12f, 5.35f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.36f);
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy,
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
-                58f, 2.35f, 2, 3, new Color(0.05f, 0.45f, 0.08f), 0.62f);
+                72f, 2.28f, 2, 4, new Color(0.05f, 0.45f, 0.08f), 0.6f);
             var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support,
                 "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
@@ -231,27 +258,26 @@ namespace TowerDefense.Runtime
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 447;
+            wave.totalEnemyCount = 760;
             wave.entries = new[]
             {
-                new WaveEntry { enemy = runner, count = 150, startTime = 0f, spawnInterval = 0.12f },
-                new WaveEntry { enemy = brute, count = 70, startTime = 10f, spawnInterval = 0.36f },
-                new WaveEntry { enemy = shaman, count = 45, startTime = 18f, spawnInterval = 0.44f },
-                new WaveEntry { enemy = runner, count = 80, startTime = 28f, spawnInterval = 0.075f },
-                new WaveEntry { enemy = harpy, count = 22, startTime = 31f, spawnInterval = 0.32f },
-                new WaveEntry { enemy = zombie, count = 25, startTime = 32f, spawnInterval = 0.38f },
-                new WaveEntry { enemy = brute, count = 45, startTime = 34f, spawnInterval = 0.26f },
-                new WaveEntry { enemy = vampire, count = 10, startTime = 42f, spawnInterval = 0.75f }
+                new WaveEntry { enemy = runner, count = 190, startTime = 0f, spawnInterval = 0.16f },
+                new WaveEntry { enemy = brute, count = 45, startTime = 18f, spawnInterval = 0.62f },
+                new WaveEntry { enemy = runner, count = 155, startTime = 31f, spawnInterval = 0.11f },
+                new WaveEntry { enemy = brute, count = 70, startTime = 45f, spawnInterval = 0.44f },
+                new WaveEntry { enemy = runner, count = 170, startTime = 60f, spawnInterval = 0.075f },
+                new WaveEntry { enemy = brute, count = 70, startTime = 72f, spawnInterval = 0.32f },
+                new WaveEntry { enemy = runner, count = 60, startTime = 84f, spawnInterval = 0.052f }
             };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
             level.id = "level_01";
-            level.displayName = "Green Pass";
-            level.startingLives = 12;
+            level.displayName = "Broken Green Pass";
+            level.startingLives = 10;
             level.wave = wave;
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
-            level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 25);
+            level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 80);
 
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
@@ -275,7 +301,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(150f, 54f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 85) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
                 },
                 new SkillNodeDefinition
@@ -286,7 +312,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(156f, -84f),
                     maxRanks = 6,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 30) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 125) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponPierceFlat, value = 2f } }
                 },
                 new SkillNodeDefinition
@@ -297,7 +323,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(285f, 116f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "volley_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 32) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 150) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponCooldownPercent, value = 2f } }
                 },
                 new SkillNodeDefinition
@@ -308,7 +334,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(292f, -28f),
                     maxRanks = 5,
                     prerequisiteNodeIds = new[] { "volley_pierce_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 38) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 180) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponRadiusFlat, value = 0.15f } }
                 },
                 new SkillNodeDefinition
@@ -319,7 +345,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(20f, 170f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 45) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 210) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -330,7 +356,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-150f, 52f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 25) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 160) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -342,7 +368,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-298f, 36f),
                     maxRanks = 4,
                     prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 35) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 240) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -353,7 +379,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-280f, 130f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 135) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 3f } }
                 },
                 new SkillNodeDefinition
@@ -364,7 +390,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-420f, 154f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "archer_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 36) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 220) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDoubleShotChancePercent, targetId = "archer", value = 3f } }
                 },
                 new SkillNodeDefinition
@@ -375,7 +401,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-420f, 74f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "archer_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 42) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 210) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "archer", value = 3f } }
                 },
                 new SkillNodeDefinition
@@ -385,8 +411,8 @@ namespace TowerDefense.Runtime
                     description = "Unlock a slow tower with heavy single-target damage.",
                     radialPosition = new Vector2(-150f, -98f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 95), new CurrencyAmount(CurrencyType.VictorySigil, 1) },
+                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 820) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "ballista", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -655,8 +681,8 @@ namespace TowerDefense.Runtime
                     description = "Unlock barracks that respawn one knight defender.",
                     radialPosition = new Vector2(310f, 292f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "base_health_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 90) },
+                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 760) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
                     isMajorUnlock = true
                 },

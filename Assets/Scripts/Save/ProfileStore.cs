@@ -35,7 +35,6 @@ namespace TowerDefense.Save
         {
             var profile = new PlayerProfile();
             profile.unlockedLevelIds.Add("level_01");
-            profile.AddCurrency(CurrencyType.KillEssence, 50);
             return profile;
         }
     }

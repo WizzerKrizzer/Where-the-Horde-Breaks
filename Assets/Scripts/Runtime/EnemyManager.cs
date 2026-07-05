@@ -13,6 +13,7 @@ namespace TowerDefense.Runtime
         private readonly Queue<EnemyActor> pool = new();
         private WaveDefinition wave;
         private PathRoute path;
+        private EnemyCorpseManager corpseManager;
         private int[] spawnedByEntry;
         private readonly List<EnemyDistance> damageCandidates = new();
         private float elapsed;
@@ -27,6 +28,11 @@ namespace TowerDefense.Runtime
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyActor> EnemyKilled;
         public event Action<EnemyActor> EnemyEscaped;
+
+        public void SetCorpseManager(EnemyCorpseManager manager)
+        {
+            corpseManager = manager;
+        }
 
         public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
         {
@@ -95,6 +101,7 @@ namespace TowerDefense.Runtime
         {
             if (activeEnemies.Remove(enemy))
             {
+                corpseManager?.SpawnCorpse(enemy);
                 totalResolved++;
                 EnemyKilled?.Invoke(enemy);
             }

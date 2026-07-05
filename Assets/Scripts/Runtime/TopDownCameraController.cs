@@ -9,8 +9,8 @@ namespace TowerDefense.Runtime
         [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float minHeight = 8f;
         [SerializeField] private float maxHeight = 60f;
-        [SerializeField] private Vector2 minBounds = new(-30f, -18f);
-        [SerializeField] private Vector2 maxBounds = new(30f, 18f);
+        [SerializeField] private Vector2 minBounds = new(-36f, -22f);
+        [SerializeField] private Vector2 maxBounds = new(36f, 22f);
 
         private Camera controlledCamera;
         private PlayerInputRouter input;
