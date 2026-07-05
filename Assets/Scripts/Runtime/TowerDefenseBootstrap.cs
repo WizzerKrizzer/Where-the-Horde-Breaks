@@ -351,7 +351,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-150f, 52f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 160) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 20) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer", value = 1f } },
                     isMajorUnlock = true
                 },
