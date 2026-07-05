@@ -17,7 +17,7 @@ namespace TowerDefense.Data
         [TextArea] public string description;
         public Vector2 radialPosition;
         [Min(1)] public int maxRanks = 1;
-        [Min(1f)] public float costGrowthMultiplier = 1.5f;
+        [Min(1f)] public float costGrowthMultiplier = 1.4f;
         public string[] prerequisiteNodeIds;
         public CurrencyAmount[] costs;
         public UpgradeEffect[] effects;
