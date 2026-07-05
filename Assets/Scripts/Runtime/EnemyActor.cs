@@ -29,6 +29,7 @@ namespace TowerDefense.Runtime
         private ICombatTarget currentCombatTarget;
         private Renderer bodyRenderer;
         private Transform healthFill;
+        private const float RoadHalfWidth = 2.45f;
 
         public EnemyDefinition Definition => definition;
         public float Health => health;
@@ -307,7 +308,20 @@ namespace TowerDefense.Runtime
         private void MoveToPathPosition()
         {
             var pathPosition = path.Sample(pathDistance);
-            transform.position = pathPosition + GetPathSide(pathDistance) * laneOffset + crowdOffset + knockbackOffset;
+            var side = GetPathSide(pathDistance);
+            var tangent = GetPathTangent(pathDistance);
+            var offset = side * laneOffset + crowdOffset + knockbackOffset;
+            var lateral = Vector3.Dot(offset, side);
+            var clampedLateral = Mathf.Clamp(lateral, -RoadHalfWidth, RoadHalfWidth);
+            if (!Mathf.Approximately(lateral, clampedLateral))
+            {
+                var excess = lateral - clampedLateral;
+                knockbackOffset -= side * (excess * 1.25f);
+                knockbackOffset += tangent * Random.Range(-0.18f, 0.18f);
+                offset -= side * excess;
+            }
+
+            transform.position = pathPosition + offset;
         }
 
         private void UpdateCrowdOffset()
@@ -356,6 +370,20 @@ namespace TowerDefense.Runtime
             }
 
             return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.42f : 0.72f);
+        }
+
+        private Vector3 GetPathTangent(float distance)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return Vector3.forward;
+            }
+
+            var before = path.Sample(Mathf.Max(0f, distance - 0.35f));
+            var after = path.Sample(Mathf.Min(path.TotalLength, distance + 0.35f));
+            var tangent = after - before;
+            tangent.y = 0f;
+            return tangent.sqrMagnitude < 0.001f ? Vector3.forward : tangent.normalized;
         }
 
         private Vector3 GetPathSide(float distance)

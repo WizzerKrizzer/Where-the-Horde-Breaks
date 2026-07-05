@@ -16,7 +16,6 @@ namespace TowerDefense.Runtime
             CreateLight();
             CreateGround();
             var route = CreatePath();
-            CreateNaturalWalls();
 
             var input = gameObject.AddComponent<PlayerInputRouter>();
             input.Initialize(camera);
@@ -109,36 +108,32 @@ namespace TowerDefense.Runtime
 
         private static void CreatePathSegment(Vector3 from, Vector3 to)
         {
+            const float roadWidth = 5.4f;
+            const float bankOffset = roadWidth * 0.5f + 0.28f;
             var midpoint = (from + to) * 0.5f + Vector3.up * 0.01f;
             var direction = to - from;
+            var forward = direction.normalized;
+            var side = Vector3.Cross(Vector3.up, forward);
+
             var segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
             segment.name = "PathVisual";
             segment.transform.position = midpoint;
-            segment.transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
-            segment.transform.localScale = new Vector3(2.2f, 0.05f, direction.magnitude);
-            segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.36f, 0.29f, 0.2f));
+            segment.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            segment.transform.localScale = new Vector3(roadWidth, 0.05f, direction.magnitude);
+            segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
+
+            CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, direction.magnitude);
+            CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, direction.magnitude);
         }
 
-        private static void CreateNaturalWalls()
+        private static void CreateRoadBank(string name, Vector3 position, Vector3 forward, float length)
         {
-            var wallColor = new Color(0.17f, 0.18f, 0.14f);
-            CreateWall("NorthRidgeA", new Vector3(-23f, 0.7f, 4f), new Vector3(15f, 1.4f, 1.2f), 24f, wallColor);
-            CreateWall("NorthRidgeB", new Vector3(-7f, 0.7f, 10.5f), new Vector3(20f, 1.4f, 1.2f), -13f, wallColor);
-            CreateWall("CenterStoneA", new Vector3(5f, 0.75f, -1.2f), new Vector3(8.5f, 1.5f, 1.1f), -48f, wallColor);
-            CreateWall("CenterStoneB", new Vector3(16f, 0.75f, 2.2f), new Vector3(11f, 1.5f, 1.1f), 21f, wallColor);
-            CreateWall("SouthCliffA", new Vector3(-19f, 0.8f, -17.3f), new Vector3(17f, 1.6f, 1.35f), -8f, wallColor);
-            CreateWall("SouthCliffB", new Vector3(4f, 0.8f, -16.4f), new Vector3(18f, 1.6f, 1.35f), 10f, wallColor);
-            CreateWall("ExitRidge", new Vector3(27f, 0.75f, 0.6f), new Vector3(8.5f, 1.5f, 1.2f), -35f, wallColor);
-        }
-
-        private static void CreateWall(string name, Vector3 position, Vector3 scale, float yRotation, Color color)
-        {
-            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wall.name = name;
-            wall.transform.position = position;
-            wall.transform.rotation = Quaternion.Euler(0f, yRotation, 0f);
-            wall.transform.localScale = scale;
-            wall.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
+            var bank = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bank.name = name;
+            bank.transform.position = position + Vector3.up * 0.08f;
+            bank.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            bank.transform.localScale = new Vector3(0.55f, 0.22f, length + 0.25f);
+            bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
         }
     }
 
