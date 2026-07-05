@@ -18,7 +18,7 @@ namespace TowerDefense.Runtime
         private float towerDamageMultiplier = 1f;
         private float towerFireRateMultiplier = 1f;
         private TowerActor selectedTower;
-        private const float MinimumPathDistance = 1.45f;
+        private const float MinimumPathDistance = 3.05f;
 
         public IReadOnlyList<TowerActor> Towers => towers;
         public IReadOnlyList<TowerDefinition> AvailableTowers { get; private set; }
