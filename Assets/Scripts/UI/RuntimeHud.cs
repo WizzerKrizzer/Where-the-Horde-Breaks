@@ -1941,10 +1941,20 @@ namespace TowerDefense.UI
                     var nextDamage = baseDamage * (1f + next / 100f);
                     return $"{target} bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {currentDamage:0.##} -> {nextDamage:0.##}";
                 }
+                case UpgradeEffectType.TowerDamageFlat:
+                {
+                    var currentDamage = tower != null ? tower.damage : current;
+                    return $"{target} damage/hit: {currentDamage:0.##} -> {currentDamage + effect.value:0.##}";
+                }
                 case UpgradeEffectType.TowerFireRatePercent:
                 {
                     var baseRate = tower != null ? 1f / Mathf.Max(0.01f, tower.fireInterval) : 0f;
                     return $"{target} fire rate bonus: {current:0}% -> {next:0}%\nShots/sec: {baseRate * (1f + current / 100f):0.##} -> {baseRate * (1f + next / 100f):0.##}";
+                }
+                case UpgradeEffectType.TowerFireRateFlat:
+                {
+                    var currentRate = tower != null ? 1f / Mathf.Max(0.01f, tower.fireInterval) : current;
+                    return $"{target} shots/sec: {currentRate:0.##} -> {currentRate + effect.value:0.##}";
                 }
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"{target} pierce: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)}";
@@ -2062,8 +2072,12 @@ namespace TowerDefense.UI
                     return $"Unlock {FormatTargetName(effect.targetId)}";
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                     return $"+{effect.value:0} {FormatTargetName(effect.targetId)} limit";
+                case UpgradeEffectType.TowerDamageFlat:
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} damage";
                 case UpgradeEffectType.TowerDamagePercent:
                     return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} damage";
+                case UpgradeEffectType.TowerFireRateFlat:
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} shots/sec";
                 case UpgradeEffectType.TowerFireRatePercent:
                     return string.IsNullOrWhiteSpace(effect.targetId)
                         ? $"+{effect.value:0}% tower fire rate"

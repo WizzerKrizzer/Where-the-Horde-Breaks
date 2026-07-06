@@ -87,14 +87,14 @@ namespace TowerDefense.Runtime
             var route = routeObject.AddComponent<PathRoute>();
             var points = new[]
             {
-                new Vector3(-24f, 0f, -10f),
-                new Vector3(-18f, 0f, -8f),
-                new Vector3(-13f, 0f, -1f),
-                new Vector3(-6f, 0f, 2f),
-                new Vector3(1f, 0f, 0f),
-                new Vector3(5f, 0f, -6f),
-                new Vector3(13f, 0f, -4f),
-                new Vector3(20f, 0f, 3f)
+                new Vector3(-27.2f, 0f, -11.2f),
+                new Vector3(-20.4f, 0f, -8.8f),
+                new Vector3(-15f, 0f, -0.2f),
+                new Vector3(-6.8f, 0f, 3.6f),
+                new Vector3(1.4f, 0f, 0.8f),
+                new Vector3(6.6f, 0f, -6.8f),
+                new Vector3(15.4f, 0f, -4.4f),
+                new Vector3(24f, 0f, 4.6f)
             };
 
             route.SetWaypoints(points);
@@ -253,7 +253,7 @@ namespace TowerDefense.Runtime
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 200;
+            wave.totalEnemyCount = 300;
             wave.spawnInterval = 0.5f;
             wave.randomSpawnBurstMin = 3;
             wave.randomSpawnBurstMax = 8;
@@ -408,6 +408,17 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "archer_flat_damage_01",
+                    displayName = "Bodkin Heads",
+                    description = "Each rank adds 0.5 Archer Tower damage.",
+                    radialPosition = new Vector2(-560f, 190f),
+                    maxRanks = 10,
+                    prerequisiteNodeIds = new[] { "archer_double_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamageFlat, targetId = "archer", value = 0.5f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_speed_01",
                     displayName = "Quick Nocks",
                     description = "Each rank makes Archer Towers shoot 3% faster.",
@@ -416,6 +427,17 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "archer_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "archer", value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_flat_speed_01",
+                    displayName = "Draw Drills",
+                    description = "Each rank adds 0.2 Archer Tower shots per second.",
+                    radialPosition = new Vector2(-560f, 34f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "archer_speed_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRateFlat, targetId = "archer", value = 0.2f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -886,13 +908,13 @@ namespace TowerDefense.Runtime
         private static WaveEntry[] BuildLevelOneWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
         {
             var entries = new List<WaveEntry>();
-            for (var i = 0; i < 22; i++)
+            for (var i = 0; i < 33; i++)
             {
                 entries.Add(new WaveEntry { enemy = runner, count = 7 });
                 entries.Add(new WaveEntry { enemy = brute, count = 2 });
             }
 
-            entries.Add(new WaveEntry { enemy = runner, count = 2 });
+            entries.Add(new WaveEntry { enemy = runner, count = 3 });
             return entries.ToArray();
         }
 

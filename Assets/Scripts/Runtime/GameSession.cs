@@ -434,8 +434,17 @@ namespace TowerDefense.Runtime
                 {
                     RestoreBaseTowerStats(towerDefinition);
                     var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
+                    var perTypeDamageFlat = progression.GetEffectTotal(UpgradeEffectType.TowerDamageFlat, towerDefinition.id);
                     var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
+                    var perTypeFireRateFlat = progression.GetEffectTotal(UpgradeEffectType.TowerFireRateFlat, towerDefinition.id);
                     var perTypeFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent, towerDefinition.id) / 100f;
+                    towerDefinition.damage += perTypeDamageFlat;
+                    if (perTypeFireRateFlat > 0f)
+                    {
+                        var shotsPerSecond = 1f / Mathf.Max(0.01f, towerDefinition.fireInterval);
+                        towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, shotsPerSecond + perTypeFireRateFlat);
+                    }
+
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
                     towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
                     towers.SetPerTypeFireRateMultiplier(towerDefinition.id, perTypeFireRateMultiplier);
