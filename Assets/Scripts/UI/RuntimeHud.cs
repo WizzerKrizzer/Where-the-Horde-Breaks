@@ -1934,6 +1934,8 @@ namespace TowerDefense.UI
                     return $"Active weapon radius: {session.BaseActiveWeaponRadius + current:0.##} -> {session.BaseActiveWeaponRadius + next:0.##}";
                 case UpgradeEffectType.ActiveWeaponPierceFlat:
                     return $"Active weapon targets: {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(current)} -> {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(next)}";
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
+                    return "Unlock active weapon auto-fire toggle";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"Base lives: {session.Level.startingLives + Mathf.RoundToInt(current)} -> {session.Level.startingLives + Mathf.RoundToInt(next)}";
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
@@ -2030,6 +2032,8 @@ namespace TowerDefense.UI
                     return $"+{effect.value:0.00} active weapon radius";
                 case UpgradeEffectType.ActiveWeaponPierceFlat:
                     return $"+{effect.value:0} active weapon targets";
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
+                    return "Unlock active weapon auto-fire";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"+{effect.value:0} base lives";
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
@@ -2190,8 +2194,14 @@ namespace TowerDefense.UI
             activeWeaponIcon.color = activeWeapon.IsReady ? new Color(1f, 0.5f, 0.16f, 1f) : new Color(0.45f, 0.45f, 0.45f, 1f);
             activeWeaponCooldownFill.fillAmount = activeWeapon.CanFire ? 1f - activeWeapon.CooldownProgress : 1f;
             activeWeaponCooldownFill.enabled = !activeWeapon.IsReady;
-            activeWeaponCooldownText.text = activeWeapon.IsReady ? "OK" : activeWeapon.CanFire ? activeWeapon.CooldownRemaining.ToString("0.0") : "--";
-            activeWeaponCooldownText.color = activeWeapon.IsReady ? new Color(0.6f, 1f, 0.55f, 1f) : Color.white;
+            activeWeaponCooldownText.text = activeWeapon.AutoFireEnabled
+                ? "AUTO"
+                : activeWeapon.IsReady
+                    ? "OK"
+                    : activeWeapon.CanFire ? activeWeapon.CooldownRemaining.ToString("0.0") : "--";
+            activeWeaponCooldownText.color = activeWeapon.AutoFireEnabled
+                ? new Color(1f, 0.85f, 0.25f, 1f)
+                : activeWeapon.IsReady ? new Color(0.6f, 1f, 0.55f, 1f) : Color.white;
         }
 
         private static Image CreateImage(string name, Transform parent, Vector2 anchoredPosition, Vector2 size, Color color)

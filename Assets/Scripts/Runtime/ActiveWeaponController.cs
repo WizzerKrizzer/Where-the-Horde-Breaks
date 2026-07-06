@@ -9,6 +9,8 @@ namespace TowerDefense.Runtime
         private PlayerInputRouter input;
         private TowerManager towers;
         private float cooldown;
+        private bool canFire;
+        private bool autoFireUnlocked;
 
         public float Damage { get; set; } = 9.2f;
         public float Radius { get; set; } = 2.8f;
@@ -16,7 +18,31 @@ namespace TowerDefense.Runtime
         public int MaxTargets { get; set; } = 10;
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
-        public bool CanFire { get; set; }
+        public bool CanFire
+        {
+            get => canFire;
+            set
+            {
+                canFire = value;
+                if (!canFire)
+                {
+                    AutoFireEnabled = false;
+                }
+            }
+        }
+        public bool AutoFireUnlocked
+        {
+            get => autoFireUnlocked;
+            set
+            {
+                autoFireUnlocked = value;
+                if (!autoFireUnlocked)
+                {
+                    AutoFireEnabled = false;
+                }
+            }
+        }
+        public bool AutoFireEnabled { get; private set; }
         public float CooldownRemaining => Mathf.Max(0f, cooldown);
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
         public bool IsReady => CanFire && CooldownRemaining <= 0f;
@@ -32,17 +58,29 @@ namespace TowerDefense.Runtime
         {
             TotalDamageEvents = 0;
             TotalDamageDealt = 0f;
+            AutoFireEnabled = false;
         }
 
         private void Update()
         {
             cooldown = Mathf.Max(0f, cooldown - Time.deltaTime);
-            if (!CanFire || input == null || enemies == null || !input.Current.FireActive || cooldown > 0f)
+            if (!CanFire || input == null || enemies == null)
             {
                 return;
             }
 
             if (towers != null && towers.GetNearestTower(input.Current.PointerWorld) != null)
+            {
+                return;
+            }
+
+            if (AutoFireUnlocked && input.Current.FireActive)
+            {
+                AutoFireEnabled = !AutoFireEnabled;
+            }
+
+            var shouldFire = AutoFireUnlocked ? AutoFireEnabled : input.Current.FireActive;
+            if (!shouldFire || cooldown > 0f)
             {
                 return;
             }

@@ -410,6 +410,7 @@ namespace TowerDefense.Runtime
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
             var activeRadiusBonus = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRadiusFlat);
             var activePierceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponPierceFlat));
+            var activeAutoFireUnlocked = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponAutoFireUnlock) > 0f;
 
             maxLivesForRun = level.startingLives + bonusLives;
             towers.SetAvailableTowers(GetUnlockedTowers());
@@ -451,6 +452,7 @@ namespace TowerDefense.Runtime
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
             activeWeapon.Radius = baseActiveWeaponRadius + activeRadiusBonus;
             activeWeapon.MaxTargets = baseActiveWeaponMaxTargets + activePierceBonus;
+            activeWeapon.AutoFireUnlocked = activeAutoFireUnlocked;
         }
 
         private IReadOnlyList<TowerDefinition> GetUnlockedTowers()

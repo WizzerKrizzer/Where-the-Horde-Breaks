@@ -321,6 +321,18 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "volley_auto_fire_unlock",
+                    displayName = "Loose Command",
+                    description = "Unlock active weapon auto-fire toggle.",
+                    radialPosition = new Vector2(424f, 170f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_cooldown_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 15) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponAutoFireUnlock, value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
                     id = "volley_radius_01",
                     displayName = "Wider Volley",
                     description = "Each rank increases active weapon radius by 0.15.",
