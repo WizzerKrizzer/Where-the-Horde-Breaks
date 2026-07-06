@@ -1936,25 +1936,35 @@ namespace TowerDefense.UI
                 }
                 case UpgradeEffectType.TowerDamagePercent:
                 {
-                    var baseDamage = tower != null ? tower.damage : 0f;
-                    var currentDamage = baseDamage * (1f + current / 100f);
-                    var nextDamage = baseDamage * (1f + next / 100f);
+                    var baseDamage = session.GetTowerBaseDamage(effect.targetId);
+                    var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamageFlat, effect.targetId);
+                    var currentDamage = baseDamage * (1f + current / 100f) + flatBonus;
+                    var nextDamage = baseDamage * (1f + next / 100f) + flatBonus;
                     return $"{target} bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {currentDamage:0.##} -> {nextDamage:0.##}";
                 }
                 case UpgradeEffectType.TowerDamageFlat:
                 {
-                    var currentDamage = tower != null ? tower.damage : current;
-                    return $"{target} damage/hit: {currentDamage:0.##} -> {currentDamage + effect.value:0.##}";
+                    var baseDamage = session.GetTowerBaseDamage(effect.targetId);
+                    var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, effect.targetId);
+                    var currentDamage = baseDamage * (1f + percentBonus / 100f) + current;
+                    var nextDamage = baseDamage * (1f + percentBonus / 100f) + next;
+                    return $"{target} damage/hit: {currentDamage:0.##} -> {nextDamage:0.##}";
                 }
                 case UpgradeEffectType.TowerFireRatePercent:
                 {
-                    var baseRate = tower != null ? 1f / Mathf.Max(0.01f, tower.fireInterval) : 0f;
-                    return $"{target} fire rate bonus: {current:0}% -> {next:0}%\nShots/sec: {baseRate * (1f + current / 100f):0.##} -> {baseRate * (1f + next / 100f):0.##}";
+                    var baseRate = session.GetTowerBaseFireRate(effect.targetId);
+                    var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRateFlat, effect.targetId);
+                    var currentRate = baseRate * (1f + current / 100f) + flatBonus;
+                    var nextRate = baseRate * (1f + next / 100f) + flatBonus;
+                    return $"{target} fire rate bonus: {current:0}% -> {next:0}%\nShots/sec: {currentRate:0.##} -> {nextRate:0.##}";
                 }
                 case UpgradeEffectType.TowerFireRateFlat:
                 {
-                    var currentRate = tower != null ? 1f / Mathf.Max(0.01f, tower.fireInterval) : current;
-                    return $"{target} shots/sec: {currentRate:0.##} -> {currentRate + effect.value:0.##}";
+                    var baseRate = session.GetTowerBaseFireRate(effect.targetId);
+                    var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, effect.targetId);
+                    var currentRate = baseRate * (1f + percentBonus / 100f) + current;
+                    var nextRate = baseRate * (1f + percentBonus / 100f) + next;
+                    return $"{target} shots/sec: {currentRate:0.##} -> {nextRate:0.##}";
                 }
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"{target} pierce: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)}";

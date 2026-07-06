@@ -171,6 +171,27 @@ namespace TowerDefense.Runtime
             return null;
         }
 
+        public float GetTowerBaseDamage(string towerId)
+        {
+            if (!string.IsNullOrEmpty(towerId) && baseTowerStats.TryGetValue(towerId, out var stats))
+            {
+                return stats.Damage;
+            }
+
+            return GetTowerDefinition(towerId)?.damage ?? 0f;
+        }
+
+        public float GetTowerBaseFireRate(string towerId)
+        {
+            if (!string.IsNullOrEmpty(towerId) && baseTowerStats.TryGetValue(towerId, out var stats))
+            {
+                return stats.FireRate;
+            }
+
+            var tower = GetTowerDefinition(towerId);
+            return tower == null ? 0f : 1f / Mathf.Max(0.01f, tower.fireInterval);
+        }
+
         public CurrencyAmount[] GetUpgradeNextCosts(string nodeId)
         {
             return progression.GetCurrentCosts(nodeId);
@@ -435,19 +456,17 @@ namespace TowerDefense.Runtime
                     RestoreBaseTowerStats(towerDefinition);
                     var perTypeBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, towerDefinition.id));
                     var perTypeDamageFlat = progression.GetEffectTotal(UpgradeEffectType.TowerDamageFlat, towerDefinition.id);
-                    var perTypeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id) / 100f;
+                    var perTypeDamagePercent = progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id);
                     var perTypeFireRateFlat = progression.GetEffectTotal(UpgradeEffectType.TowerFireRateFlat, towerDefinition.id);
-                    var perTypeFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent, towerDefinition.id) / 100f;
-                    towerDefinition.damage += perTypeDamageFlat;
-                    if (perTypeFireRateFlat > 0f)
-                    {
-                        var shotsPerSecond = 1f / Mathf.Max(0.01f, towerDefinition.fireInterval);
-                        towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, shotsPerSecond + perTypeFireRateFlat);
-                    }
+                    var perTypeFireRatePercent = progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent, towerDefinition.id);
+                    var baseDamage = towerDefinition.damage;
+                    var baseFireRate = 1f / Mathf.Max(0.01f, towerDefinition.fireInterval);
+                    towerDefinition.damage = baseDamage * (1f + perTypeDamagePercent / 100f) + perTypeDamageFlat;
+                    towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, baseFireRate * (1f + perTypeFireRatePercent / 100f) + perTypeFireRateFlat);
 
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
-                    towers.SetPerTypeDamageMultiplier(towerDefinition.id, perTypeDamageMultiplier);
-                    towers.SetPerTypeFireRateMultiplier(towerDefinition.id, perTypeFireRateMultiplier);
+                    towers.SetPerTypeDamageMultiplier(towerDefinition.id, 1f);
+                    towers.SetPerTypeFireRateMultiplier(towerDefinition.id, 1f);
                     towerDefinition.pierce = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerPierceFlat, towerDefinition.id));
                     towerDefinition.doubleShotChance = progression.GetEffectTotal(UpgradeEffectType.TowerDoubleShotChancePercent, towerDefinition.id) / 100f;
                     towerDefinition.slowPercent = progression.GetEffectTotal(UpgradeEffectType.TowerSlowPercentFlat, towerDefinition.id) / 100f;
@@ -521,6 +540,8 @@ namespace TowerDefense.Runtime
         private readonly struct TowerBaseStats
         {
             private readonly float range;
+            private readonly float damage;
+            private readonly float fireInterval;
             private readonly float health;
             private readonly float alliedUnitHealth;
             private readonly float alliedUnitDamage;
@@ -530,6 +551,8 @@ namespace TowerDefense.Runtime
             public TowerBaseStats(TowerDefinition tower)
             {
                 range = tower.range;
+                damage = tower.damage;
+                fireInterval = tower.fireInterval;
                 health = tower.health;
                 alliedUnitHealth = tower.alliedUnitHealth;
                 alliedUnitDamage = tower.alliedUnitDamage;
@@ -540,6 +563,8 @@ namespace TowerDefense.Runtime
             public void Apply(TowerDefinition tower)
             {
                 tower.range = range;
+                tower.damage = damage;
+                tower.fireInterval = fireInterval;
                 tower.health = health;
                 tower.alliedUnitHealth = alliedUnitHealth;
                 tower.alliedUnitDamage = alliedUnitDamage;
@@ -556,6 +581,9 @@ namespace TowerDefense.Runtime
                 tower.fireMaxStacks = 0;
                 tower.fireDuration = 0f;
             }
+
+            public float Damage => damage;
+            public float FireRate => 1f / Mathf.Max(0.01f, fireInterval);
         }
     }
 }
