@@ -87,14 +87,14 @@ namespace TowerDefense.Runtime
             var route = routeObject.AddComponent<PathRoute>();
             var points = new[]
             {
-                new Vector3(-32f, 0f, -13f),
                 new Vector3(-24f, 0f, -10f),
-                new Vector3(-18f, 0f, 1f),
-                new Vector3(-8f, 0f, 6f),
-                new Vector3(2f, 0f, 2f),
-                new Vector3(9f, 0f, -8f),
-                new Vector3(19f, 0f, -5f),
-                new Vector3(30f, 0f, 7f)
+                new Vector3(-18f, 0f, -8f),
+                new Vector3(-13f, 0f, -1f),
+                new Vector3(-6f, 0f, 2f),
+                new Vector3(1f, 0f, 0f),
+                new Vector3(5f, 0f, -6f),
+                new Vector3(13f, 0f, -4f),
+                new Vector3(20f, 0f, 3f)
             };
 
             route.SetWaypoints(points);
@@ -256,11 +256,11 @@ namespace TowerDefense.Runtime
             wave.totalEnemyCount = 200;
             wave.entries = new[]
             {
-                new WaveEntry { enemy = runner, count = 65, startTime = 0f, spawnInterval = 0.18f },
-                new WaveEntry { enemy = brute, count = 18, startTime = 13f, spawnInterval = 0.72f },
-                new WaveEntry { enemy = runner, count = 48, startTime = 24f, spawnInterval = 0.12f },
-                new WaveEntry { enemy = brute, count = 26, startTime = 34f, spawnInterval = 0.48f },
-                new WaveEntry { enemy = runner, count = 43, startTime = 46f, spawnInterval = 0.08f }
+                new WaveEntry { enemy = runner, count = 65, startTime = 0f, spawnInterval = 0.36f, spawnBurstCount = 3 },
+                new WaveEntry { enemy = brute, count = 18, startTime = 8f, spawnInterval = 0.75f, spawnBurstCount = 2 },
+                new WaveEntry { enemy = runner, count = 48, startTime = 16f, spawnInterval = 0.32f, spawnBurstCount = 4 },
+                new WaveEntry { enemy = brute, count = 26, startTime = 22f, spawnInterval = 0.65f, spawnBurstCount = 3 },
+                new WaveEntry { enemy = runner, count = 43, startTime = 30f, spawnInterval = 0.45f, spawnBurstCount = 5 }
             };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();

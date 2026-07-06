@@ -45,7 +45,7 @@ namespace TowerDefense.Runtime
             currentMaxHealth = enemyDefinition.maxHealth;
             health = currentMaxHealth;
             pathDistance = initialOffset;
-            laneOffset = UnityEngine.Random.Range(-0.52f, 0.52f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
+            laneOffset = UnityEngine.Random.Range(-1.35f, 1.35f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
             crowdOffset = Vector3.zero;
             knockbackOffset = Vector3.zero;
             burnStacks.Clear();
@@ -346,7 +346,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (Mathf.Abs(other.PathDistance - pathDistance) > 1.8f)
+                if (Mathf.Abs(other.PathDistance - pathDistance) > 2.2f)
                 {
                     continue;
                 }
@@ -354,7 +354,7 @@ namespace TowerDefense.Runtime
                 var away = origin - other.transform.position;
                 away.y = 0f;
                 var distance = away.magnitude;
-                var desiredDistance = Mathf.Max(0.38f, (definition.visualScale + other.Definition.visualScale) * 0.54f);
+                var desiredDistance = Mathf.Max(0.48f, (definition.visualScale + other.Definition.visualScale) * 0.68f);
                 if (distance <= 0.001f)
                 {
                     away = GetPathSide(pathDistance) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
@@ -369,7 +369,7 @@ namespace TowerDefense.Runtime
                 offset += away.normalized * (desiredDistance - distance);
             }
 
-            return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.42f : 0.72f);
+            return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.58f : 1.12f);
         }
 
         private Vector3 GetPathTangent(float distance)

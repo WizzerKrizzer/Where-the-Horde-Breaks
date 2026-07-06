@@ -31,6 +31,7 @@ namespace TowerDefense.Data
         public int count;
         public float startTime;
         public float spawnInterval;
+        public int spawnBurstCount;
     }
 
     [Serializable]

@@ -88,8 +88,10 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                var due = Mathf.FloorToInt((elapsed - entry.startTime) / Mathf.Max(0.01f, entry.spawnInterval)) + 1;
-                while (spawnedByEntry[i] < entry.count && spawnedByEntry[i] < due && totalSpawned < wave.totalEnemyCount)
+                var burstCount = Mathf.Max(1, entry.spawnBurstCount);
+                var dueBursts = Mathf.FloorToInt((elapsed - entry.startTime) / Mathf.Max(0.01f, entry.spawnInterval)) + 1;
+                var dueEnemies = dueBursts * burstCount;
+                while (spawnedByEntry[i] < entry.count && spawnedByEntry[i] < dueEnemies && totalSpawned < wave.totalEnemyCount)
                 {
                     Spawn(entry.enemy);
                     spawnedByEntry[i]++;
