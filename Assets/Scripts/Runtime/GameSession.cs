@@ -47,6 +47,10 @@ namespace TowerDefense.Runtime
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
         public IReadOnlyList<TowerDefinition> UnlockedTowerDefinitions => towers?.AvailableTowers ?? System.Array.Empty<TowerDefinition>();
+        public float BaseActiveWeaponDamage => baseActiveWeaponDamage;
+        public float BaseActiveWeaponCooldown => baseActiveWeaponCooldown;
+        public float BaseActiveWeaponRadius => baseActiveWeaponRadius;
+        public int BaseActiveWeaponMaxTargets => baseActiveWeaponMaxTargets;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -142,6 +146,29 @@ namespace TowerDefense.Runtime
         public int GetUpgradeMaxRank(string nodeId)
         {
             return progression.GetMaxRank(nodeId);
+        }
+
+        public float GetUpgradeEffectTotal(UpgradeEffectType type, string targetId = null)
+        {
+            return progression.GetEffectTotal(type, targetId);
+        }
+
+        public TowerDefinition GetTowerDefinition(string towerId)
+        {
+            if (allTowerDefinitions == null || string.IsNullOrEmpty(towerId))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < allTowerDefinitions.Count; i++)
+            {
+                if (allTowerDefinitions[i] != null && allTowerDefinitions[i].id == towerId)
+                {
+                    return allTowerDefinitions[i];
+                }
+            }
+
+            return null;
         }
 
         public CurrencyAmount[] GetUpgradeNextCosts(string nodeId)
