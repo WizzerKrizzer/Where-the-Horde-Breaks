@@ -740,12 +740,12 @@ namespace TowerDefense.Runtime
                 new SkillNodeDefinition
                 {
                     id = "knight_barracks_limit_01",
-                    displayName = "Second Barracks",
-                    description = "Allows one additional Knight Barracks placement.",
+                    displayName = "Additional Barracks",
+                    description = "Each rank allows one additional Knight Barracks placement.",
                     radialPosition = new Vector2(310f, 178f),
-                    maxRanks = 1,
+                    maxRanks = 3,
                     prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "knight_barracks", value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -837,12 +837,12 @@ namespace TowerDefense.Runtime
                 new SkillNodeDefinition
                 {
                     id = "archer_barracks_limit_01",
-                    displayName = "Second Archer Post",
-                    description = "Allows one additional Archer Post placement.",
+                    displayName = "Additional Archer Posts",
+                    description = "Each rank allows one additional Archer Post placement.",
                     radialPosition = new Vector2(330f, 552f),
-                    maxRanks = 1,
+                    maxRanks = 3,
                     prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 14) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer_barracks", value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -904,12 +904,12 @@ namespace TowerDefense.Runtime
                 new SkillNodeDefinition
                 {
                     id = "paladin_barracks_limit_01",
-                    displayName = "Second Chapter",
-                    description = "Allows one additional Paladin Chapter placement.",
+                    displayName = "Additional Chapters",
+                    description = "Each rank allows one additional Paladin Chapter placement.",
                     radialPosition = new Vector2(430f, 326f),
-                    maxRanks = 1,
+                    maxRanks = 3,
                     prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "paladin_barracks", value = 1f } }
                 },
                 new SkillNodeDefinition
