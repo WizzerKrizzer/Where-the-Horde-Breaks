@@ -1458,7 +1458,7 @@ namespace TowerDefense.UI
             text.AppendLine($"Vs barriers: x{enemy.wallDamageMultiplier:0.0}");
             text.AppendLine($"Vs allied units: x{enemy.alliedDamageMultiplier:0.0}");
             text.AppendLine($"Life damage: {enemy.lifeDamage}");
-            text.AppendLine($"Kill reward: {enemy.killReward} {FormatCurrencySymbol(CurrencyType.KillEssence)}");
+            text.AppendLine($"Kill reward: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 kills");
 
             var abilities = new List<string>();
             if (enemy.isFlying)

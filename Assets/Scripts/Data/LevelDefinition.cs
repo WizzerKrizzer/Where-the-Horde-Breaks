@@ -11,7 +11,7 @@ namespace TowerDefense.Data
         public WaveDefinition wave;
         public CurrencyAmount firstClearReward = new(CurrencyType.VictorySigil, 1);
         public CurrencyAmount perfectClearReward = new(CurrencyType.PerfectSigil, 1);
-        public CurrencyAmount replayReward = new(CurrencyType.KillEssence, 25);
+        public CurrencyAmount replayReward = new(CurrencyType.KillEssence, 3);
         public ChallengeRule[] challenges;
     }
 }

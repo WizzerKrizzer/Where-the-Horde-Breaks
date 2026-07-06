@@ -356,7 +356,11 @@ namespace TowerDefense.Runtime
         private void OnEnemyKilled(EnemyActor enemy)
         {
             enemiesKilled++;
-            rewards.ApplyKillReward(profile, enemy.Definition);
+            if (enemiesKilled % 10 == 0)
+            {
+                profile.AddCurrency(CurrencyType.KillEssence, 1);
+                profileStore.Save(profile);
+            }
         }
 
         private void OnEnemyEscaped(EnemyActor enemy)
