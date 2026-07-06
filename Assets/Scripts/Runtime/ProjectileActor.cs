@@ -1,4 +1,5 @@
 using TowerDefense.Data;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TowerDefense.Runtime
@@ -7,29 +8,39 @@ namespace TowerDefense.Runtime
     {
         private TowerActor source;
         private TowerDefinition sourceTower;
-        private EnemyActor target;
         private EnemyManager enemies;
         private float damage;
         private float speed;
         private Vector3 startPosition;
         private Vector3 impactPosition;
+        private Vector3 directDirection;
         private float flightTime;
         private float flightElapsed;
+        private float directTravelDistance;
+        private float directMaxDistance;
         private int remainingPierce;
         private bool active;
+        private readonly List<EnemyActor> hitEnemies = new();
 
         public void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
         {
             source = sourceTowerActor;
             sourceTower = towerDefinition;
-            target = targetEnemy;
             enemies = enemyManager;
             damage = projectileDamage;
             speed = towerDefinition.projectileSpeed;
             startPosition = transform.position;
             impactPosition = targetEnemy != null ? targetEnemy.transform.position : transform.position;
+            directDirection = impactPosition - startPosition;
+            directDirection.y = 0f;
+            directDirection = directDirection.sqrMagnitude <= 0.001f ? transform.forward : directDirection.normalized;
             flightElapsed = 0f;
+            directTravelDistance = 0f;
+            directMaxDistance = towerDefinition.projectilePattern == ProjectilePattern.ArcSplash
+                ? Vector3.Distance(startPosition, impactPosition)
+                : Mathf.Max(Vector3.Distance(startPosition, impactPosition) + 1f, towerDefinition.range + 1f);
             remainingPierce = Mathf.Max(0, towerDefinition.pierce);
+            hitEnemies.Clear();
             var flightMultiplier = towerDefinition.projectilePattern == ProjectilePattern.ArcSplash
                 ? Mathf.Max(1f, towerDefinition.arcFlightTimeMultiplier)
                 : 1f;
@@ -57,31 +68,83 @@ namespace TowerDefense.Runtime
 
         private void UpdateDirect()
         {
-            if (target == null || !target.IsAlive)
+            if (enemies == null || sourceTower == null)
             {
                 Deactivate();
                 return;
             }
 
-            transform.position = Vector3.MoveTowards(transform.position, target.transform.position, speed * Time.deltaTime);
-            if ((target.transform.position - transform.position).sqrMagnitude > 0.08f)
+            var previousPosition = transform.position;
+            var step = speed * Time.deltaTime;
+            transform.position += directDirection * step;
+            directTravelDistance += step;
+
+            var hit = FindDirectHit(previousPosition, transform.position);
+            if (hit != null)
+            {
+                ApplyDirectHit(hit);
+                if (!active)
+                {
+                    return;
+                }
+            }
+
+            if (directTravelDistance < directMaxDistance)
             {
                 return;
             }
 
-            var appliedDamage = target.ApplyDamage(damage);
+            Deactivate();
+        }
+
+        private EnemyActor FindDirectHit(Vector3 from, Vector3 to)
+        {
+            foreach (var enemy in enemies.ActiveEnemies)
+            {
+                if (enemy == null || !enemy.IsAlive || hitEnemies.Contains(enemy) || (enemy.Definition.isFlying && !sourceTower.canHitFlying))
+                {
+                    continue;
+                }
+
+                var hitRadius = Mathf.Max(0.26f, enemy.Definition.visualScale * 0.55f);
+                if (DistancePointToSegmentXz(enemy.transform.position, from, to) <= hitRadius)
+                {
+                    return enemy;
+                }
+            }
+
+            return null;
+        }
+
+        private void ApplyDirectHit(EnemyActor hit)
+        {
+            hitEnemies.Add(hit);
+            var appliedDamage = hit.ApplyDamage(damage);
             source?.RecordDamage(appliedDamage);
+            DamagePopup.Show(hit.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             if (remainingPierce > 0)
             {
                 remainingPierce--;
-                var nextTarget = enemies.GetNearestEnemyExcept(transform.position, 2.6f, sourceTower.canHitFlying, target);
-                if (nextTarget != null)
-                {
-                    target = nextTarget;
-                    return;
-                }
+                return;
             }
+
             Deactivate();
+        }
+
+        private static float DistancePointToSegmentXz(Vector3 point, Vector3 a, Vector3 b)
+        {
+            var point2 = new Vector2(point.x, point.z);
+            var a2 = new Vector2(a.x, a.z);
+            var b2 = new Vector2(b.x, b.z);
+            var segment = b2 - a2;
+            var lengthSq = segment.sqrMagnitude;
+            if (lengthSq <= 0.0001f)
+            {
+                return Vector2.Distance(point2, a2);
+            }
+
+            var t = Mathf.Clamp01(Vector2.Dot(point2 - a2, segment) / lengthSq);
+            return Vector2.Distance(point2, a2 + segment * t);
         }
 
         private void UpdateArcSplash()
