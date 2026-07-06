@@ -42,6 +42,7 @@ namespace TowerDefense.Runtime
         public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
         {
             ClearAll(clearCombatTargets: false);
+            corpseManager?.ClearAllVisuals();
             wave = waveDefinition;
             path = route;
             elapsed = 0f;

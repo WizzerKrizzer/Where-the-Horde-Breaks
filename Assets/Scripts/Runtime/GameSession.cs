@@ -28,6 +28,7 @@ namespace TowerDefense.Runtime
         private int lives;
         private int maxLivesForRun;
         private int enemiesKilled;
+        private float killRewardMassProgress;
         private float baseActiveWeaponDamage;
         private float baseActiveWeaponCooldown;
         private float baseActiveWeaponRadius;
@@ -245,6 +246,7 @@ namespace TowerDefense.Runtime
             baseActiveWeaponMaxTargets = activeWeapon.MaxTargets;
 
             enemiesKilled = 0;
+            killRewardMassProgress = 0f;
             running = false;
             finished = false;
             won = false;
@@ -354,6 +356,7 @@ namespace TowerDefense.Runtime
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
             lives = maxLivesForRun;
             enemiesKilled = 0;
+            killRewardMassProgress = 0f;
             running = false;
             finished = false;
             won = false;
@@ -394,9 +397,17 @@ namespace TowerDefense.Runtime
         private void OnEnemyKilled(EnemyActor enemy)
         {
             enemiesKilled++;
-            if (enemiesKilled % 10 == 0)
+            killRewardMassProgress += Mathf.Max(0f, enemy?.Definition?.mass ?? 1f);
+            var essenceReward = 0;
+            while (killRewardMassProgress >= 10f)
             {
-                profile.AddCurrency(CurrencyType.KillEssence, 1);
+                essenceReward++;
+                killRewardMassProgress -= 10f;
+            }
+
+            if (essenceReward > 0)
+            {
+                profile.AddCurrency(CurrencyType.KillEssence, essenceReward);
                 profileStore.Save(profile);
             }
         }

@@ -253,7 +253,7 @@ namespace TowerDefense.Runtime
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 300;
+            wave.totalEnemyCount = 250;
             wave.spawnInterval = 0.5f;
             wave.randomSpawnBurstMin = 3;
             wave.randomSpawnBurstMax = 8;
@@ -399,12 +399,13 @@ namespace TowerDefense.Runtime
                 {
                     id = "archer_double_01",
                     displayName = "Twin Loose",
-                    description = "Each rank gives Archer Tower 3% chance to fire a second shot.",
+                    description = "Each rank gives Archer Tower 6% chance to fire a second shot.",
                     radialPosition = new Vector2(-420f, 154f),
-                    maxRanks = 10,
+                    maxRanks = 5,
                     prerequisiteNodeIds = new[] { "archer_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDoubleShotChancePercent, targetId = "archer", value = 3f } }
+                    costGrowthMultiplier = 2f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDoubleShotChancePercent, targetId = "archer", value = 6f } }
                 },
                 new SkillNodeDefinition
                 {
@@ -908,13 +909,13 @@ namespace TowerDefense.Runtime
         private static WaveEntry[] BuildLevelOneWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
         {
             var entries = new List<WaveEntry>();
-            for (var i = 0; i < 33; i++)
+            for (var i = 0; i < 27; i++)
             {
                 entries.Add(new WaveEntry { enemy = runner, count = 7 });
                 entries.Add(new WaveEntry { enemy = brute, count = 2 });
             }
 
-            entries.Add(new WaveEntry { enemy = runner, count = 3 });
+            entries.Add(new WaveEntry { enemy = runner, count = 7 });
             return entries.ToArray();
         }
 

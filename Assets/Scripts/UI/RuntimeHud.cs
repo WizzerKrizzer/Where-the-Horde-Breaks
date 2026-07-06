@@ -298,16 +298,16 @@ namespace TowerDefense.UI
 
         private void CreatePausePanel(Transform parent)
         {
-            pausePanel = CreatePanel("PausePanel", parent, new Vector2(0f, 124f), new Vector2(300f, 132f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            pausePanel = CreatePanel("PausePanel", parent, new Vector2(0f, 124f), new Vector2(300f, 150f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
             var title = CreateText("PauseTitle", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 98f), new Vector2(240f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 118f), new Vector2(240f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             title.text = "PAUSED";
-            var resumeButton = CreateButton("ResumeButton", pausePanel.transform, "RESUME", new Vector2(-64f, 46f), new Vector2(108f, 28f), 13);
-            resumeButton.onClick.AddListener(() => SetPausePanelVisible(false));
-            var surrenderButton = CreateButton("SurrenderButton", pausePanel.transform, "SURRENDER", new Vector2(64f, 46f), new Vector2(108f, 28f), 13);
+            var surrenderButton = CreateButton("SurrenderButton", pausePanel.transform, "SURRENDER", new Vector2(0f, 78f), new Vector2(132f, 28f), 13);
             surrenderButton.onClick.AddListener(SurrenderFromPause);
+            var resumeButton = CreateButton("ResumeButton", pausePanel.transform, "RESUME", new Vector2(0f, 44f), new Vector2(132f, 28f), 13);
+            resumeButton.onClick.AddListener(() => SetPausePanelVisible(false));
             var hint = CreateText("PauseHint", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, 18f), new Vector2(250f, 22f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, 16f), new Vector2(250f, 22f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             hint.text = "Escape resumes the battle.";
             input.RegisterBlockingUiRect(pausePanel.GetComponent<RectTransform>());
             pausePanel.SetActive(false);
@@ -1510,7 +1510,7 @@ namespace TowerDefense.UI
                         ? $"Projectile: arcing splash\nSplash radius: {tower.splashRadius:0.0}\nKnockback: {tower.knockbackDistance:0.0}"
                         : $"Projectile: single target\nPierce: {tower.pierce}";
                     var fireLine = tower.appliesFire
-                        ? $"\nFire: {tower.fireDamagePerTick:0.00} damage/tick, {tower.fireTicksPerSecond:0.00} ticks/sec, {tower.fireMaxStacks} max stacks, {tower.fireDuration:0.0}s"
+                        ? $"\nFire: {tower.fireDamagePerTick:0.0} damage/tick, {tower.fireTicksPerSecond:0.0} ticks/sec, {tower.fireMaxStacks} max stacks, {tower.fireDuration:0.0}s"
                         : string.Empty;
                     text.AppendLine($"Damage: {tower.damage:0.0} per hit");
                     text.AppendLine($"Range: {tower.range:0.0}");
@@ -1534,7 +1534,7 @@ namespace TowerDefense.UI
             text.AppendLine($"Vs barriers: x{enemy.wallDamageMultiplier:0.0}");
             text.AppendLine($"Vs allied units: x{enemy.alliedDamageMultiplier:0.0}");
             text.AppendLine($"Life damage: {enemy.lifeDamage}");
-            text.AppendLine($"Kill reward: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 kills");
+            text.AppendLine($"Kill reward: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 reward mass");
 
             var abilities = new List<string>();
             if (enemy.isFlying)
@@ -1940,7 +1940,7 @@ namespace TowerDefense.UI
                     var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamageFlat, effect.targetId);
                     var currentDamage = baseDamage * (1f + current / 100f) + flatBonus;
                     var nextDamage = baseDamage * (1f + next / 100f) + flatBonus;
-                    return $"{target} bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {currentDamage:0.##} -> {nextDamage:0.##}";
+                    return $"{target} bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {currentDamage:0.#} -> {nextDamage:0.#}";
                 }
                 case UpgradeEffectType.TowerDamageFlat:
                 {
@@ -1948,7 +1948,7 @@ namespace TowerDefense.UI
                     var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, effect.targetId);
                     var currentDamage = baseDamage * (1f + percentBonus / 100f) + current;
                     var nextDamage = baseDamage * (1f + percentBonus / 100f) + next;
-                    return $"{target} damage/hit: {currentDamage:0.##} -> {nextDamage:0.##}";
+                    return $"{target} damage/hit: {currentDamage:0.#} -> {nextDamage:0.#}";
                 }
                 case UpgradeEffectType.TowerFireRatePercent:
                 {
@@ -1956,7 +1956,7 @@ namespace TowerDefense.UI
                     var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRateFlat, effect.targetId);
                     var currentRate = baseRate * (1f + current / 100f) + flatBonus;
                     var nextRate = baseRate * (1f + next / 100f) + flatBonus;
-                    return $"{target} fire rate bonus: {current:0}% -> {next:0}%\nShots/sec: {currentRate:0.##} -> {nextRate:0.##}";
+                    return $"{target} fire rate bonus: {current:0}% -> {next:0}%\nShots/sec: {currentRate:0.#} -> {nextRate:0.#}";
                 }
                 case UpgradeEffectType.TowerFireRateFlat:
                 {
@@ -1964,7 +1964,7 @@ namespace TowerDefense.UI
                     var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, effect.targetId);
                     var currentRate = baseRate * (1f + percentBonus / 100f) + current;
                     var nextRate = baseRate * (1f + percentBonus / 100f) + next;
-                    return $"{target} shots/sec: {currentRate:0.##} -> {nextRate:0.##}";
+                    return $"{target} shots/sec: {currentRate:0.#} -> {nextRate:0.#}";
                 }
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"{target} pierce: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)}";
@@ -1995,13 +1995,13 @@ namespace TowerDefense.UI
                 {
                     var currentDamage = tower != null ? tower.alliedUnitDamage : 0f;
                     var nextDamage = currentDamage * (1f + effect.value / Mathf.Max(1f, 100f + current));
-                    return $"{target} troop damage bonus: {current:0}% -> {next:0}%\nTroop damage: {currentDamage:0.##} -> {nextDamage:0.##}";
+                    return $"{target} troop damage bonus: {current:0}% -> {next:0}%\nTroop damage: {currentDamage:0.#} -> {nextDamage:0.#}";
                 }
                 case UpgradeEffectType.BarracksUnitHealthPercent:
                 {
                     var currentHealth = tower != null ? tower.alliedUnitHealth : 0f;
                     var nextHealth = currentHealth * (1f + effect.value / Mathf.Max(1f, 100f + current));
-                    return $"{target} troop health bonus: {current:0}% -> {next:0}%\nTroop health: {currentHealth:0.##} -> {nextHealth:0.##}";
+                    return $"{target} troop health bonus: {current:0}% -> {next:0}%\nTroop health: {currentHealth:0.#} -> {nextHealth:0.#}";
                 }
                 case UpgradeEffectType.BarracksRespawnCooldownPercent:
                 {
@@ -2012,9 +2012,9 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.EnableTowerFire:
                     return $"Unlock {target} fire";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:
-                    return $"{target} burn damage/tick: {current:0.##} -> {next:0.##}";
+                    return $"{target} burn damage/tick: {current:0.#} -> {next:0.#}";
                 case UpgradeEffectType.TowerFireTicksPerSecondFlat:
-                    return $"{target} burn ticks/sec: {current:0.##} -> {next:0.##}";
+                    return $"{target} burn ticks/sec: {current:0.#} -> {next:0.#}";
                 case UpgradeEffectType.TowerFireMaxStacksFlat:
                     return $"{target} burn stacks: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)}";
                 case UpgradeEffectType.TowerFireDurationFlat:
@@ -2022,12 +2022,12 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.ActiveWeaponDamagePercent:
                 {
                     var baseDamage = session.BaseActiveWeaponDamage;
-                    return $"Active weapon bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {baseDamage * (1f + current / 100f):0.##} -> {baseDamage * (1f + next / 100f):0.##}";
+                    return $"Active weapon bonus damage: {current:0}% -> {next:0}%\nDamage/hit: {baseDamage * (1f + current / 100f):0.#} -> {baseDamage * (1f + next / 100f):0.#}";
                 }
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:
-                    return $"Active weapon cooldown reduction: {current:0}% -> {next:0}%\nCooldown: {session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - current / 100f):0.##}s -> {session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - next / 100f):0.##}s";
+                    return $"Active weapon cooldown reduction: {current:0}% -> {next:0}%\nCooldown: {session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - current / 100f):0.#}s -> {session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - next / 100f):0.#}s";
                 case UpgradeEffectType.ActiveWeaponRadiusFlat:
-                    return $"Active weapon radius: {session.BaseActiveWeaponRadius + current:0.##} -> {session.BaseActiveWeaponRadius + next:0.##}";
+                    return $"Active weapon radius: {session.BaseActiveWeaponRadius + current:0.#} -> {session.BaseActiveWeaponRadius + next:0.#}";
                 case UpgradeEffectType.ActiveWeaponPierceFlat:
                     return $"Active weapon targets: {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(current)} -> {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(next)}";
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
@@ -2117,9 +2117,9 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.EnableTowerFire:
                     return $"Enable {FormatTargetName(effect.targetId)} fire";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:
-                    return $"+{effect.value:0.00} {FormatTargetName(effect.targetId)} fire damage/tick";
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} fire damage/tick";
                 case UpgradeEffectType.TowerFireTicksPerSecondFlat:
-                    return $"+{effect.value:0.00} {FormatTargetName(effect.targetId)} fire ticks/sec";
+                    return $"+{effect.value:0.0} {FormatTargetName(effect.targetId)} fire ticks/sec";
                 case UpgradeEffectType.TowerFireMaxStacksFlat:
                     return $"+{effect.value:0} {FormatTargetName(effect.targetId)} fire stacks";
                 case UpgradeEffectType.TowerFireDurationFlat:
@@ -2129,7 +2129,7 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:
                     return $"-{effect.value:0}% active weapon cooldown";
                 case UpgradeEffectType.ActiveWeaponRadiusFlat:
-                    return $"+{effect.value:0.00} active weapon radius";
+                    return $"+{effect.value:0.0} active weapon radius";
                 case UpgradeEffectType.ActiveWeaponPierceFlat:
                     return $"+{effect.value:0} active weapon targets";
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock:

@@ -35,6 +35,12 @@ namespace TowerDefense.Runtime
             SpawnBlood(position, enemy.Definition.visualScale);
         }
 
+        public void ClearAllVisuals()
+        {
+            ClearQueue(corpses);
+            ClearQueue(bloodDecals);
+        }
+
         private void SpawnBlood(Vector3 position, float scale)
         {
             var decal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -76,6 +82,18 @@ namespace TowerDefense.Runtime
                 if (old != null)
                 {
                     Destroy(old);
+                }
+            }
+        }
+
+        private static void ClearQueue(Queue<GameObject> queue)
+        {
+            while (queue.Count > 0)
+            {
+                var item = queue.Dequeue();
+                if (item != null)
+                {
+                    Destroy(item);
                 }
             }
         }
