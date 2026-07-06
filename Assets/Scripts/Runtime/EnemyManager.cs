@@ -17,8 +17,11 @@ namespace TowerDefense.Runtime
         private EnemyCorpseManager corpseManager;
         private readonly List<EnemyDistance> damageCandidates = new();
         private float elapsed;
+        private float spawnWindowStartTime;
         private float nextSpawnTime;
         private int burstPatternIndex;
+        private int currentWindowSpawnCount;
+        private int currentWindowSpawned;
         private int totalSpawned;
         private int totalResolved;
 
@@ -42,8 +45,11 @@ namespace TowerDefense.Runtime
             wave = waveDefinition;
             path = route;
             elapsed = 0f;
+            spawnWindowStartTime = 0f;
             nextSpawnTime = 0f;
             burstPatternIndex = 0;
+            currentWindowSpawnCount = GetNextWindowSpawnCount();
+            currentWindowSpawned = 0;
             totalSpawned = 0;
             totalResolved = 0;
             BuildSpawnSequence();
@@ -84,11 +90,10 @@ namespace TowerDefense.Runtime
             }
 
             elapsed += Time.deltaTime;
-            var spawnInterval = Mathf.Max(0.01f, wave.spawnInterval);
             while (elapsed >= nextSpawnTime && totalSpawned < spawnSequence.Count)
             {
-                SpawnNextBurst();
-                nextSpawnTime += spawnInterval;
+                Spawn(spawnSequence[totalSpawned]);
+                AdvanceSpawnSchedule();
             }
         }
 
@@ -117,20 +122,33 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void SpawnNextBurst()
+        private int GetNextWindowSpawnCount()
         {
             var pattern = wave.spawnBurstPattern;
-            var burstCount = 1;
             if (pattern != null && pattern.Length > 0)
             {
-                burstCount = Mathf.Max(1, pattern[burstPatternIndex % pattern.Length]);
+                var count = Mathf.Max(1, pattern[burstPatternIndex % pattern.Length]);
                 burstPatternIndex++;
+                return count;
             }
 
-            for (var i = 0; i < burstCount && totalSpawned < spawnSequence.Count; i++)
+            return 1;
+        }
+
+        private void AdvanceSpawnSchedule()
+        {
+            currentWindowSpawned++;
+            var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
+            if (currentWindowSpawned < currentWindowSpawnCount)
             {
-                Spawn(spawnSequence[totalSpawned]);
+                nextSpawnTime = spawnWindowStartTime + windowDuration * currentWindowSpawned / currentWindowSpawnCount;
+                return;
             }
+
+            spawnWindowStartTime += windowDuration;
+            currentWindowSpawnCount = GetNextWindowSpawnCount();
+            currentWindowSpawned = 0;
+            nextSpawnTime = spawnWindowStartTime;
         }
 
         public void NotifyEnemyKilled(EnemyActor enemy)

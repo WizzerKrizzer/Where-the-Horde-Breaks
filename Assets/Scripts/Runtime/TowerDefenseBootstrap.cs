@@ -256,23 +256,7 @@ namespace TowerDefense.Runtime
             wave.totalEnemyCount = 200;
             wave.spawnInterval = 0.5f;
             wave.spawnBurstPattern = new[] { 1, 3, 5, 1, 2, 4, 5, 3, 1, 4, 2, 2, 5, 3, 4, 1 };
-            wave.entries = new[]
-            {
-                new WaveEntry { enemy = runner, count = 10 },
-                new WaveEntry { enemy = brute, count = 5 },
-                new WaveEntry { enemy = runner, count = 20 },
-                new WaveEntry { enemy = brute, count = 6 },
-                new WaveEntry { enemy = runner, count = 15 },
-                new WaveEntry { enemy = brute, count = 5 },
-                new WaveEntry { enemy = runner, count = 25 },
-                new WaveEntry { enemy = brute, count = 8 },
-                new WaveEntry { enemy = runner, count = 20 },
-                new WaveEntry { enemy = brute, count = 6 },
-                new WaveEntry { enemy = runner, count = 30 },
-                new WaveEntry { enemy = brute, count = 8 },
-                new WaveEntry { enemy = runner, count = 36 },
-                new WaveEntry { enemy = brute, count = 6 }
-            };
+            wave.entries = BuildLevelOneWaveEntries(runner, brute);
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
             level.id = "level_01";
@@ -896,6 +880,19 @@ namespace TowerDefense.Runtime
             enemy.color = color;
             enemy.visualScale = scale;
             return enemy;
+        }
+
+        private static WaveEntry[] BuildLevelOneWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
+        {
+            var entries = new List<WaveEntry>();
+            for (var i = 0; i < 22; i++)
+            {
+                entries.Add(new WaveEntry { enemy = runner, count = 7 });
+                entries.Add(new WaveEntry { enemy = brute, count = 2 });
+            }
+
+            entries.Add(new WaveEntry { enemy = runner, count = 2 });
+            return entries.ToArray();
         }
 
         private static TowerDefinition CreateTower(
