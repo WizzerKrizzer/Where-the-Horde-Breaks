@@ -76,6 +76,7 @@ namespace TowerDefense.Runtime
 
             var previousPosition = transform.position;
             var step = speed * Time.deltaTime;
+            ApplyAimAssist(step);
             transform.position += directDirection * step;
             directTravelDistance += step;
 
@@ -95,6 +96,31 @@ namespace TowerDefense.Runtime
             }
 
             Deactivate();
+        }
+
+        private void ApplyAimAssist(float step)
+        {
+            var assist = sourceTower != null ? sourceTower.aimAssistStrength : 0f;
+            if (assist <= 0f || enemies == null)
+            {
+                return;
+            }
+
+            var targetEnemy = enemies.GetEnemyByTargetingMode(transform.position, Mathf.Max(1f, sourceTower.range), sourceTower.canHitFlying, TowerTargetingMode.Closest);
+            if (targetEnemy == null)
+            {
+                return;
+            }
+
+            var desired = targetEnemy.transform.position - transform.position;
+            desired.y = 0f;
+            if (desired.sqrMagnitude <= 0.001f)
+            {
+                return;
+            }
+
+            var turnStrength = Mathf.Clamp01(assist * step / Mathf.Max(0.75f, Vector3.Distance(transform.position, targetEnemy.transform.position)));
+            directDirection = Vector3.Slerp(directDirection, desired.normalized, turnStrength).normalized;
         }
 
         private EnemyActor FindDirectHit(Vector3 from, Vector3 to)

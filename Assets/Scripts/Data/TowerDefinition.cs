@@ -19,6 +19,8 @@ namespace TowerDefense.Data
         public float damage = 3f;
         public float fireInterval = 0.65f;
         public float projectileSpeed = 18f;
+        [Range(0f, 1f)]
+        public float aimAssistStrength;
         public bool canHitFlying;
         public int pierce;
         [Range(0f, 1f)]

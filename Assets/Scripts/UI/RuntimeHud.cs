@@ -2138,6 +2138,8 @@ namespace TowerDefense.UI
                     var nextRate = baseRate * (1f + percentBonus / 100f) + next;
                     return $"{target} shots/sec: {currentRate:0.#} -> {nextRate:0.#}";
                 }
+                case UpgradeEffectType.TowerAimAssistPercent:
+                    return $"Projectile aim assist: {current:0}% -> {next:0}%";
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"{target} pierce: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)}";
                 case UpgradeEffectType.TowerDoubleShotChancePercent:
@@ -2264,6 +2266,8 @@ namespace TowerDefense.UI
                     return string.IsNullOrWhiteSpace(effect.targetId)
                         ? $"+{effect.value:0}% tower fire rate"
                         : $"+{effect.value:0}% {FormatTargetName(effect.targetId)} fire rate";
+                case UpgradeEffectType.TowerAimAssistPercent:
+                    return $"+{effect.value:0}% projectile aim assist";
                 case UpgradeEffectType.TowerPierceFlat:
                     return $"+{effect.value:0} {FormatTargetName(effect.targetId)} pierce";
                 case UpgradeEffectType.TowerDoubleShotChancePercent:

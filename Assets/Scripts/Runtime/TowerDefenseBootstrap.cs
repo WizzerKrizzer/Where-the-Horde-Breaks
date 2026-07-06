@@ -502,6 +502,18 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "projectile_aim_assist_01",
+                    displayName = "Guiding Fletches",
+                    description = "Each rank gives projectile towers 20% attraction toward nearby enemies.",
+                    radialPosition = new Vector2(-500f, -332f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "ballista_speed_01" },
+                    costGrowthMultiplier = 2.5f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerAimAssistPercent, value = 20f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "bell_unlock",
                     displayName = "Bell Tower",
                     description = "Unlock the Bell Tower, a fast medieval lookout turret for cleaning up leaks.",

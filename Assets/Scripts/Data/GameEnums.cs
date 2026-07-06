@@ -77,6 +77,7 @@ namespace TowerDefense.Data
         TowerDamagePercent,
         TowerFireRateFlat,
         TowerFireRatePercent,
+        TowerAimAssistPercent,
         TowerPierceFlat,
         TowerDoubleShotChancePercent,
         TowerSlowPercentFlat,
