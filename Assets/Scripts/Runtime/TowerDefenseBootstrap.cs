@@ -214,7 +214,7 @@ namespace TowerDefense.Runtime
             var knightBarracks = CreateTower("knight_barracks", "Knight Barracks", TowerRole.BarracksLine,
                 "Spawns knights that hold the line and fight enemies in melee.",
                 "Weak to enemies that specialize in killing allied troops.",
-                0, 2, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
+                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
             knightBarracks.behavior = TowerBehavior.Barracks;
             knightBarracks.barracksUnitType = AlliedUnitType.Knight;
             knightBarracks.alliedUnitHealth = 26f;
@@ -225,7 +225,7 @@ namespace TowerDefense.Runtime
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
                 "Spawns archers that stand beside the road and fire arrows into the path.",
                 "Weak to future ranged enemies and enemies that bypass the melee line.",
-                0, 2, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
+                0, 1, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
             archerBarracks.behavior = TowerBehavior.Barracks;
             archerBarracks.barracksUnitType = AlliedUnitType.Archer;
             archerBarracks.alliedUnitCanHitFlying = true;
@@ -238,7 +238,7 @@ namespace TowerDefense.Runtime
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
                 "Spawns a durable paladin. Paladins take more space but bring higher defense.",
                 "Weak because each paladin takes extra capacity and respawns slowly.",
-                0, 2, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
+                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
             paladinBarracks.behavior = TowerBehavior.Barracks;
             paladinBarracks.barracksUnitType = AlliedUnitType.Paladin;
             paladinBarracks.barracksCapacity = 2;
@@ -739,6 +739,17 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "knight_barracks_limit_01",
+                    displayName = "Second Barracks",
+                    description = "Allows one additional Knight Barracks placement.",
+                    radialPosition = new Vector2(310f, 178f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "knight_barracks", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "barracks_damage_01",
                     displayName = "Knight Steel",
                     description = "Each rank increases knight damage by 5%.",
@@ -825,6 +836,17 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "archer_barracks_limit_01",
+                    displayName = "Second Archer Post",
+                    description = "Allows one additional Archer Post placement.",
+                    radialPosition = new Vector2(330f, 552f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 14) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer_barracks", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_post_damage_01",
                     displayName = "War Arrows",
                     description = "Each rank increases archer damage by 5%.",
@@ -878,6 +900,17 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "paladin_barracks", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "paladin_barracks_limit_01",
+                    displayName = "Second Chapter",
+                    description = "Allows one additional Paladin Chapter placement.",
+                    radialPosition = new Vector2(430f, 326f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 18) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "paladin_barracks", value = 1f } }
                 },
                 new SkillNodeDefinition
                 {
