@@ -349,6 +349,12 @@ namespace TowerDefense.Runtime
             activeWeapon.CanFire = false;
             enemies.StopWave();
             rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun);
+            var levelEndEssenceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.LevelEndKillEssenceFlat));
+            if (levelEndEssenceBonus > 0)
+            {
+                profile.AddCurrency(CurrencyType.KillEssence, levelEndEssenceBonus);
+            }
+
             SaveLayout();
             profileStore.Save(profile);
         }

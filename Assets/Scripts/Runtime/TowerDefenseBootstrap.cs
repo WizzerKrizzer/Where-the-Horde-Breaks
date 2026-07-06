@@ -343,6 +343,18 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "steady_tithe_01",
+                    displayName = "Steady Tithe",
+                    description = "Each rank grants 3 bonus essence when a level ends.",
+                    radialPosition = new Vector2(164f, 270f),
+                    maxRanks = 3,
+                    prerequisiteNodeIds = new[] { "base_health_01" },
+                    costGrowthMultiplier = 2f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.LevelEndKillEssenceFlat, value = 3f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_unlock",
                     displayName = "Archer Tower",
                     description = "Unlock the Archer Tower for future runs.",

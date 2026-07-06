@@ -1936,6 +1936,8 @@ namespace TowerDefense.UI
                     return $"Active weapon targets: {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(current)} -> {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(next)}";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"Base lives: {session.Level.startingLives + Mathf.RoundToInt(current)} -> {session.Level.startingLives + Mathf.RoundToInt(next)}";
+                case UpgradeEffectType.LevelEndKillEssenceFlat:
+                    return $"Bonus after each level: {Mathf.RoundToInt(current)} -> {Mathf.RoundToInt(next)} {FormatCurrencySymbol(CurrencyType.KillEssence)}";
                 case UpgradeEffectType.UnlockEra:
                     return $"Unlock {effect.targetId} era";
                 default:
@@ -2030,6 +2032,8 @@ namespace TowerDefense.UI
                     return $"+{effect.value:0} active weapon targets";
                 case UpgradeEffectType.BaseLivesFlat:
                     return $"+{effect.value:0} base lives";
+                case UpgradeEffectType.LevelEndKillEssenceFlat:
+                    return $"+{effect.value:0} essence after each level";
                 case UpgradeEffectType.UnlockEra:
                     return $"Unlock {effect.targetId} era";
                 default:

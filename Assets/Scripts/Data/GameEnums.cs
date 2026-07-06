@@ -83,6 +83,7 @@ namespace TowerDefense.Data
         TowerFireMaxStacksFlat,
         TowerFireDurationFlat,
         BaseLivesFlat,
+        LevelEndKillEssenceFlat,
         UnlockTower,
         UnlockEra
     }
