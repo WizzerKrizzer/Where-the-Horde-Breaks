@@ -214,7 +214,7 @@ namespace TowerDefense.Runtime
             var knightBarracks = CreateTower("knight_barracks", "Knight Barracks", TowerRole.BarracksLine,
                 "Spawns knights that hold the line and fight enemies in melee.",
                 "Weak to enemies that specialize in killing allied troops.",
-                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
+                0, 2, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
             knightBarracks.behavior = TowerBehavior.Barracks;
             knightBarracks.barracksUnitType = AlliedUnitType.Knight;
             knightBarracks.alliedUnitHealth = 26f;
@@ -225,7 +225,7 @@ namespace TowerDefense.Runtime
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
                 "Spawns archers that stand beside the road and fire arrows into the path.",
                 "Weak to future ranged enemies and enemies that bypass the melee line.",
-                0, 1, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
+                0, 2, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
             archerBarracks.behavior = TowerBehavior.Barracks;
             archerBarracks.barracksUnitType = AlliedUnitType.Archer;
             archerBarracks.alliedUnitCanHitFlying = true;
@@ -238,7 +238,7 @@ namespace TowerDefense.Runtime
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
                 "Spawns a durable paladin. Paladins take more space but bring higher defense.",
                 "Weak because each paladin takes extra capacity and respawns slowly.",
-                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
+                0, 2, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
             paladinBarracks.behavior = TowerBehavior.Barracks;
             paladinBarracks.barracksUnitType = AlliedUnitType.Paladin;
             paladinBarracks.barracksCapacity = 2;
@@ -290,7 +290,7 @@ namespace TowerDefense.Runtime
                     id = "volley_damage_01",
                     displayName = "Sharper Arrows",
                     description = "Each rank increases active weapon damage by 2%.",
-                    radialPosition = new Vector2(150f, 54f),
+                    radialPosition = new Vector2(150f, 18f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "volley_core" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
@@ -312,7 +312,7 @@ namespace TowerDefense.Runtime
                     id = "volley_cooldown_01",
                     displayName = "Quick Draw",
                     description = "Each rank reduces active weapon cooldown by 2%.",
-                    radialPosition = new Vector2(285f, 116f),
+                    radialPosition = new Vector2(285f, 68f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "volley_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
@@ -323,7 +323,7 @@ namespace TowerDefense.Runtime
                     id = "volley_auto_fire_unlock",
                     displayName = "Loose Command",
                     description = "Unlock active weapon auto-fire toggle.",
-                    radialPosition = new Vector2(424f, 170f),
+                    radialPosition = new Vector2(424f, 104f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_cooldown_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 15) },
@@ -772,12 +772,42 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "knight_quarters_02",
+                    displayName = "Veteran Quarters",
+                    description = "Each rank adds one Knight Barracks troop slot and increases knight health by 10%.",
+                    radialPosition = new Vector2(770f, 326f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "barracks_health_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 10f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "knight_drills_02",
+                    displayName = "Veteran Muster",
+                    description = "Each rank increases knight damage by 10% and reduces Knight Barracks respawn time by 6%.",
+                    radialPosition = new Vector2(770f, 202f),
+                    maxRanks = 6,
+                    prerequisiteNodeIds = new[] { "barracks_respawn_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
+                    effects = new[]
+                    {
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 10f },
+                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 6f }
+                    }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_barracks_unlock",
                     displayName = "Archer Post",
                     description = "Unlock barracks that respawn anti-air archers.",
-                    radialPosition = new Vector2(772f, 304f),
+                    radialPosition = new Vector2(330f, 438f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "barracks_health_01" },
+                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer_barracks", value = 1f } },
                     isMajorUnlock = true
@@ -787,7 +817,7 @@ namespace TowerDefense.Runtime
                     id = "archer_post_capacity_01",
                     displayName = "Arrow Racks",
                     description = "Each rank lets Archer Post hold one more troop slot.",
-                    radialPosition = new Vector2(908f, 386f),
+                    radialPosition = new Vector2(510f, 520f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
@@ -798,7 +828,7 @@ namespace TowerDefense.Runtime
                     id = "archer_post_damage_01",
                     displayName = "War Arrows",
                     description = "Each rank increases archer damage by 5%.",
-                    radialPosition = new Vector2(950f, 498f),
+                    radialPosition = new Vector2(510f, 630f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
@@ -809,7 +839,7 @@ namespace TowerDefense.Runtime
                     id = "archer_post_health_01",
                     displayName = "Leather Jacks",
                     description = "Each rank increases archer health by 5%.",
-                    radialPosition = new Vector2(1076f, 432f),
+                    radialPosition = new Vector2(670f, 550f),
                     maxRanks = 6,
                     prerequisiteNodeIds = new[] { "archer_post_capacity_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
@@ -820,7 +850,7 @@ namespace TowerDefense.Runtime
                     id = "archer_post_respawn_01",
                     displayName = "Ready Quivers",
                     description = "Each rank reduces Archer Post respawn time by 4%.",
-                    radialPosition = new Vector2(1098f, 544f),
+                    radialPosition = new Vector2(670f, 660f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "archer_post_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
@@ -831,9 +861,9 @@ namespace TowerDefense.Runtime
                     id = "paladin_barracks_unlock",
                     displayName = "Paladin Chapter",
                     description = "Unlock barracks that respawn durable paladins.",
-                    radialPosition = new Vector2(772f, 202f),
+                    radialPosition = new Vector2(430f, 438f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "barracks_respawn_01" },
+                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "paladin_barracks", value = 1f } },
                     isMajorUnlock = true
@@ -843,7 +873,7 @@ namespace TowerDefense.Runtime
                     id = "paladin_chapter_capacity_01",
                     displayName = "Chapter Cells",
                     description = "Each rank lets Paladin Chapter hold one more troop slot.",
-                    radialPosition = new Vector2(930f, 156f),
+                    radialPosition = new Vector2(610f, 420f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
@@ -854,7 +884,7 @@ namespace TowerDefense.Runtime
                     id = "paladin_chapter_damage_01",
                     displayName = "Blessed Maces",
                     description = "Each rank increases paladin damage by 5%.",
-                    radialPosition = new Vector2(930f, 64f),
+                    radialPosition = new Vector2(610f, 330f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
@@ -865,7 +895,7 @@ namespace TowerDefense.Runtime
                     id = "paladin_chapter_health_01",
                     displayName = "Plate Vows",
                     description = "Each rank increases paladin health by 5%.",
-                    radialPosition = new Vector2(1084f, 156f),
+                    radialPosition = new Vector2(770f, 420f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "paladin_chapter_capacity_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
@@ -876,7 +906,7 @@ namespace TowerDefense.Runtime
                     id = "paladin_chapter_respawn_01",
                     displayName = "Chapter Bells",
                     description = "Each rank reduces Paladin Chapter respawn time by 4%.",
-                    radialPosition = new Vector2(1084f, 64f),
+                    radialPosition = new Vector2(770f, 330f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "paladin_chapter_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
