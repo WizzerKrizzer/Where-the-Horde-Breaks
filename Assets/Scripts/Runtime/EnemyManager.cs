@@ -11,12 +11,14 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyActor> activeEnemies = new();
         private readonly List<ICombatTarget> combatTargets = new();
         private readonly Queue<EnemyActor> pool = new();
+        private readonly List<EnemyDefinition> spawnSequence = new();
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
-        private int[] spawnedByEntry;
         private readonly List<EnemyDistance> damageCandidates = new();
         private float elapsed;
+        private float nextSpawnTime;
+        private int burstPatternIndex;
         private int totalSpawned;
         private int totalResolved;
 
@@ -24,7 +26,7 @@ namespace TowerDefense.Runtime
         public int TotalSpawned => totalSpawned;
         public int TotalResolved => totalResolved;
         public bool HasWave => wave != null;
-        public bool IsWaveComplete => wave != null && totalSpawned >= wave.totalEnemyCount && activeEnemies.Count == 0;
+        public bool IsWaveComplete => wave != null && totalSpawned >= spawnSequence.Count && activeEnemies.Count == 0;
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyActor> EnemyKilled;
         public event Action<EnemyActor> EnemyEscaped;
@@ -40,9 +42,11 @@ namespace TowerDefense.Runtime
             wave = waveDefinition;
             path = route;
             elapsed = 0f;
+            nextSpawnTime = 0f;
+            burstPatternIndex = 0;
             totalSpawned = 0;
             totalResolved = 0;
-            spawnedByEntry = wave.entries == null ? Array.Empty<int>() : new int[wave.entries.Length];
+            BuildSpawnSequence();
         }
 
         public void StopWave()
@@ -59,7 +63,7 @@ namespace TowerDefense.Runtime
             }
 
             path = route;
-            Spawn(enemyDefinition);
+            Spawn(enemyDefinition, 0f, countTowardWaveTotal: false);
         }
 
         public void SpawnConvertedEnemy(EnemyDefinition enemyDefinition, Vector3 position)
@@ -74,28 +78,58 @@ namespace TowerDefense.Runtime
 
         private void Update()
         {
-            if (wave == null || wave.entries == null)
+            if (wave == null || spawnSequence.Count == 0)
             {
                 return;
             }
 
             elapsed += Time.deltaTime;
-            for (var i = 0; i < wave.entries.Length; i++)
+            var spawnInterval = Mathf.Max(0.01f, wave.spawnInterval);
+            while (elapsed >= nextSpawnTime && totalSpawned < spawnSequence.Count)
+            {
+                SpawnNextBurst();
+                nextSpawnTime += spawnInterval;
+            }
+        }
+
+        private void BuildSpawnSequence()
+        {
+            spawnSequence.Clear();
+            if (wave?.entries == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < wave.entries.Length && spawnSequence.Count < wave.totalEnemyCount; i++)
             {
                 var entry = wave.entries[i];
-                if (entry.enemy == null || entry.count <= 0 || totalSpawned >= wave.totalEnemyCount || elapsed < entry.startTime)
+                if (entry.enemy == null || entry.count <= 0)
                 {
                     continue;
                 }
 
-                var burstCount = Mathf.Max(1, entry.spawnBurstCount);
-                var dueBursts = Mathf.FloorToInt((elapsed - entry.startTime) / Mathf.Max(0.01f, entry.spawnInterval)) + 1;
-                var dueEnemies = dueBursts * burstCount;
-                while (spawnedByEntry[i] < entry.count && spawnedByEntry[i] < dueEnemies && totalSpawned < wave.totalEnemyCount)
+                var remaining = wave.totalEnemyCount - spawnSequence.Count;
+                var count = Mathf.Min(entry.count, remaining);
+                for (var j = 0; j < count; j++)
                 {
-                    Spawn(entry.enemy);
-                    spawnedByEntry[i]++;
+                    spawnSequence.Add(entry.enemy);
                 }
+            }
+        }
+
+        private void SpawnNextBurst()
+        {
+            var pattern = wave.spawnBurstPattern;
+            var burstCount = 1;
+            if (pattern != null && pattern.Length > 0)
+            {
+                burstCount = Mathf.Max(1, pattern[burstPatternIndex % pattern.Length]);
+                burstPatternIndex++;
+            }
+
+            for (var i = 0; i < burstCount && totalSpawned < spawnSequence.Count; i++)
+            {
+                Spawn(spawnSequence[totalSpawned]);
             }
         }
 

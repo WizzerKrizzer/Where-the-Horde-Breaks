@@ -254,13 +254,24 @@ namespace TowerDefense.Runtime
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
             wave.totalEnemyCount = 200;
+            wave.spawnInterval = 0.5f;
+            wave.spawnBurstPattern = new[] { 1, 3, 5, 1, 2, 4, 5, 3, 1, 4, 2, 2, 5, 3, 4, 1 };
             wave.entries = new[]
             {
-                new WaveEntry { enemy = runner, count = 65, startTime = 0f, spawnInterval = 0.36f, spawnBurstCount = 3 },
-                new WaveEntry { enemy = brute, count = 18, startTime = 8f, spawnInterval = 0.75f, spawnBurstCount = 2 },
-                new WaveEntry { enemy = runner, count = 48, startTime = 16f, spawnInterval = 0.32f, spawnBurstCount = 4 },
-                new WaveEntry { enemy = brute, count = 26, startTime = 22f, spawnInterval = 0.65f, spawnBurstCount = 3 },
-                new WaveEntry { enemy = runner, count = 43, startTime = 30f, spawnInterval = 0.45f, spawnBurstCount = 5 }
+                new WaveEntry { enemy = runner, count = 10 },
+                new WaveEntry { enemy = brute, count = 5 },
+                new WaveEntry { enemy = runner, count = 20 },
+                new WaveEntry { enemy = brute, count = 6 },
+                new WaveEntry { enemy = runner, count = 15 },
+                new WaveEntry { enemy = brute, count = 5 },
+                new WaveEntry { enemy = runner, count = 25 },
+                new WaveEntry { enemy = brute, count = 8 },
+                new WaveEntry { enemy = runner, count = 20 },
+                new WaveEntry { enemy = brute, count = 6 },
+                new WaveEntry { enemy = runner, count = 30 },
+                new WaveEntry { enemy = brute, count = 8 },
+                new WaveEntry { enemy = runner, count = 36 },
+                new WaveEntry { enemy = brute, count = 6 }
             };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
