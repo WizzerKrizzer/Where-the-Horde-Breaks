@@ -189,7 +189,7 @@ namespace TowerDefense.Runtime
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine,
                 "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.",
                 "Weak against high-health enemies and dense waves once too many targets pass through at once.",
-                0, 1, 7f, 4.2f, 0.5f, 18f, new Color(0.9f, 0.85f, 0.4f));
+                0, 1, 7f, 4.2f, 1f / 1.15f, 18f, new Color(0.9f, 0.85f, 0.4f));
             archer.canHitFlying = true;
             var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine,
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
@@ -392,12 +392,12 @@ namespace TowerDefense.Runtime
                 {
                     id = "archer_damage_01",
                     displayName = "Fletching",
-                    description = "Each rank increases Archer Tower damage by 3%.",
+                    description = "Each rank increases Archer Tower damage by 4%.",
                     radialPosition = new Vector2(-280f, 130f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "archer_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 3f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 4f } }
                 },
                 new SkillNodeDefinition
                 {
