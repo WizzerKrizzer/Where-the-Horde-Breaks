@@ -1565,7 +1565,9 @@ namespace TowerDefense.UI
             var profile = session.Profile;
             upgradeCurrencyText.text = $"{FormatCurrencyBalance(profile, CurrencyType.KillEssence)}   {FormatCurrencyBalance(profile, CurrencyType.VictorySigil)}   {FormatCurrencyBalance(profile, CurrencyType.PerfectSigil)}   {FormatCurrencyBalance(profile, CurrencyType.ChallengeToken)}   {FormatCurrencyBalance(profile, CurrencyType.BossCore)}";
 
-            foreach (var button in upgradePanel.GetComponentsInChildren<Button>())
+            UpdateUpgradeTreeVisibility();
+
+            foreach (var button in upgradePanel.GetComponentsInChildren<Button>(true))
             {
                 if (!button.name.StartsWith("Node_"))
                 {
@@ -1615,6 +1617,74 @@ namespace TowerDefense.UI
             }
 
             UpdateSelectedUpgradeDetails();
+        }
+
+        private void UpdateUpgradeTreeVisibility()
+        {
+            if (upgradeTreeContent == null)
+            {
+                return;
+            }
+
+            var nodes = session.UpgradeNodes;
+            var transforms = upgradeTreeContent.GetComponentsInChildren<Transform>(true);
+            for (var i = 0; i < transforms.Length; i++)
+            {
+                var child = transforms[i];
+                if (child == null || child == upgradeTreeContent)
+                {
+                    continue;
+                }
+
+                if (child.name.StartsWith("Node_"))
+                {
+                    var node = FindNode(nodes, child.name.Substring(5));
+                    child.gameObject.SetActive(node != null && IsUpgradeNodeRevealed(node));
+                }
+                else if (child.name.StartsWith("NodeLabel_"))
+                {
+                    var node = FindNode(nodes, child.name.Substring(10));
+                    child.gameObject.SetActive(node != null && IsUpgradeNodeRevealed(node));
+                }
+                else if (child.name.StartsWith("Link_"))
+                {
+                    var node = FindNode(nodes, child.name.Substring(5));
+                    child.gameObject.SetActive(node != null && IsUpgradeNodeRevealed(node) && HasAnyPurchasedPrerequisite(node));
+                }
+            }
+        }
+
+        private bool IsUpgradeNodeRevealed(SkillNodeDefinition node)
+        {
+            if (node == null)
+            {
+                return false;
+            }
+
+            if (node.startsUnlocked || session.IsUpgradePurchased(node.id))
+            {
+                return true;
+            }
+
+            return !MissingPrerequisites(node);
+        }
+
+        private bool HasAnyPurchasedPrerequisite(SkillNodeDefinition node)
+        {
+            if (node?.prerequisiteNodeIds == null || node.prerequisiteNodeIds.Length == 0)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < node.prerequisiteNodeIds.Length; i++)
+            {
+                if (session.IsUpgradePurchased(node.prerequisiteNodeIds[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void UpdateSelectedUpgradeDetails()

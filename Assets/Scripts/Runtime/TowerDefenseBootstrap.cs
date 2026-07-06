@@ -253,16 +253,14 @@ namespace TowerDefense.Runtime
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 760;
+            wave.totalEnemyCount = 200;
             wave.entries = new[]
             {
-                new WaveEntry { enemy = runner, count = 190, startTime = 0f, spawnInterval = 0.16f },
-                new WaveEntry { enemy = brute, count = 45, startTime = 18f, spawnInterval = 0.62f },
-                new WaveEntry { enemy = runner, count = 155, startTime = 31f, spawnInterval = 0.11f },
-                new WaveEntry { enemy = brute, count = 70, startTime = 45f, spawnInterval = 0.44f },
-                new WaveEntry { enemy = runner, count = 170, startTime = 60f, spawnInterval = 0.075f },
-                new WaveEntry { enemy = brute, count = 70, startTime = 72f, spawnInterval = 0.32f },
-                new WaveEntry { enemy = runner, count = 60, startTime = 84f, spawnInterval = 0.052f }
+                new WaveEntry { enemy = runner, count = 65, startTime = 0f, spawnInterval = 0.18f },
+                new WaveEntry { enemy = brute, count = 18, startTime = 13f, spawnInterval = 0.72f },
+                new WaveEntry { enemy = runner, count = 48, startTime = 24f, spawnInterval = 0.12f },
+                new WaveEntry { enemy = brute, count = 26, startTime = 34f, spawnInterval = 0.48f },
+                new WaveEntry { enemy = runner, count = 43, startTime = 46f, spawnInterval = 0.08f }
             };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -270,7 +268,7 @@ namespace TowerDefense.Runtime
             level.displayName = "Broken Green Pass";
             level.startingLives = 10;
             level.wave = wave;
-            level.firstClearReward = new CurrencyAmount(CurrencyType.KillEssence, 250);
+            level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
             level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 80);
 
@@ -407,7 +405,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-150f, -98f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 200) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "ballista", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -441,7 +439,8 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-452f, -190f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "ballista_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 43) },
+                    costGrowthMultiplier = 2.4f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 140) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "ballista", value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -463,7 +462,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(438f, -70f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_radius_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 40) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
                     effects = new[]
                     {
                         new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f },
@@ -524,7 +523,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-150f, -306f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 63) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "catapult", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -568,7 +567,7 @@ namespace TowerDefense.Runtime
                     description = "Catapult boulders ignite enemies hit by the splash.",
                     radialPosition = new Vector2(-150f, -562f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "catapult_unlock" },
+                    prerequisiteNodeIds = new[] { "catapult_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 70) },
                     effects = new[]
                     {
@@ -632,7 +631,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(20f, -220f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 25) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "barrier", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -677,7 +676,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(310f, 292f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 380) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -733,7 +732,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(772f, 304f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "barracks_health_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 200) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer_barracks", value = 1f } },
                     isMajorUnlock = true
                 },
@@ -789,7 +788,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(772f, 202f),
                     maxRanks = 1,
                     prerequisiteNodeIds = new[] { "barracks_respawn_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 350) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "paladin_barracks", value = 1f } },
                     isMajorUnlock = true
                 },
