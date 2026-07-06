@@ -57,6 +57,14 @@ namespace TowerDefense.Data
         ArcSplash
     }
 
+    public enum TowerTargetingMode
+    {
+        First,
+        Last,
+        Closest,
+        HighestHealth
+    }
+
     public enum UpgradeEffectType
     {
         ActiveWeaponDamagePercent,

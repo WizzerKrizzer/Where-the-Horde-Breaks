@@ -183,19 +183,45 @@ namespace TowerDefense.Runtime
 
         public EnemyActor GetNearestEnemy(Vector3 position, float range, bool canHitFlying)
         {
+            return GetEnemyByTargetingMode(position, range, canHitFlying, TowerTargetingMode.Closest);
+        }
+
+        public EnemyActor GetEnemyByTargetingMode(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode)
+        {
             EnemyActor best = null;
             var bestDistance = range * range;
+            var bestScore = float.MinValue;
             foreach (var enemy in activeEnemies)
             {
-                if (!enemy.IsAlive || (enemy.Definition.isFlying && !canHitFlying))
+                if (!IsValidTowerTarget(enemy, canHitFlying))
                 {
                     continue;
                 }
 
                 var distance = (enemy.transform.position - position).sqrMagnitude;
-                if (distance <= bestDistance)
+                if (distance > range * range)
+                {
+                    continue;
+                }
+
+                var score = -distance;
+                switch (targetingMode)
+                {
+                    case TowerTargetingMode.First:
+                        score = enemy.PathDistance;
+                        break;
+                    case TowerTargetingMode.Last:
+                        score = -enemy.PathDistance;
+                        break;
+                    case TowerTargetingMode.HighestHealth:
+                        score = enemy.Health;
+                        break;
+                }
+
+                if (best == null || score > bestScore || (Mathf.Approximately(score, bestScore) && distance < bestDistance))
                 {
                     best = enemy;
+                    bestScore = score;
                     bestDistance = distance;
                 }
             }
@@ -223,6 +249,11 @@ namespace TowerDefense.Runtime
             }
 
             return best;
+        }
+
+        private static bool IsValidTowerTarget(EnemyActor enemy, bool canHitFlying)
+        {
+            return enemy != null && enemy.IsAlive && (!enemy.Definition.isFlying || canHitFlying);
         }
 
         public ICombatTarget GetNearestCombatTarget(Vector3 position, float range, float enemyMass)

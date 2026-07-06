@@ -26,6 +26,7 @@ namespace TowerDefense.UI
         private GameObject selectedTowerPanel;
         private Text selectedTowerTitle;
         private Text selectedTowerBody;
+        private readonly Button[] selectedTowerTargetButtons = new Button[4];
         private Button startBattleButton;
         private Button devSpeed1Button;
         private Button devSpeed2Button;
@@ -743,7 +744,7 @@ namespace TowerDefense.UI
 
         private void CreateSelectedTowerPanel(Transform parent)
         {
-            selectedTowerPanel = CreatePanel("SelectedTowerPanel", parent, new Vector2(12f, 18f), new Vector2(286f, 126f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            selectedTowerPanel = CreatePanel("SelectedTowerPanel", parent, new Vector2(12f, 18f), new Vector2(286f, 158f), new Vector2(0f, 0f), new Vector2(0f, 0f));
             var image = selectedTowerPanel.GetComponent<Image>();
             if (image != null)
             {
@@ -754,7 +755,18 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(selectedTowerTitle.GetComponent<RectTransform>(), new Vector2(12f, -12f), new Vector2(260f, 22f), new Vector2(0f, 1f), new Vector2(0f, 1f));
             selectedTowerBody = CreateText("SelectedTowerBody", selectedTowerPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
             ConfigureCenteredRect(selectedTowerBody.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(260f, 78f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            CreateTargetingButton(0, TowerTargetingMode.First, "FIRST", new Vector2(46f, -130f));
+            CreateTargetingButton(1, TowerTargetingMode.Last, "LAST", new Vector2(111f, -130f));
+            CreateTargetingButton(2, TowerTargetingMode.Closest, "CLOSE", new Vector2(176f, -130f));
+            CreateTargetingButton(3, TowerTargetingMode.HighestHealth, "STRONG", new Vector2(241f, -130f));
             selectedTowerPanel.SetActive(false);
+        }
+
+        private void CreateTargetingButton(int index, TowerTargetingMode mode, string label, Vector2 position)
+        {
+            var button = CreateAnchoredButton($"Targeting_{mode}", selectedTowerPanel.transform, label, position, new Vector2(58f, 22f), new Vector2(0f, 1f), 9);
+            button.onClick.AddListener(() => session.SetSelectedTowerTargeting(mode));
+            selectedTowerTargetButtons[index] = button;
         }
 
         private void UpdateSelectedTowerPanel()
@@ -781,8 +793,46 @@ namespace TowerDefense.UI
             selectedTowerTitle.text = definition.displayName;
             selectedTowerBody.text =
                 $"{FormatShortTowerStats(definition)}\n" +
+                $"Targeting: {FormatTargetingMode(tower.TargetingMode)}\n" +
                 $"This tower damage: {tower.DamageDealt:0}\n" +
                 $"{definition.displayName} type damage: {towers.GetDamageDealt(definition):0}";
+            UpdateSelectedTowerTargetButtons(tower);
+        }
+
+        private void UpdateSelectedTowerTargetButtons(TowerActor tower)
+        {
+            for (var i = 0; i < selectedTowerTargetButtons.Length; i++)
+            {
+                var button = selectedTowerTargetButtons[i];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.gameObject.SetActive(tower != null && tower.CanChangeTargeting);
+                if (button.targetGraphic is Image image)
+                {
+                    var mode = (TowerTargetingMode)i;
+                    image.color = tower != null && tower.TargetingMode == mode
+                        ? new Color(0.25f, 0.72f, 1f, 1f)
+                        : new Color(0.15f, 0.45f, 0.82f, 1f);
+                }
+            }
+        }
+
+        private static string FormatTargetingMode(TowerTargetingMode mode)
+        {
+            switch (mode)
+            {
+                case TowerTargetingMode.First:
+                    return "First";
+                case TowerTargetingMode.Last:
+                    return "Last";
+                case TowerTargetingMode.HighestHealth:
+                    return "Strong";
+                default:
+                    return "Closest";
+            }
         }
 
         private static string FormatShortTowerStats(TowerDefinition tower)

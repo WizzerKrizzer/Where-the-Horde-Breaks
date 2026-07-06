@@ -131,6 +131,7 @@ namespace TowerDefense.Save
     public sealed class TowerPlacementRecord
     {
         public string towerId;
+        public TowerTargetingMode targetingMode;
         public float x;
         public float y;
         public float z;

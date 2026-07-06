@@ -224,6 +224,7 @@ namespace TowerDefense.Runtime
             return towers.Select(tower => new TowerPlacementRecord
             {
                 towerId = tower.Definition.id,
+                targetingMode = tower.TargetingMode,
                 x = tower.transform.position.x,
                 y = tower.transform.position.y,
                 z = tower.transform.position.z
@@ -243,7 +244,10 @@ namespace TowerDefense.Runtime
                 var definition = AvailableTowers.FirstOrDefault(tower => tower.id == record.towerId);
                 if (definition != null)
                 {
-                    TryPlace(definition, new Vector3(record.x, record.y, record.z));
+                    if (TryPlace(definition, new Vector3(record.x, record.y, record.z)))
+                    {
+                        towers[towers.Count - 1].SetTargetingMode(record.targetingMode);
+                    }
                 }
             }
         }

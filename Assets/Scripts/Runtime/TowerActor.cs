@@ -19,6 +19,7 @@ namespace TowerDefense.Runtime
         private GameObject auraDisc;
         private GameObject selectionDisc;
         private Transform barrierHealthFill;
+        private TowerTargetingMode targetingMode = TowerTargetingMode.First;
 
         public TowerDefinition Definition => definition;
         public float DamageDealt { get; private set; }
@@ -28,6 +29,8 @@ namespace TowerDefense.Runtime
         public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? 1.25f : 0.7f;
         public float BlockCapacity => definition != null && definition.behavior == TowerBehavior.Barrier ? 9999f : 0f;
         public float CurrentBlockedMass => GetBlockedMass();
+        public TowerTargetingMode TargetingMode => targetingMode;
+        public bool CanChangeTargeting => definition != null && definition.behavior == TowerBehavior.Projectile;
 
         public void SetDamageMultiplier(float multiplier)
         {
@@ -37,6 +40,11 @@ namespace TowerDefense.Runtime
         public void SetFireRateMultiplier(float multiplier)
         {
             fireRateMultiplier = Mathf.Max(0.05f, multiplier);
+        }
+
+        public void SetTargetingMode(TowerTargetingMode mode)
+        {
+            targetingMode = mode;
         }
 
         public void Initialize(TowerDefinition towerDefinition, EnemyManager enemyManager, float towerDamageMultiplier = 1f)
@@ -112,7 +120,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var target = enemies.GetNearestEnemy(transform.position, definition.range, definition.canHitFlying);
+            var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
             if (target == null)
             {
                 return;

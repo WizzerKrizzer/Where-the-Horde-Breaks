@@ -140,6 +140,17 @@ namespace TowerDefense.Runtime
             return true;
         }
 
+        public void SetSelectedTowerTargeting(TowerTargetingMode mode)
+        {
+            if (towers?.SelectedTower == null || !towers.SelectedTower.CanChangeTargeting)
+            {
+                return;
+            }
+
+            towers.SelectedTower.SetTargetingMode(mode);
+            SaveLayout();
+        }
+
         public bool IsUpgradePurchased(string nodeId)
         {
             return progression.IsPurchased(nodeId);
