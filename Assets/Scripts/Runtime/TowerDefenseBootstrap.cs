@@ -463,7 +463,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-306f, -112f),
                     maxRanks = 3,
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "ballista", value = 1f } }
                 },
                 new SkillNodeDefinition
@@ -474,7 +474,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-298f, -190f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "ballista", value = 4f } }
                 },
                 new SkillNodeDefinition
@@ -497,7 +497,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-326f, -292f),
                     maxRanks = 10,
                     prerequisiteNodeIds = new[] { "ballista_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "ballista", value = 4f } }
                 },
                 new SkillNodeDefinition
