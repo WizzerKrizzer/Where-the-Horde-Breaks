@@ -675,7 +675,7 @@ namespace TowerDefense.Runtime
                     description = "Unlock barracks that respawn one knight defender.",
                     radialPosition = new Vector2(310f, 292f),
                     maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    prerequisiteNodeIds = new[] { "base_health_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
                     isMajorUnlock = true
