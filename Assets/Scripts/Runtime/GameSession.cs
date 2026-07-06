@@ -341,6 +341,17 @@ namespace TowerDefense.Runtime
             enemies.EnemyEscaped += OnEnemyEscaped;
         }
 
+        public void SurrenderRun()
+        {
+            if (!running || finished)
+            {
+                return;
+            }
+
+            lives = 0;
+            Finish(false);
+        }
+
         private void Finish(bool won)
         {
             finished = true;

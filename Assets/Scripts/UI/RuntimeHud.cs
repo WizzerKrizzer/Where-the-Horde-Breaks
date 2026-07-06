@@ -38,6 +38,9 @@ namespace TowerDefense.UI
         private GameObject resultPanel;
         private Text resultTitle;
         private Text resultBody;
+        private GameObject pausePanel;
+        private bool pausePanelVisible;
+        private float timeScaleBeforePause = 1f;
         private GameObject upgradePanel;
         private RectTransform upgradeTreeContent;
         private RectTransform upgradeTreeViewport;
@@ -111,6 +114,7 @@ namespace TowerDefense.UI
             CreateSelectedTowerPanel(parent);
             CreateStartBattleButton(parent);
             CreateResultPanel(parent);
+            CreatePausePanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
             CreateDebugSpawnPanel(parent);
@@ -160,6 +164,12 @@ namespace TowerDefense.UI
                 return;
             }
 
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) && session.IsRunning)
+            {
+                SetPausePanelVisible(true);
+                return;
+            }
+
             if (IsUpgradePanelOpen())
             {
                 return;
@@ -188,6 +198,12 @@ namespace TowerDefense.UI
 
         private bool CloseCurrentOverlay()
         {
+            if (pausePanelVisible)
+            {
+                SetPausePanelVisible(false);
+                return true;
+            }
+
             if (IsUpgradePanelOpen())
             {
                 SetUpgradePanelVisible(false);
@@ -278,6 +294,23 @@ namespace TowerDefense.UI
             CreateButton("OpenUpgradesButton", resultPanel.transform, "UPGRADES", new Vector2(72f, 24f), new Vector2(112f, 26f), 13)
                 .onClick.AddListener(ShowUpgradePanel);
             resultPanel.SetActive(false);
+        }
+
+        private void CreatePausePanel(Transform parent)
+        {
+            pausePanel = CreatePanel("PausePanel", parent, new Vector2(0f, 124f), new Vector2(300f, 132f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            var title = CreateText("PauseTitle", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 98f), new Vector2(240f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            title.text = "PAUSED";
+            var resumeButton = CreateButton("ResumeButton", pausePanel.transform, "RESUME", new Vector2(-64f, 46f), new Vector2(108f, 28f), 13);
+            resumeButton.onClick.AddListener(() => SetPausePanelVisible(false));
+            var surrenderButton = CreateButton("SurrenderButton", pausePanel.transform, "SURRENDER", new Vector2(64f, 46f), new Vector2(108f, 28f), 13);
+            surrenderButton.onClick.AddListener(SurrenderFromPause);
+            var hint = CreateText("PauseHint", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, 18f), new Vector2(250f, 22f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            hint.text = "Escape resumes the battle.";
+            input.RegisterBlockingUiRect(pausePanel.GetComponent<RectTransform>());
+            pausePanel.SetActive(false);
         }
 
         private void CreateUpgradePanel(Transform parent)
@@ -594,6 +627,49 @@ namespace TowerDefense.UI
             {
                 debugSpawnPanel.SetActive(!visible && debugSpawnPanelVisible);
             }
+        }
+
+        private void SetPausePanelVisible(bool visible)
+        {
+            if (pausePanel == null)
+            {
+                return;
+            }
+
+            if (visible && !pausePanelVisible)
+            {
+                timeScaleBeforePause = Mathf.Approximately(Time.timeScale, 0f) ? 1f : Time.timeScale;
+                Time.timeScale = 0f;
+            }
+            else if (!visible && pausePanelVisible)
+            {
+                Time.timeScale = timeScaleBeforePause <= 0f ? 1f : timeScaleBeforePause;
+            }
+
+            pausePanelVisible = visible;
+            pausePanel.SetActive(visible);
+            if (input != null)
+            {
+                input.GameplayInputBlocked = visible || IsUpgradePanelOpen();
+            }
+        }
+
+        private void SurrenderFromPause()
+        {
+            var restoreScale = timeScaleBeforePause <= 0f ? 1f : timeScaleBeforePause;
+            pausePanelVisible = false;
+            if (pausePanel != null)
+            {
+                pausePanel.SetActive(false);
+            }
+
+            Time.timeScale = restoreScale;
+            if (input != null)
+            {
+                input.GameplayInputBlocked = IsUpgradePanelOpen();
+            }
+
+            session.SurrenderRun();
         }
 
         private void SetMainHudVisible(bool visible)
