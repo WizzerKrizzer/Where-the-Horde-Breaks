@@ -1959,21 +1959,22 @@ namespace TowerDefense.UI
                 return;
             }
 
-            var priceLine = rank >= maxRank ? "Maxed" : FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id));
-            upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatUpgradePreview(selectedUpgradeNode)}\n\n{priceLine}";
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
+                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nMaxed";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "MAXED";
             }
             else if (session.CanPurchaseUpgrade(selectedUpgradeNode.id))
             {
+                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatUpgradePreview(selectedUpgradeNode)}\n\n{FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id))}";
                 upgradeBuyButton.interactable = true;
                 buttonLabel.text = "BUY RANK";
             }
             else
             {
+                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatUpgradePreview(selectedUpgradeNode)}\n\n{FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id))}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "NEED COST";
             }
