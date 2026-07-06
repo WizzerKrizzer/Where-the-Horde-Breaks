@@ -335,9 +335,9 @@ namespace TowerDefense.Runtime
                     id = "base_health_01",
                     displayName = "Reinforced Gate",
                     description = "Each rank gives the base 1 extra life.",
-                    radialPosition = new Vector2(20f, 170f),
+                    radialPosition = new Vector2(118f, 314f),
                     maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "volley_core" },
+                    prerequisiteNodeIds = new[] { "steady_tithe_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 9) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
                 },
@@ -346,9 +346,9 @@ namespace TowerDefense.Runtime
                     id = "steady_tithe_01",
                     displayName = "Steady Tithe",
                     description = "Each rank grants 3 bonus essence when a level ends.",
-                    radialPosition = new Vector2(118f, 314f),
+                    radialPosition = new Vector2(20f, 170f),
                     maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "base_health_01" },
+                    prerequisiteNodeIds = new[] { "volley_core" },
                     costGrowthMultiplier = 2f,
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.LevelEndKillEssenceFlat, value = 3f } }
