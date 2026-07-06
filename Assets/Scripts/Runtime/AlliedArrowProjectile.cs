@@ -34,7 +34,6 @@ namespace TowerDefense.Runtime
 
             var appliedDamage = target.ApplyDamage(damage);
             owner?.RecordDamage(appliedDamage);
-            DamagePopup.Show(target.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             Destroy(gameObject);
         }
     }

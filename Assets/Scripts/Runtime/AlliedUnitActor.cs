@@ -96,7 +96,6 @@ namespace TowerDefense.Runtime
 
             var appliedDamage = target.ApplyDamage(definition.alliedUnitDamage);
             owner?.RecordDamage(appliedDamage);
-            DamagePopup.Show(target.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }
 

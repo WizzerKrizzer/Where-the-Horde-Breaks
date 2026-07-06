@@ -121,7 +121,6 @@ namespace TowerDefense.Runtime
             hitEnemies.Add(hit);
             var appliedDamage = hit.ApplyDamage(damage);
             source?.RecordDamage(appliedDamage);
-            DamagePopup.Show(hit.transform.position, appliedDamage, new Color(1f, 0.92f, 0.22f, 1f));
             if (remainingPierce > 0)
             {
                 remainingPierce--;

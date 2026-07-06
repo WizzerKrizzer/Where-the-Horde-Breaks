@@ -222,7 +222,6 @@ namespace TowerDefense.Runtime
             {
                 var thornDamage = source.ApplyDamage(definition.thornsDamage);
                 RecordDamage(thornDamage);
-                DamagePopup.Show(source.transform.position, thornDamage, new Color(1f, 0.92f, 0.22f, 1f));
             }
 
             if (health > 0f)
