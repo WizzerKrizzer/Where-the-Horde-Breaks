@@ -13,9 +13,9 @@ namespace TowerDefense.Runtime
         private bool autoFireUnlocked;
 
         public float Damage { get; set; } = 9.2f;
-        public float Radius { get; set; } = 2.8f;
-        public float CooldownSeconds { get; set; } = 1.6f;
-        public int MaxTargets { get; set; } = 10;
+        public float Radius { get; set; } = 2.5f;
+        public float CooldownSeconds { get; set; } = 1.7f;
+        public int MaxTargets { get; set; } = 8;
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
         public bool CanFire
