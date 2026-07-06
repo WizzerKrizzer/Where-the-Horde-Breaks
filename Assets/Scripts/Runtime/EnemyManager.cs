@@ -124,6 +124,11 @@ namespace TowerDefense.Runtime
 
         private int GetNextWindowSpawnCount()
         {
+            if (wave.randomSpawnBurstMax >= wave.randomSpawnBurstMin && wave.randomSpawnBurstMin > 0)
+            {
+                return UnityEngine.Random.Range(wave.randomSpawnBurstMin, wave.randomSpawnBurstMax + 1);
+            }
+
             var pattern = wave.spawnBurstPattern;
             if (pattern != null && pattern.Length > 0)
             {

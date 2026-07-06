@@ -255,7 +255,8 @@ namespace TowerDefense.Runtime
             wave.id = "wave_01";
             wave.totalEnemyCount = 200;
             wave.spawnInterval = 0.5f;
-            wave.spawnBurstPattern = new[] { 3, 5, 8, 3, 4, 7, 8, 6, 3, 7, 4, 4, 8, 6, 7, 3 };
+            wave.randomSpawnBurstMin = 3;
+            wave.randomSpawnBurstMax = 8;
             wave.entries = BuildLevelOneWaveEntries(runner, brute);
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();

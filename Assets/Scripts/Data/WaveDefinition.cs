@@ -8,6 +8,8 @@ namespace TowerDefense.Data
         public string id = "wave";
         public int totalEnemyCount = 200;
         public float spawnInterval = 0.5f;
+        public int randomSpawnBurstMin;
+        public int randomSpawnBurstMax;
         public int[] spawnBurstPattern;
         public WaveEntry[] entries;
     }
