@@ -483,7 +483,7 @@ namespace TowerDefense.Runtime
                     displayName = "Skewering Bolts",
                     description = "Each rank lets Ballista bolts pierce 1 additional nearby enemy.",
                     radialPosition = new Vector2(-452f, -190f),
-                    maxRanks = 3,
+                    maxRanks = 4,
                     prerequisiteNodeIds = new[] { "ballista_damage_01" },
                     costGrowthMultiplier = 2.4f,
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
@@ -495,7 +495,7 @@ namespace TowerDefense.Runtime
                     displayName = "Winch Drills",
                     description = "Each rank makes Ballista shoot 4% faster.",
                     radialPosition = new Vector2(-326f, -292f),
-                    maxRanks = 6,
+                    maxRanks = 10,
                     prerequisiteNodeIds = new[] { "ballista_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "ballista", value = 4f } }
