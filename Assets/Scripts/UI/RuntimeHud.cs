@@ -82,7 +82,8 @@ namespace TowerDefense.UI
             Turrets,
             ActiveWeapons,
             Enemies,
-            Bosses
+            Bosses,
+            Levels
         }
 
         public static RuntimeHud Create(GameSession gameSession, PlayerInputRouter inputRouter, TowerManager towerManager, EnemyManager enemyManager, ActiveWeaponController activeWeaponController)
@@ -1145,22 +1146,24 @@ namespace TowerDefense.UI
 
         private void CreateCodexPanel(Transform parent)
         {
-            codexPanel = CreatePanel("BreakerGrimoirePanel", parent, new Vector2(-14f, -48f), new Vector2(520f, 520f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            codexPanel = CreatePanel("BreakerGrimoirePanel", parent, new Vector2(-14f, -48f), new Vector2(600f, 520f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             input.RegisterBlockingUiRect(codexPanel.GetComponent<RectTransform>());
             var title = CreateText("CodexTitle", codexPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 15);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(480f, 24f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             title.text = "THE BREAKER'S GRIMOIRE";
 
-            CreateButton("CodexTurrets", codexPanel.transform, "TURRETS", new Vector2(-180f, -50f), new Vector2(96f, 24f), 10)
+            CreateButton("CodexTurrets", codexPanel.transform, "TURRETS", new Vector2(-240f, -50f), new Vector2(92f, 24f), 10)
                 .onClick.AddListener(() => SetCodexSector(CodexSector.Turrets));
-            CreateButton("CodexActive", codexPanel.transform, "ACTIVE", new Vector2(-60f, -50f), new Vector2(96f, 24f), 10)
+            CreateButton("CodexActive", codexPanel.transform, "ACTIVE", new Vector2(-120f, -50f), new Vector2(92f, 24f), 10)
                 .onClick.AddListener(() => SetCodexSector(CodexSector.ActiveWeapons));
-            CreateButton("CodexEnemies", codexPanel.transform, "ENEMIES", new Vector2(60f, -50f), new Vector2(96f, 24f), 10)
+            CreateButton("CodexEnemies", codexPanel.transform, "ENEMIES", new Vector2(0f, -50f), new Vector2(92f, 24f), 10)
                 .onClick.AddListener(() => SetCodexSector(CodexSector.Enemies));
-            CreateButton("CodexBosses", codexPanel.transform, "BOSSES", new Vector2(180f, -50f), new Vector2(96f, 24f), 10)
+            CreateButton("CodexBosses", codexPanel.transform, "BOSSES", new Vector2(120f, -50f), new Vector2(92f, 24f), 10)
                 .onClick.AddListener(() => SetCodexSector(CodexSector.Bosses));
+            CreateButton("CodexLevels", codexPanel.transform, "LEVELS", new Vector2(240f, -50f), new Vector2(92f, 24f), 10)
+                .onClick.AddListener(() => SetCodexSector(CodexSector.Levels));
 
-            var listViewport = CreatePanel("CodexListViewport", codexPanel.transform, new Vector2(-145f, -82f), new Vector2(190f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            var listViewport = CreatePanel("CodexListViewport", codexPanel.transform, new Vector2(-185f, -82f), new Vector2(190f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             listViewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.28f);
             listViewport.AddComponent<Mask>().showMaskGraphic = false;
             var scrollInput = listViewport.AddComponent<CodexListScrollInput>();
@@ -1174,7 +1177,7 @@ namespace TowerDefense.UI
             codexListContent.pivot = new Vector2(0.5f, 1f);
             codexListContent.sizeDelta = new Vector2(178f, 400f);
 
-            var detailPanel = CreatePanel("CodexDetails", codexPanel.transform, new Vector2(118f, -82f), new Vector2(286f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            var detailPanel = CreatePanel("CodexDetails", codexPanel.transform, new Vector2(118f, -82f), new Vector2(366f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.36f);
             detailPanel.AddComponent<Mask>().showMaskGraphic = false;
             var detailScrollInput = detailPanel.AddComponent<CodexListScrollInput>();
@@ -1187,10 +1190,10 @@ namespace TowerDefense.UI
             codexDetailContent.anchorMax = new Vector2(0.5f, 1f);
             codexDetailContent.pivot = new Vector2(0.5f, 1f);
             codexDetailContent.anchoredPosition = Vector2.zero;
-            codexDetailContent.sizeDelta = new Vector2(250f, 360f);
+            codexDetailContent.sizeDelta = new Vector2(330f, 360f);
 
             codexDetailText = CreateText("CodexDetailText", codexDetailContent, Vector2.zero, TextAnchor.UpperLeft, 11);
-            ConfigureCenteredRect(codexDetailText.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(250f, 360f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            ConfigureCenteredRect(codexDetailText.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(330f, 360f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             codexDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
 
             codexPanelVisible = false;
@@ -1428,9 +1431,23 @@ namespace TowerDefense.UI
                 case CodexSector.Bosses:
                     AddEnemyCodexEntries(entries, includeBosses: true);
                     break;
+                case CodexSector.Levels:
+                    AddLevelCodexEntries(entries);
+                    break;
             }
 
             return entries;
+        }
+
+        private void AddLevelCodexEntries(List<CodexEntry> entries)
+        {
+            var level = session.Level;
+            if (level == null)
+            {
+                return;
+            }
+
+            entries.Add(new CodexEntry(level.id, level.displayName, FormatLevelCodexDetails(level)));
         }
 
         private void AddTurretCodexEntries(List<CodexEntry> entries)
@@ -1474,6 +1491,110 @@ namespace TowerDefense.UI
                 entries.Add(new CodexEntry(enemy.id, enemy.displayName,
                     $"{enemy.displayName}\n\n{enemy.shortDescription}\n\nWeakness: {enemy.weaknessDescription}\n\n{FormatEnemyCodexStats(enemy)}"));
             }
+        }
+
+        private string FormatLevelCodexDetails(LevelDefinition level)
+        {
+            var progress = session.GetLevelProgress(level.id);
+            var firstClearClaimed = progress.firstClearClaimed || session.Profile.clearedLevelIds.Contains(level.id);
+            var perfectClearClaimed = progress.perfectClearClaimed || session.Profile.perfectClearedLevelIds.Contains(level.id);
+            var text = new StringBuilder();
+            text.AppendLine(level.displayName);
+            text.AppendLine();
+            text.AppendLine("Wave");
+            text.AppendLine($"Total enemies: {level.wave?.totalEnemyCount ?? 0}");
+            text.AppendLine(FormatWaveComposition(level.wave));
+            text.AppendLine($"Path length: {session.PathLength:0.0}m");
+            text.AppendLine($"Estimated duration: {FormatWaveDuration(level.wave)}");
+            text.AppendLine();
+            text.AppendLine("Recommended tactics");
+            text.AppendLine(string.IsNullOrWhiteSpace(level.recommendedTactics) ? "No tactical notes yet." : level.recommendedTactics);
+            text.AppendLine();
+            text.AppendLine("Progress");
+            text.AppendLine($"Attempts: {progress.attempts}");
+            text.AppendLine($"Victories: {progress.victories}");
+            text.AppendLine(progress.firstVictoryAttempt > 0 ? $"First victory: attempt {progress.firstVictoryAttempt}" : "First victory: not yet");
+            text.AppendLine(progress.bestLivesRemaining > 0 ? $"Best lives remaining: {progress.bestLivesRemaining}" : "Best lives remaining: none");
+            text.AppendLine();
+            text.AppendLine("Rewards");
+            text.AppendLine($"Normal: {FormatRewardStatus(progress.attempts > 0, "Started")}");
+            text.AppendLine($"Essence: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 enemy mass killed");
+            text.AppendLine($"Victory Sigil: {FormatRewardStatus(firstClearClaimed, FormatCurrencyAmount(level.firstClearReward))}");
+            text.AppendLine($"Perfect Sigil: {FormatRewardStatus(perfectClearClaimed, FormatCurrencyAmount(level.perfectClearReward))}");
+            text.AppendLine($"Boss Sigil: {FormatRewardStatus(progress.bossClearClaimed, FormatCurrencyAmount(level.bossClearReward), "planned")}");
+            text.Append($"Challenge Sigil: {FormatRewardStatus(progress.challengeClaimed, FormatCurrencyAmount(level.challengeReward), "planned")}");
+            return text.ToString();
+        }
+
+        private static string FormatWaveComposition(WaveDefinition wave)
+        {
+            if (wave?.entries == null || wave.entries.Length == 0)
+            {
+                return "Enemy mix: none";
+            }
+
+            var counts = new Dictionary<string, int>();
+            var names = new Dictionary<string, string>();
+            var remaining = wave.totalEnemyCount;
+            for (var i = 0; i < wave.entries.Length && remaining > 0; i++)
+            {
+                var entry = wave.entries[i];
+                if (entry.enemy == null || entry.count <= 0)
+                {
+                    continue;
+                }
+
+                var count = Mathf.Min(entry.count, remaining);
+                if (counts.ContainsKey(entry.enemy.id))
+                {
+                    counts[entry.enemy.id] += count;
+                }
+                else
+                {
+                    counts.Add(entry.enemy.id, count);
+                    names.Add(entry.enemy.id, entry.enemy.displayName);
+                }
+
+                remaining -= count;
+            }
+
+            var text = new StringBuilder("Enemy mix:");
+            foreach (var entry in counts)
+            {
+                text.AppendLine();
+                text.Append($"- {names[entry.Key]}: {entry.Value}");
+            }
+
+            return text.ToString();
+        }
+
+        private static string FormatWaveDuration(WaveDefinition wave)
+        {
+            if (wave == null || wave.totalEnemyCount <= 0)
+            {
+                return "unknown";
+            }
+
+            var averageBurst = wave.randomSpawnBurstMin > 0 && wave.randomSpawnBurstMax >= wave.randomSpawnBurstMin
+                ? (wave.randomSpawnBurstMin + wave.randomSpawnBurstMax) * 0.5f
+                : 1f;
+            var seconds = Mathf.Max(0.01f, wave.spawnInterval) * Mathf.Ceil(wave.totalEnemyCount / Mathf.Max(1f, averageBurst));
+            return $"{seconds:0}s spawn window";
+        }
+
+        private static string FormatCurrencyAmount(CurrencyAmount amount)
+        {
+            return $"{amount.amount} {FormatCurrencySymbol(amount.currency)}";
+        }
+
+        private static string FormatRewardStatus(bool claimed, string reward, string lockedLabel = null)
+        {
+            if (claimed)
+            {
+                return $"{reward} - claimed";
+            }
+
+            return string.IsNullOrWhiteSpace(lockedLabel) ? $"{reward} - unclaimed" : $"{reward} - {lockedLabel}";
         }
 
         private static string FormatTowerCodexStats(TowerDefinition tower)

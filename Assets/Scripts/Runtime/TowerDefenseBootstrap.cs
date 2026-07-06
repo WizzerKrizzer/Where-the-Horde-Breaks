@@ -267,6 +267,9 @@ namespace TowerDefense.Runtime
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
             level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 8);
+            level.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            level.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            level.recommendedTactics = "Use early Archer Towers to thin Goblin Runners, then place them around bends so their range covers the road for longer. Save Volley of Arrows for dense mixed packs or Brutes that are about to leak through.";
 
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";

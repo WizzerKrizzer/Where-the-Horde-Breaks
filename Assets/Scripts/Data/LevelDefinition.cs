@@ -12,6 +12,10 @@ namespace TowerDefense.Data
         public CurrencyAmount firstClearReward = new(CurrencyType.VictorySigil, 1);
         public CurrencyAmount perfectClearReward = new(CurrencyType.PerfectSigil, 1);
         public CurrencyAmount replayReward = new(CurrencyType.KillEssence, 3);
+        public CurrencyAmount bossClearReward = new(CurrencyType.BossCore, 1);
+        public CurrencyAmount challengeReward = new(CurrencyType.ChallengeToken, 1);
+        [TextArea(2, 4)]
+        public string recommendedTactics = "No tactics have been recorded yet.";
         public ChallengeRule[] challenges;
     }
 }

@@ -48,6 +48,7 @@ namespace TowerDefense.Runtime
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
         public IReadOnlyList<TowerDefinition> UnlockedTowerDefinitions => towers?.AvailableTowers ?? System.Array.Empty<TowerDefinition>();
+        public float PathLength => path?.TotalLength ?? 0f;
         public float BaseActiveWeaponDamage => baseActiveWeaponDamage;
         public float BaseActiveWeaponCooldown => baseActiveWeaponCooldown;
         public float BaseActiveWeaponRadius => baseActiveWeaponRadius;
@@ -82,6 +83,11 @@ namespace TowerDefense.Runtime
         {
             EnsureEncounteredEnemyList();
             return enemyDefinition != null && profile.encounteredEnemyIds.Contains(enemyDefinition.id);
+        }
+
+        public LevelProgressRecord GetLevelProgress(string levelId = null)
+        {
+            return profile.GetOrCreateLevelProgress(string.IsNullOrEmpty(levelId) ? level.id : levelId);
         }
 
         public void AddCurrency(CurrencyType currency, int amount)
@@ -340,6 +346,8 @@ namespace TowerDefense.Runtime
             }
 
             SaveLayout();
+            profile.GetOrCreateLevelProgress(level.id).attempts++;
+            profileStore.Save(profile);
             enemiesKilled = 0;
             activeWeapon.ResetRunStats();
             running = true;
@@ -384,6 +392,12 @@ namespace TowerDefense.Runtime
             activeWeapon.CanFire = false;
             enemies.StopWave();
             rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun);
+            var progress = profile.GetOrCreateLevelProgress(level.id);
+            if (won)
+            {
+                progress.bestLivesRemaining = Mathf.Max(progress.bestLivesRemaining, lives);
+            }
+
             var levelEndEssenceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.LevelEndKillEssenceFlat));
             if (levelEndEssenceBonus > 0)
             {

@@ -14,6 +14,7 @@ namespace TowerDefense.Save
         public List<string> encounteredEnemyIds = new();
         public List<string> purchasedUpgradeIds = new();
         public List<LevelTowerLayout> towerLayouts = new();
+        public List<LevelProgressRecord> levelProgress = new();
 
         public int GetCurrency(CurrencyType currency)
         {
@@ -42,6 +43,17 @@ namespace TowerDefense.Save
         {
             clearedLevelIds.Clear();
             perfectClearedLevelIds.Clear();
+            if (levelProgress != null)
+            {
+                foreach (var record in levelProgress)
+                {
+                    record.firstClearClaimed = false;
+                    record.perfectClearClaimed = false;
+                    record.bossClearClaimed = false;
+                    record.challengeClaimed = false;
+                    record.bestLivesRemaining = 0;
+                }
+            }
         }
 
         public bool TrySpend(CurrencyAmount cost)
@@ -67,6 +79,24 @@ namespace TowerDefense.Save
             towerLayouts.Add(layout);
             return layout;
         }
+
+        public LevelProgressRecord GetOrCreateLevelProgress(string levelId)
+        {
+            if (levelProgress == null)
+            {
+                levelProgress = new List<LevelProgressRecord>();
+            }
+
+            var record = levelProgress.Find(entry => entry.levelId == levelId);
+            if (record != null)
+            {
+                return record;
+            }
+
+            record = new LevelProgressRecord { levelId = levelId };
+            levelProgress.Add(record);
+            return record;
+        }
     }
 
     [Serializable]
@@ -81,6 +111,20 @@ namespace TowerDefense.Save
     {
         public string levelId;
         public List<TowerPlacementRecord> placements = new();
+    }
+
+    [Serializable]
+    public sealed class LevelProgressRecord
+    {
+        public string levelId;
+        public int attempts;
+        public int victories;
+        public int firstVictoryAttempt;
+        public int bestLivesRemaining;
+        public bool firstClearClaimed;
+        public bool perfectClearClaimed;
+        public bool bossClearClaimed;
+        public bool challengeClaimed;
     }
 
     [Serializable]
