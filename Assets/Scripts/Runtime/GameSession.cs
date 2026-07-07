@@ -210,6 +210,16 @@ namespace TowerDefense.Runtime
             return tower == null ? 0f : 1f / Mathf.Max(0.01f, tower.fireInterval);
         }
 
+        public float GetTowerBaseProjectileSpeed(string towerId)
+        {
+            if (!string.IsNullOrEmpty(towerId) && baseTowerStats.TryGetValue(towerId, out var stats))
+            {
+                return stats.ProjectileSpeed;
+            }
+
+            return GetTowerDefinition(towerId)?.projectileSpeed ?? 0f;
+        }
+
         public CurrencyAmount[] GetUpgradeNextCosts(string nodeId)
         {
             return progression.GetCurrentCosts(nodeId);
@@ -496,10 +506,12 @@ namespace TowerDefense.Runtime
                     var perTypeDamagePercent = progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent, towerDefinition.id);
                     var perTypeFireRateFlat = progression.GetEffectTotal(UpgradeEffectType.TowerFireRateFlat, towerDefinition.id);
                     var perTypeFireRatePercent = progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent, towerDefinition.id);
+                    var perTypeProjectileSpeedPercent = progression.GetEffectTotal(UpgradeEffectType.TowerProjectileSpeedPercent, towerDefinition.id);
                     var baseDamage = towerDefinition.damage;
                     var baseFireRate = 1f / Mathf.Max(0.01f, towerDefinition.fireInterval);
                     towerDefinition.damage = baseDamage * (1f + perTypeDamagePercent / 100f) + perTypeDamageFlat;
                     towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, baseFireRate * (1f + perTypeFireRatePercent / 100f) + perTypeFireRateFlat);
+                    towerDefinition.projectileSpeed *= 1f + perTypeProjectileSpeedPercent / 100f;
                     towerDefinition.aimAssistStrength = towerDefinition.behavior == TowerBehavior.Projectile ? towerAimAssist : 0f;
 
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
@@ -580,6 +592,7 @@ namespace TowerDefense.Runtime
             private readonly float range;
             private readonly float damage;
             private readonly float fireInterval;
+            private readonly float projectileSpeed;
             private readonly float health;
             private readonly float alliedUnitHealth;
             private readonly float alliedUnitDamage;
@@ -591,6 +604,7 @@ namespace TowerDefense.Runtime
                 range = tower.range;
                 damage = tower.damage;
                 fireInterval = tower.fireInterval;
+                projectileSpeed = tower.projectileSpeed;
                 health = tower.health;
                 alliedUnitHealth = tower.alliedUnitHealth;
                 alliedUnitDamage = tower.alliedUnitDamage;
@@ -603,6 +617,7 @@ namespace TowerDefense.Runtime
                 tower.range = range;
                 tower.damage = damage;
                 tower.fireInterval = fireInterval;
+                tower.projectileSpeed = projectileSpeed;
                 tower.aimAssistStrength = 0f;
                 tower.health = health;
                 tower.alliedUnitHealth = alliedUnitHealth;
@@ -623,6 +638,7 @@ namespace TowerDefense.Runtime
 
             public float Damage => damage;
             public float FireRate => 1f / Mathf.Max(0.01f, fireInterval);
+            public float ProjectileSpeed => projectileSpeed;
         }
     }
 }

@@ -378,6 +378,28 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
+                    id = "archer_projectile_speed_01",
+                    displayName = "Swift Shafts",
+                    description = "Each rank makes Archer Tower arrows fly 12% faster.",
+                    radialPosition = new Vector2(-150f, 188f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "archer_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerProjectileSpeedPercent, targetId = "archer", value = 12f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "archer_range_01",
+                    displayName = "High Perches",
+                    description = "Each rank increases Archer Tower range by 0.35.",
+                    radialPosition = new Vector2(-150f, 318f),
+                    maxRanks = 5,
+                    prerequisiteNodeIds = new[] { "archer_projectile_speed_01" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerRangeFlat, targetId = "archer", value = 0.35f } }
+                },
+                new SkillNodeDefinition
+                {
                     id = "archer_limit_01",
                     displayName = "Archer Barracks",
                     description = "Each rank increases the Archer Tower limit by 1.",

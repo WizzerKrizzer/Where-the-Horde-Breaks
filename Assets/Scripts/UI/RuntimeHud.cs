@@ -2138,6 +2138,13 @@ namespace TowerDefense.UI
                     var nextRate = baseRate * (1f + percentBonus / 100f) + next;
                     return $"{target} shots/sec: {currentRate:0.#} -> {nextRate:0.#}";
                 }
+                case UpgradeEffectType.TowerProjectileSpeedPercent:
+                {
+                    var baseSpeed = session.GetTowerBaseProjectileSpeed(effect.targetId);
+                    var currentSpeed = baseSpeed * (1f + current / 100f);
+                    var nextSpeed = baseSpeed * (1f + next / 100f);
+                    return $"{target} projectile speed: {current:0}% -> {next:0}%\nSpeed: {currentSpeed:0.#} -> {nextSpeed:0.#}";
+                }
                 case UpgradeEffectType.TowerAimAssistPercent:
                     return $"Projectile aim assist: {current:0}% -> {next:0}%";
                 case UpgradeEffectType.TowerPierceFlat:
@@ -2266,6 +2273,8 @@ namespace TowerDefense.UI
                     return string.IsNullOrWhiteSpace(effect.targetId)
                         ? $"+{effect.value:0}% tower fire rate"
                         : $"+{effect.value:0}% {FormatTargetName(effect.targetId)} fire rate";
+                case UpgradeEffectType.TowerProjectileSpeedPercent:
+                    return $"+{effect.value:0}% {FormatTargetName(effect.targetId)} projectile speed";
                 case UpgradeEffectType.TowerAimAssistPercent:
                     return $"+{effect.value:0}% projectile aim assist";
                 case UpgradeEffectType.TowerPierceFlat:
