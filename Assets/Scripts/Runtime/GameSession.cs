@@ -573,7 +573,7 @@ namespace TowerDefense.Runtime
 
             var spawnDuration = wave == null ? remainingEnemyCount * 0.5f : remainingEnemyCount / Mathf.Max(1f, averageBurst) * Mathf.Max(0.05f, wave.spawnInterval);
             var pathTravelDuration = path != null ? path.TotalLength / 4.2f : 18f;
-            var combatDuration = Mathf.Max(12f, spawnDuration + pathTravelDuration * 0.55f);
+            var combatDuration = Mathf.Max(5f, spawnDuration * 0.35f + pathTravelDuration * 0.25f);
             return EstimateTowerDps() * combatDuration + EstimateActiveWeaponDps() * combatDuration;
         }
 
@@ -599,11 +599,11 @@ namespace TowerDefense.Runtime
                     {
                         var shotsPerSecond = 1f / Mathf.Max(0.05f, definition.fireInterval);
                         var doubleShotMultiplier = 1f + Mathf.Clamp01(definition.doubleShotChance);
-                        var pierceMultiplier = 1f + Mathf.Min(3f, Mathf.Max(0, definition.pierce) * 0.45f);
-                        var splashMultiplier = definition.projectilePattern == ProjectilePattern.ArcSplash ? 2.2f : 1f;
-                        var reliability = definition.canHitFlying ? 0.74f : 0.68f;
-                        reliability += definition.aimAssistStrength * 0.22f;
-                        reliability += Mathf.Clamp((definition.projectileSpeed - 12f) / 40f, 0f, 0.18f);
+                        var pierceMultiplier = 1f + Mathf.Min(2f, Mathf.Max(0, definition.pierce) * 0.32f);
+                        var splashMultiplier = definition.projectilePattern == ProjectilePattern.ArcSplash ? 1.65f : 1f;
+                        var reliability = definition.canHitFlying ? 0.24f : 0.22f;
+                        reliability += definition.aimAssistStrength * 0.12f;
+                        reliability += Mathf.Clamp((definition.projectileSpeed - 12f) / 55f, 0f, 0.08f);
                         dps += definition.damage * shotsPerSecond * doubleShotMultiplier * pierceMultiplier * splashMultiplier * reliability;
                         break;
                     }
@@ -611,14 +611,14 @@ namespace TowerDefense.Runtime
                     {
                         var troops = Mathf.Max(1, definition.barracksCapacity);
                         var attackRate = 1f / Mathf.Max(0.15f, definition.alliedUnitAttackInterval);
-                        dps += troops * definition.alliedUnitDamage * attackRate * 0.58f;
+                        dps += troops * definition.alliedUnitDamage * attackRate * 0.3f;
                         break;
                     }
                     case TowerBehavior.Barrier:
-                        dps += Mathf.Max(0f, definition.thornsDamage) * 0.35f;
+                        dps += Mathf.Max(0f, definition.thornsDamage) * 0.18f;
                         break;
                     case TowerBehavior.SlowAura:
-                        dps += Mathf.Max(0f, definition.slowPercent) * 0.05f;
+                        dps += Mathf.Max(0f, definition.slowPercent) * 0.025f;
                         break;
                 }
             }
@@ -628,13 +628,13 @@ namespace TowerDefense.Runtime
 
         private float EstimateActiveWeaponDps()
         {
-            if (activeWeapon == null)
+            if (activeWeapon == null || !activeWeapon.AutoFireUnlocked)
             {
                 return 0f;
             }
 
             var hitsPerShot = Mathf.Max(1, activeWeapon.MaxTargets) * Mathf.Clamp01(activeWeapon.Radius / 4.5f);
-            return activeWeapon.Damage * hitsPerShot / Mathf.Max(0.1f, activeWeapon.CooldownSeconds) * 0.48f;
+            return activeWeapon.Damage * hitsPerShot / Mathf.Max(0.1f, activeWeapon.CooldownSeconds) * 0.12f;
         }
 
         private void CaptureRunStartCurrencies()

@@ -889,7 +889,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 470f);
+            contentRect.sizeDelta = new Vector2(214f, 496f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -957,6 +957,10 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
             CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -394f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.AutoResolveRun());
+            var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
+            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -420f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            autoResolveNote.text = "AFK estimate, not perfect play";
+            autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
 
             devPanelVisible = false;
             devPanel.SetActive(false);
