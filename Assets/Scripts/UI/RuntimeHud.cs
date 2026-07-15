@@ -889,7 +889,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 432f);
+            contentRect.sizeDelta = new Vector2(214f, 470f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -955,6 +955,8 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.ClearCurrencies());
             CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -366f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
+            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -394f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.AutoResolveRun());
 
             devPanelVisible = false;
             devPanel.SetActive(false);
@@ -1271,9 +1273,39 @@ namespace TowerDefense.UI
 
             resultTitle.text = session.Won ? "VICTORY" : "DEFEAT";
             resultTitle.color = session.Won ? new Color(0.7f, 1f, 0.55f, 1f) : new Color(1f, 0.35f, 0.25f, 1f);
+            var earnedText = FormatRunCurrencyDeltas();
             resultBody.text = session.Won
-                ? $"Wave cleared. Lives: {session.Lives}"
-                : $"The horde broke through. Killed: {session.EnemiesKilled}";
+                ? $"Wave cleared. Lives: {session.Lives}\nKilled: {session.EnemiesKilled}\nEarned: {earnedText}"
+                : $"The horde broke through. Killed: {session.EnemiesKilled}\nEarned: {earnedText}";
+        }
+
+        private string FormatRunCurrencyDeltas()
+        {
+            if (session.LastRunCurrencyDeltas == null || session.LastRunCurrencyDeltas.Count == 0)
+            {
+                return "None";
+            }
+
+            var text = new StringBuilder();
+            foreach (var delta in session.LastRunCurrencyDeltas)
+            {
+                if (delta.Value <= 0)
+                {
+                    continue;
+                }
+
+                if (text.Length > 0)
+                {
+                    text.Append("   ");
+                }
+
+                text.Append('+');
+                text.Append(delta.Value);
+                text.Append(' ');
+                text.Append(FormatCurrencySymbol(delta.Key));
+            }
+
+            return text.Length == 0 ? "None" : text.ToString();
         }
 
         private void SetTestSpeed(float speed)

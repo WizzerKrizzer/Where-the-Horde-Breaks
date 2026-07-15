@@ -25,6 +25,8 @@ namespace TowerDefense.Runtime
         private PathRoute path;
         private IReadOnlyList<TowerDefinition> allTowerDefinitions;
         private readonly Dictionary<string, TowerBaseStats> baseTowerStats = new();
+        private readonly Dictionary<CurrencyType, int> runStartCurrencies = new();
+        private readonly Dictionary<CurrencyType, int> lastRunCurrencyDeltas = new();
         private int lives;
         private int maxLivesForRun;
         private int enemiesKilled;
@@ -45,6 +47,7 @@ namespace TowerDefense.Runtime
         public bool IsRunning => running;
         public bool Finished => finished;
         public bool Won => finished && won;
+        public IReadOnlyDictionary<CurrencyType, int> LastRunCurrencyDeltas => lastRunCurrencyDeltas;
         public IReadOnlyList<SkillNodeDefinition> UpgradeNodes => progression.GetNodes();
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
         public IReadOnlyList<TowerDefinition> UnlockedTowerDefinitions => towers?.AvailableTowers ?? System.Array.Empty<TowerDefinition>();
@@ -274,6 +277,8 @@ namespace TowerDefense.Runtime
 
             enemiesKilled = 0;
             killRewardMassProgress = 0f;
+            CaptureRunStartCurrencies();
+            lastRunCurrencyDeltas.Clear();
             running = false;
             finished = false;
             won = false;
@@ -370,6 +375,9 @@ namespace TowerDefense.Runtime
             profile.GetOrCreateLevelProgress(level.id).attempts++;
             profileStore.Save(profile);
             enemiesKilled = 0;
+            killRewardMassProgress = 0f;
+            CaptureRunStartCurrencies();
+            lastRunCurrencyDeltas.Clear();
             activeWeapon.ResetRunStats();
             running = true;
             activeWeapon.CanFire = true;
@@ -390,6 +398,7 @@ namespace TowerDefense.Runtime
             finished = false;
             won = false;
             activeWeapon.CanFire = false;
+            lastRunCurrencyDeltas.Clear();
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
         }
@@ -403,6 +412,60 @@ namespace TowerDefense.Runtime
 
             lives = 0;
             Finish(false);
+        }
+
+        public void AutoResolveRun()
+        {
+            if (finished)
+            {
+                return;
+            }
+
+            if (IsPlanning)
+            {
+                StartLevel();
+            }
+
+            if (!running)
+            {
+                return;
+            }
+
+            var remainingEnemies = BuildRemainingEnemySequence();
+            if (remainingEnemies.Count == 0)
+            {
+                Finish(lives > 0);
+                return;
+            }
+
+            var damageBudget = EstimateAutoResolveDamageBudget(remainingEnemies.Count);
+            var simulatedKills = 0;
+            var simulatedKillMass = 0f;
+            for (var i = 0; i < remainingEnemies.Count; i++)
+            {
+                var enemy = remainingEnemies[i];
+                var health = Mathf.Max(1f, enemy.maxHealth);
+                if (damageBudget < health)
+                {
+                    break;
+                }
+
+                damageBudget -= health;
+                simulatedKills++;
+                simulatedKillMass += Mathf.Max(0f, enemy.mass);
+            }
+
+            enemiesKilled += simulatedKills;
+            AwardKillEssenceForMass(simulatedKillMass);
+
+            var remainingLives = lives;
+            for (var i = simulatedKills; i < remainingEnemies.Count && remainingLives > 0; i++)
+            {
+                remainingLives -= Mathf.Max(1, remainingEnemies[i].lifeDamage);
+            }
+
+            lives = Mathf.Max(0, remainingLives);
+            Finish(simulatedKills >= remainingEnemies.Count && lives > 0);
         }
 
         private void Finish(bool won)
@@ -426,13 +489,19 @@ namespace TowerDefense.Runtime
             }
 
             SaveLayout();
+            CaptureLastRunCurrencyDeltas();
             profileStore.Save(profile);
         }
 
         private void OnEnemyKilled(EnemyActor enemy)
         {
             enemiesKilled++;
-            killRewardMassProgress += Mathf.Max(0f, enemy?.Definition?.mass ?? 1f);
+            AwardKillEssenceForMass(Mathf.Max(0f, enemy?.Definition?.mass ?? 1f));
+        }
+
+        private void AwardKillEssenceForMass(float mass)
+        {
+            killRewardMassProgress += mass;
             var essenceReward = 0;
             while (killRewardMassProgress >= 10f)
             {
@@ -444,6 +513,150 @@ namespace TowerDefense.Runtime
             {
                 profile.AddCurrency(CurrencyType.KillEssence, essenceReward);
                 profileStore.Save(profile);
+            }
+        }
+
+        private List<EnemyDefinition> BuildRemainingEnemySequence()
+        {
+            var sequence = new List<EnemyDefinition>();
+            var wave = level != null ? level.wave : null;
+            if (wave?.entries == null)
+            {
+                return sequence;
+            }
+
+            for (var i = 0; i < wave.entries.Length && sequence.Count < wave.totalEnemyCount; i++)
+            {
+                var entry = wave.entries[i];
+                if (entry.enemy == null || entry.count <= 0)
+                {
+                    continue;
+                }
+
+                var count = Mathf.Min(entry.count, wave.totalEnemyCount - sequence.Count);
+                for (var j = 0; j < count; j++)
+                {
+                    sequence.Add(entry.enemy);
+                }
+            }
+
+            var resolved = Mathf.Clamp(enemies != null ? enemies.TotalResolved : 0, 0, sequence.Count);
+            if (resolved > 0)
+            {
+                sequence.RemoveRange(0, resolved);
+            }
+
+            return sequence;
+        }
+
+        private float EstimateAutoResolveDamageBudget(int remainingEnemyCount)
+        {
+            var wave = level != null ? level.wave : null;
+            var averageBurst = 1f;
+            if (wave != null)
+            {
+                if (wave.randomSpawnBurstMax >= wave.randomSpawnBurstMin && wave.randomSpawnBurstMin > 0)
+                {
+                    averageBurst = (wave.randomSpawnBurstMin + wave.randomSpawnBurstMax) * 0.5f;
+                }
+                else if (wave.spawnBurstPattern != null && wave.spawnBurstPattern.Length > 0)
+                {
+                    var sum = 0f;
+                    for (var i = 0; i < wave.spawnBurstPattern.Length; i++)
+                    {
+                        sum += Mathf.Max(1, wave.spawnBurstPattern[i]);
+                    }
+
+                    averageBurst = sum / wave.spawnBurstPattern.Length;
+                }
+            }
+
+            var spawnDuration = wave == null ? remainingEnemyCount * 0.5f : remainingEnemyCount / Mathf.Max(1f, averageBurst) * Mathf.Max(0.05f, wave.spawnInterval);
+            var pathTravelDuration = path != null ? path.TotalLength / 4.2f : 18f;
+            var combatDuration = Mathf.Max(12f, spawnDuration + pathTravelDuration * 0.55f);
+            return EstimateTowerDps() * combatDuration + EstimateActiveWeaponDps() * combatDuration;
+        }
+
+        private float EstimateTowerDps()
+        {
+            if (towers?.Towers == null)
+            {
+                return 0f;
+            }
+
+            var dps = 0f;
+            foreach (var tower in towers.Towers)
+            {
+                var definition = tower != null ? tower.Definition : null;
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                switch (definition.behavior)
+                {
+                    case TowerBehavior.Projectile:
+                    {
+                        var shotsPerSecond = 1f / Mathf.Max(0.05f, definition.fireInterval);
+                        var doubleShotMultiplier = 1f + Mathf.Clamp01(definition.doubleShotChance);
+                        var pierceMultiplier = 1f + Mathf.Min(3f, Mathf.Max(0, definition.pierce) * 0.45f);
+                        var splashMultiplier = definition.projectilePattern == ProjectilePattern.ArcSplash ? 2.2f : 1f;
+                        var reliability = definition.canHitFlying ? 0.74f : 0.68f;
+                        reliability += definition.aimAssistStrength * 0.22f;
+                        reliability += Mathf.Clamp((definition.projectileSpeed - 12f) / 40f, 0f, 0.18f);
+                        dps += definition.damage * shotsPerSecond * doubleShotMultiplier * pierceMultiplier * splashMultiplier * reliability;
+                        break;
+                    }
+                    case TowerBehavior.Barracks:
+                    {
+                        var troops = Mathf.Max(1, definition.barracksCapacity);
+                        var attackRate = 1f / Mathf.Max(0.15f, definition.alliedUnitAttackInterval);
+                        dps += troops * definition.alliedUnitDamage * attackRate * 0.58f;
+                        break;
+                    }
+                    case TowerBehavior.Barrier:
+                        dps += Mathf.Max(0f, definition.thornsDamage) * 0.35f;
+                        break;
+                    case TowerBehavior.SlowAura:
+                        dps += Mathf.Max(0f, definition.slowPercent) * 0.05f;
+                        break;
+                }
+            }
+
+            return dps;
+        }
+
+        private float EstimateActiveWeaponDps()
+        {
+            if (activeWeapon == null)
+            {
+                return 0f;
+            }
+
+            var hitsPerShot = Mathf.Max(1, activeWeapon.MaxTargets) * Mathf.Clamp01(activeWeapon.Radius / 4.5f);
+            return activeWeapon.Damage * hitsPerShot / Mathf.Max(0.1f, activeWeapon.CooldownSeconds) * 0.48f;
+        }
+
+        private void CaptureRunStartCurrencies()
+        {
+            runStartCurrencies.Clear();
+            foreach (CurrencyType currency in System.Enum.GetValues(typeof(CurrencyType)))
+            {
+                runStartCurrencies[currency] = profile.GetCurrency(currency);
+            }
+        }
+
+        private void CaptureLastRunCurrencyDeltas()
+        {
+            lastRunCurrencyDeltas.Clear();
+            foreach (CurrencyType currency in System.Enum.GetValues(typeof(CurrencyType)))
+            {
+                runStartCurrencies.TryGetValue(currency, out var startAmount);
+                var delta = profile.GetCurrency(currency) - startAmount;
+                if (delta > 0)
+                {
+                    lastRunCurrencyDeltas[currency] = delta;
+                }
             }
         }
 
