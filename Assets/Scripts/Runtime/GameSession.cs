@@ -116,14 +116,22 @@ namespace TowerDefense.Runtime
         public void ClearLevelRewardProgress()
         {
             profile.ClearLevelRewardProgress();
+            profile.ResetBalanceTestProgress();
             profileStore.Save(profile);
         }
 
         public void RefundAndResetUpgrades()
         {
             progression.RefundAndResetPurchasedUpgrades();
+            profile.ResetBalanceTestProgress();
             profileStore.Save(profile);
             ResetToPlanning();
+        }
+
+        public void ResetBalanceTestProgress()
+        {
+            profile.ResetBalanceTestProgress();
+            profileStore.Save(profile);
         }
 
         public void SaveDevSnapshot(int slot)
@@ -380,7 +388,10 @@ namespace TowerDefense.Runtime
             }
 
             SaveLayout();
-            profile.GetOrCreateLevelProgress(level.id).attempts++;
+            var progress = profile.GetOrCreateLevelProgress(level.id);
+            progress.attempts++;
+            progress.testSessionAttempts++;
+            progress.testSessionEquivalentAttempts += rewardTestMultiplier;
             profileStore.Save(profile);
             enemiesKilled = 0;
             killRewardMassProgress = 0f;
@@ -488,6 +499,12 @@ namespace TowerDefense.Runtime
             if (won)
             {
                 progress.bestLivesRemaining = Mathf.Max(progress.bestLivesRemaining, lives);
+                progress.testSessionVictories++;
+                if (progress.testSessionFirstVictoryAttempt <= 0)
+                {
+                    progress.testSessionFirstVictoryAttempt = progress.testSessionAttempts;
+                    progress.testSessionFirstVictoryEquivalentAttempt = progress.testSessionEquivalentAttempts;
+                }
             }
 
             var levelEndEssenceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.LevelEndKillEssenceFlat));

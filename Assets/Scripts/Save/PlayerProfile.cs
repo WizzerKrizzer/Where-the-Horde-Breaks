@@ -56,6 +56,23 @@ namespace TowerDefense.Save
             }
         }
 
+        public void ResetBalanceTestProgress()
+        {
+            if (levelProgress == null)
+            {
+                return;
+            }
+
+            foreach (var record in levelProgress)
+            {
+                record.testSessionAttempts = 0;
+                record.testSessionVictories = 0;
+                record.testSessionFirstVictoryAttempt = 0;
+                record.testSessionEquivalentAttempts = 0;
+                record.testSessionFirstVictoryEquivalentAttempt = 0;
+            }
+        }
+
         public bool TrySpend(CurrencyAmount cost)
         {
             if (GetCurrency(cost.currency) < cost.amount)
@@ -121,6 +138,11 @@ namespace TowerDefense.Save
         public int victories;
         public int firstVictoryAttempt;
         public int bestLivesRemaining;
+        public int testSessionAttempts;
+        public int testSessionVictories;
+        public int testSessionFirstVictoryAttempt;
+        public int testSessionEquivalentAttempts;
+        public int testSessionFirstVictoryEquivalentAttempt;
         public bool firstClearClaimed;
         public bool perfectClearClaimed;
         public bool bossClearClaimed;

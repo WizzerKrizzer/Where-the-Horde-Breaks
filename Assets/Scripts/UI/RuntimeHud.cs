@@ -890,7 +890,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 528f);
+            contentRect.sizeDelta = new Vector2(214f, 558f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -966,10 +966,12 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.ClearCurrencies());
             CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -422f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
-            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -450f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -450f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.ResetBalanceTestProgress());
+            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -478f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.AutoResolveRun());
             var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
-            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -476f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -504f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
             autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
 
@@ -1290,9 +1292,16 @@ namespace TowerDefense.UI
             resultTitle.color = session.Won ? new Color(0.7f, 1f, 0.55f, 1f) : new Color(1f, 0.35f, 0.25f, 1f);
             var earnedText = FormatRunCurrencyDeltas();
             var testingText = session.RewardTestingEnabled ? $"\nTesting rewards: x{session.RewardTestMultiplier}" : string.Empty;
+            var progress = session.GetLevelProgress();
+            var testProgressText = $"\nTest session: {progress.testSessionAttempts} runs";
+            if (progress.testSessionEquivalentAttempts != progress.testSessionAttempts)
+            {
+                testProgressText += $" (~{progress.testSessionEquivalentAttempts} normal)";
+            }
+
             resultBody.text = session.Won
-                ? $"Wave cleared. Lives: {session.Lives}\nKilled: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}"
-                : $"The horde broke through. Killed: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}";
+                ? $"Wave cleared. Lives: {session.Lives}\nKilled: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}{testProgressText}"
+                : $"The horde broke through. Killed: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}{testProgressText}";
         }
 
         private string FormatRunCurrencyDeltas()
@@ -1618,6 +1627,20 @@ namespace TowerDefense.UI
             text.AppendLine($"Victories: {progress.victories}");
             text.AppendLine(progress.firstVictoryAttempt > 0 ? $"First victory: attempt {progress.firstVictoryAttempt}" : "First victory: not yet");
             text.AppendLine(progress.bestLivesRemaining > 0 ? $"Best lives remaining: {progress.bestLivesRemaining}" : "Best lives remaining: none");
+            text.AppendLine();
+            text.AppendLine("Current Test Session");
+            text.AppendLine($"Runs: {progress.testSessionAttempts}");
+            text.AppendLine($"Victories: {progress.testSessionVictories}");
+            text.AppendLine(progress.testSessionFirstVictoryAttempt > 0
+                ? $"First victory: run {progress.testSessionFirstVictoryAttempt}"
+                : "First victory: not yet");
+            text.AppendLine(progress.testSessionEquivalentAttempts != progress.testSessionAttempts
+                ? $"Equivalent normal runs: ~{progress.testSessionEquivalentAttempts}"
+                : "Equivalent normal runs: same as runs");
+            if (progress.testSessionFirstVictoryEquivalentAttempt > 0 && progress.testSessionFirstVictoryEquivalentAttempt != progress.testSessionFirstVictoryAttempt)
+            {
+                text.AppendLine($"First victory equivalent: ~{progress.testSessionFirstVictoryEquivalentAttempt} normal runs");
+            }
             text.AppendLine();
             text.AppendLine("Rewards");
             text.AppendLine($"Normal: {FormatRewardStatus(progress.attempts > 0, "Started")}");
