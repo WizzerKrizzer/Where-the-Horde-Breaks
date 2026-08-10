@@ -35,6 +35,7 @@ namespace TowerDefense.Runtime
         private float baseActiveWeaponCooldown;
         private float baseActiveWeaponRadius;
         private int baseActiveWeaponMaxTargets;
+        private int rewardTestMultiplier = 1;
         private bool running;
         private bool finished;
         private bool won;
@@ -56,6 +57,8 @@ namespace TowerDefense.Runtime
         public float BaseActiveWeaponCooldown => baseActiveWeaponCooldown;
         public float BaseActiveWeaponRadius => baseActiveWeaponRadius;
         public int BaseActiveWeaponMaxTargets => baseActiveWeaponMaxTargets;
+        public int RewardTestMultiplier => rewardTestMultiplier;
+        public bool RewardTestingEnabled => rewardTestMultiplier > 1;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -103,6 +106,11 @@ namespace TowerDefense.Runtime
         {
             profile.ClearCurrencies();
             profileStore.Save(profile);
+        }
+
+        public void ToggleRewardTesting()
+        {
+            rewardTestMultiplier = rewardTestMultiplier > 1 ? 1 : 5;
         }
 
         public void ClearLevelRewardProgress()
@@ -475,7 +483,7 @@ namespace TowerDefense.Runtime
             this.won = won;
             activeWeapon.CanFire = false;
             enemies.StopWave();
-            rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun);
+            rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun, rewardTestMultiplier);
             var progress = profile.GetOrCreateLevelProgress(level.id);
             if (won)
             {
@@ -485,7 +493,7 @@ namespace TowerDefense.Runtime
             var levelEndEssenceBonus = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.LevelEndKillEssenceFlat));
             if (levelEndEssenceBonus > 0)
             {
-                profile.AddCurrency(CurrencyType.KillEssence, levelEndEssenceBonus);
+                profile.AddCurrency(CurrencyType.KillEssence, levelEndEssenceBonus * rewardTestMultiplier);
             }
 
             SaveLayout();
@@ -511,7 +519,7 @@ namespace TowerDefense.Runtime
 
             if (essenceReward > 0)
             {
-                profile.AddCurrency(CurrencyType.KillEssence, essenceReward);
+                profile.AddCurrency(CurrencyType.KillEssence, essenceReward * rewardTestMultiplier);
                 profileStore.Save(profile);
             }
         }

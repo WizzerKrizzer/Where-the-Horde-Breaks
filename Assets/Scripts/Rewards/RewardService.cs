@@ -5,7 +5,7 @@ namespace TowerDefense.Rewards
 {
     public sealed class RewardService
     {
-        public void ApplyLevelRewards(PlayerProfile profile, LevelDefinition level, bool won, bool perfect)
+        public void ApplyLevelRewards(PlayerProfile profile, LevelDefinition level, bool won, bool perfect, int killEssenceMultiplier = 1)
         {
             if (!won)
             {
@@ -26,7 +26,10 @@ namespace TowerDefense.Rewards
             }
             else
             {
-                profile.AddCurrency(level.replayReward.currency, level.replayReward.amount);
+                var replayAmount = level.replayReward.currency == CurrencyType.KillEssence
+                    ? level.replayReward.amount * killEssenceMultiplier
+                    : level.replayReward.amount;
+                profile.AddCurrency(level.replayReward.currency, replayAmount);
             }
 
             progress.victories++;
