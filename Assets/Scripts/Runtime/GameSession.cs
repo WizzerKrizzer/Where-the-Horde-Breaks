@@ -43,20 +43,33 @@ namespace TowerDefense.Runtime
         private float devAutoTestLoopTimer;
         private string devLastAutoPurchase = "None";
         private const float DevAutoTestLoopDelay = 0.65f;
-        private static readonly string[] DevAutoUpgradePriority =
+        private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
-            "archer_unlock",
-            "steady_tithe_01",
-            "archer_limit_01",
-            "archer_damage_01",
-            "archer_speed_01",
-            "archer_double_01",
-            "archer_flat_damage_01",
-            "archer_flat_speed_01",
-            "archer_projectile_speed_01",
-            "archer_range_01",
-            "projectile_aim_assist_01",
-            "base_health_01"
+            new("steady_tithe_01", 3),
+            new("archer_unlock", 1),
+            new("archer_limit_01", 4),
+            new("volley_damage_01", 4),
+            new("volley_pierce_01", 3),
+            new("archer_damage_01", 6),
+            new("archer_speed_01", 5),
+            new("archer_double_01", 5),
+            new("archer_flat_damage_01", 3),
+            new("archer_flat_speed_01", 3),
+            new("projectile_aim_assist_01", 3),
+            new("volley_cooldown_01", 4),
+            new("volley_radius_01", 3),
+            new("archer_projectile_speed_01", 5),
+            new("archer_range_01", 5),
+            new("archer_damage_01", 10),
+            new("archer_speed_01", 8),
+            new("archer_flat_damage_01", 10),
+            new("archer_flat_speed_01", 8),
+            new("projectile_aim_assist_01", 5),
+            new("volley_damage_01", 10),
+            new("volley_pierce_01", 6),
+            new("volley_cooldown_01", 8),
+            new("volley_radius_01", 5),
+            new("base_health_01", 8)
         };
 
         public PlayerProfile Profile => profile;
@@ -450,8 +463,9 @@ namespace TowerDefense.Runtime
                     return;
                 }
 
-                TryBuyDevAutoUpgrade();
                 ResetToPlanning();
+                TryBuyDevAutoUpgrades();
+                TryDevAutoPlaceTowers();
                 StartLevel();
                 devAutoTestLoopTimer = DevAutoTestLoopDelay;
                 return;
@@ -459,33 +473,55 @@ namespace TowerDefense.Runtime
 
             if (IsPlanning)
             {
+                TryBuyDevAutoUpgrades();
+                TryDevAutoPlaceTowers();
                 StartLevel();
             }
         }
 
-        private bool TryBuyDevAutoUpgrade()
+        private bool TryBuyDevAutoUpgrades()
         {
-            for (var i = 0; i < DevAutoUpgradePriority.Length; i++)
+            var purchases = new List<string>();
+            var guard = 0;
+            while (guard++ < 80)
             {
-                var nodeId = DevAutoUpgradePriority[i];
-                if (!progression.CanPurchase(nodeId))
+                var boughtThisPass = false;
+                for (var i = 0; i < DevAutoUpgradePriority.Length; i++)
                 {
-                    continue;
+                    var goal = DevAutoUpgradePriority[i];
+                    if (progression.GetPurchasedRank(goal.NodeId) >= goal.TargetRank || !progression.CanPurchase(goal.NodeId))
+                    {
+                        continue;
+                    }
+
+                    if (!progression.TryPurchase(goal.NodeId))
+                    {
+                        continue;
+                    }
+
+                    ApplyProgressionStats();
+                    purchases.Add(FormatAutoUpgradePurchase(goal.NodeId));
+                    boughtThisPass = true;
+                    break;
                 }
 
-                if (!progression.TryPurchase(nodeId))
+                if (!boughtThisPass)
                 {
-                    continue;
+                    break;
                 }
-
-                ApplyProgressionStats();
-                profileStore.Save(profile);
-                devLastAutoPurchase = FormatAutoUpgradePurchase(nodeId);
-                return true;
             }
 
-            devLastAutoPurchase = "None affordable";
-            return false;
+            if (purchases.Count == 0)
+            {
+                devLastAutoPurchase = "None affordable";
+                return false;
+            }
+
+            profileStore.Save(profile);
+            devLastAutoPurchase = purchases.Count <= 3
+                ? string.Join(", ", purchases)
+                : $"{string.Join(", ", purchases.GetRange(0, 3))} +{purchases.Count - 3} more";
+            return true;
         }
 
         private string FormatAutoUpgradePurchase(string nodeId)
@@ -505,6 +541,92 @@ namespace TowerDefense.Runtime
             }
 
             return nodeId;
+        }
+
+        private void TryDevAutoPlaceTowers()
+        {
+            TryDevAutoPlaceTowerType("archer");
+            SaveLayout();
+        }
+
+        private void TryDevAutoPlaceTowerType(string towerId)
+        {
+            var definition = GetTowerDefinition(towerId);
+            if (definition == null || !IsTowerAvailable(definition))
+            {
+                return;
+            }
+
+            var limit = towers.GetPerTypeLimit(definition);
+            var guard = 0;
+            while (towers.CountOf(definition) < limit && guard++ < 24)
+            {
+                if (!TryPlaceDevTowerAtBestCandidate(definition))
+                {
+                    return;
+                }
+            }
+        }
+
+        private bool IsTowerAvailable(TowerDefinition definition)
+        {
+            if (definition == null || towers.AvailableTowers == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < towers.AvailableTowers.Count; i++)
+            {
+                if (towers.AvailableTowers[i] == definition)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryPlaceDevTowerAtBestCandidate(TowerDefinition definition)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return false;
+            }
+
+            var fractions = new[] { 0.22f, 0.34f, 0.46f, 0.58f, 0.7f, 0.82f, 0.14f, 0.9f };
+            var sideDistances = new[] { 4.05f, -4.05f, 5.2f, -5.2f, 6.25f, -6.25f };
+            for (var i = 0; i < fractions.Length; i++)
+            {
+                var distance = path.TotalLength * fractions[i];
+                var center = path.Sample(distance);
+                var tangent = GetPathTangent(distance);
+                var side = new Vector3(-tangent.z, 0f, tangent.x).normalized;
+                if (side.sqrMagnitude < 0.01f)
+                {
+                    side = Vector3.right;
+                }
+
+                for (var j = 0; j < sideDistances.Length; j++)
+                {
+                    var candidate = center + side * sideDistances[j];
+                    candidate.y = 0f;
+                    if (towers.TryPlace(definition, candidate))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private Vector3 GetPathTangent(float distance)
+        {
+            var before = path.Sample(Mathf.Max(0f, distance - 0.5f));
+            var after = path.Sample(Mathf.Min(path.TotalLength, distance + 0.5f));
+            var tangent = after - before;
+            tangent.y = 0f;
+            return tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector3.forward;
         }
 
         public void StartLevel()
@@ -1004,6 +1126,18 @@ namespace TowerDefense.Runtime
             public float Damage => damage;
             public float FireRate => 1f / Mathf.Max(0.01f, fireInterval);
             public float ProjectileSpeed => projectileSpeed;
+        }
+
+        private readonly struct DevAutoUpgradeGoal
+        {
+            public readonly string NodeId;
+            public readonly int TargetRank;
+
+            public DevAutoUpgradeGoal(string nodeId, int targetRank)
+            {
+                NodeId = nodeId;
+                TargetRank = Mathf.Max(1, targetRank);
+            }
         }
     }
 }
