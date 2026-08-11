@@ -35,6 +35,10 @@ namespace TowerDefense.Runtime
         private const float SteeringAcceleration = 6.8f;
         private const float WallBounce = 0.32f;
         private const float RoadFriction = 0.85f;
+        private const float SeparationPathWindow = 3.4f;
+        private const float SeparationRadiusScale = 0.94f;
+        private const float SeparationVelocityScale = 5.6f;
+        private const float MaxGroundSeparationOffset = 2.05f;
 
         public EnemyDefinition Definition => definition;
         public float Health => health;
@@ -336,7 +340,7 @@ namespace TowerDefense.Runtime
                 ? toDesired.normalized * currentSpeed
                 : tangent * currentSpeed;
 
-            var separationVelocity = GetSeparationOffset(transform.position) * 3.1f;
+            var separationVelocity = GetSeparationOffset(transform.position) * SeparationVelocityScale;
             desiredVelocity += separationVelocity;
 
             movementVelocity = Vector3.MoveTowards(movementVelocity, desiredVelocity, SteeringAcceleration * deltaTime);
@@ -344,6 +348,8 @@ namespace TowerDefense.Runtime
 
             var nextPosition = transform.position + movementVelocity * deltaTime;
             nextPosition.y = pathPosition.y;
+            nextPosition = ConstrainToRoad(nextPosition, pathPosition, side, tangent);
+            nextPosition = ApplyHardOverlapCorrection(nextPosition, side);
             nextPosition = ConstrainToRoad(nextPosition, pathPosition, side, tangent);
             transform.position = nextPosition;
         }
@@ -385,8 +391,8 @@ namespace TowerDefense.Runtime
         private void UpdateCrowdOffset()
         {
             var desiredOffset = GetSeparationOffset(transform.position);
-            crowdOffset = Vector3.MoveTowards(crowdOffset, desiredOffset, Time.deltaTime * 1.8f);
-            crowdOffset = Vector3.MoveTowards(crowdOffset, Vector3.zero, Time.deltaTime * 0.35f);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, desiredOffset, Time.deltaTime * 4.2f);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, Vector3.zero, Time.deltaTime * 0.18f);
         }
 
         private Vector3 GetSeparationOffset(Vector3 origin)
@@ -404,7 +410,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (Mathf.Abs(other.PathDistance - pathDistance) > 2.2f)
+                if (Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
                 {
                     continue;
                 }
@@ -412,7 +418,7 @@ namespace TowerDefense.Runtime
                 var away = origin - other.transform.position;
                 away.y = 0f;
                 var distance = away.magnitude;
-                var desiredDistance = Mathf.Max(0.48f, (definition.visualScale + other.Definition.visualScale) * 0.68f);
+                var desiredDistance = GetDesiredSeparationDistance(other);
                 if (distance <= 0.001f)
                 {
                     away = GetPathSide(pathDistance) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
@@ -424,10 +430,59 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                offset += away.normalized * (desiredDistance - distance);
+                var overlap = desiredDistance - distance;
+                var pressure = overlap / desiredDistance;
+                offset += away.normalized * overlap * (1.15f + pressure * 1.85f);
             }
 
-            return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.58f : 1.12f);
+            return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.58f : MaxGroundSeparationOffset);
+        }
+
+        private Vector3 ApplyHardOverlapCorrection(Vector3 position, Vector3 fallbackSide)
+        {
+            if (definition.isFlying || owner?.ActiveEnemies == null)
+            {
+                return position;
+            }
+
+            var correction = Vector3.zero;
+            foreach (var other in owner.ActiveEnemies)
+            {
+                if (other == null || other == this || !other.IsAlive || other.Definition == null)
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
+                {
+                    continue;
+                }
+
+                var away = position - other.transform.position;
+                away.y = 0f;
+                var distance = away.magnitude;
+                var desiredDistance = GetDesiredSeparationDistance(other) * 0.82f;
+                if (distance <= 0.001f)
+                {
+                    away = fallbackSide * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
+                    distance = 0.001f;
+                }
+
+                if (distance >= desiredDistance)
+                {
+                    continue;
+                }
+
+                correction += away.normalized * ((desiredDistance - distance) * 0.55f);
+            }
+
+            return position + Vector3.ClampMagnitude(correction, 0.55f);
+        }
+
+        private float GetDesiredSeparationDistance(EnemyActor other)
+        {
+            var combinedScale = definition.visualScale + (other.Definition?.visualScale ?? definition.visualScale);
+            return Mathf.Max(0.62f, combinedScale * SeparationRadiusScale);
         }
 
         private Vector3 GetPathTangent(float distance)
