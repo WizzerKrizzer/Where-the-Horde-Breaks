@@ -462,7 +462,7 @@ namespace TowerDefense.Runtime
                     radialPosition = new Vector2(-560f, 34f),
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "archer_speed_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRateFlat, targetId = "archer", value = 0.2f } }
                 },
                 new SkillNodeDefinition

@@ -1700,7 +1700,7 @@ namespace TowerDefense.UI
             text.AppendLine();
             text.AppendLine("Rewards");
             text.AppendLine($"Normal: {FormatRewardStatus(progress.attempts > 0, "Started")}");
-            text.AppendLine($"Essence: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 enemy mass killed");
+            text.AppendLine($"Essence: 2 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 enemy mass killed");
             text.AppendLine($"Victory Sigil: {FormatRewardStatus(firstClearClaimed, FormatCurrencyAmount(level.firstClearReward))}");
             text.AppendLine($"Perfect Sigil: {FormatRewardStatus(perfectClearClaimed, FormatCurrencyAmount(level.perfectClearReward))}");
             text.AppendLine($"Boss Sigil: {FormatRewardStatus(progress.bossClearClaimed, FormatCurrencyAmount(level.bossClearReward), "planned")}");
@@ -1837,7 +1837,7 @@ namespace TowerDefense.UI
             text.AppendLine($"Vs barriers: x{enemy.wallDamageMultiplier:0.0}");
             text.AppendLine($"Vs allied units: x{enemy.alliedDamageMultiplier:0.0}");
             text.AppendLine($"Life damage: {enemy.lifeDamage}");
-            text.AppendLine($"Kill reward: 1 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 reward mass");
+            text.AppendLine($"Kill reward: 2 {FormatCurrencySymbol(CurrencyType.KillEssence)} per 10 reward mass");
 
             var abilities = new List<string>();
             if (enemy.isFlying)

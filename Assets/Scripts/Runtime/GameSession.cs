@@ -847,7 +847,7 @@ namespace TowerDefense.Runtime
             var essenceReward = 0;
             while (killRewardMassProgress >= 10f)
             {
-                essenceReward++;
+                essenceReward += 2;
                 killRewardMassProgress -= 10f;
             }
 
