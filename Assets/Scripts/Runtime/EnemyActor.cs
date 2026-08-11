@@ -16,6 +16,7 @@ namespace TowerDefense.Runtime
         private float laneOffset;
         private Vector3 crowdOffset;
         private Vector3 knockbackOffset;
+        private Vector3 movementVelocity;
         private readonly List<BurnStack> burnStacks = new();
         private float attackCooldown;
         private float healCooldown;
@@ -30,6 +31,10 @@ namespace TowerDefense.Runtime
         private Renderer bodyRenderer;
         private Transform healthFill;
         private const float RoadHalfWidth = 2.45f;
+        private const float PathLookAhead = 2.15f;
+        private const float SteeringAcceleration = 12.5f;
+        private const float WallBounce = 0.18f;
+        private const float RoadFriction = 2.2f;
 
         public EnemyDefinition Definition => definition;
         public float Health => health;
@@ -48,6 +53,7 @@ namespace TowerDefense.Runtime
             laneOffset = UnityEngine.Random.Range(-1.35f, 1.35f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
             crowdOffset = Vector3.zero;
             knockbackOffset = Vector3.zero;
+            movementVelocity = GetPathTangent(pathDistance) * enemyDefinition.speed;
             burnStacks.Clear();
             attackCooldown = 0f;
             healCooldown = enemyDefinition.healInterval;
@@ -68,7 +74,7 @@ namespace TowerDefense.Runtime
             EnsureHealthBar();
             UpdateHealthBar();
             gameObject.SetActive(true);
-            MoveToPathPosition();
+            SnapToPathPosition();
         }
 
         private void Update()
@@ -82,7 +88,7 @@ namespace TowerDefense.Runtime
                     active = true;
                     health = currentMaxHealth * 0.5f;
                     gameObject.SetActive(true);
-                    MoveToPathPosition();
+                    SnapToPathPosition();
                     UpdateHealthBar();
                 }
                 return;
@@ -108,7 +114,7 @@ namespace TowerDefense.Runtime
                 UpdateCrowdOffset();
                 UpdateBurns();
                 UpdateHealthBar();
-                MoveToPathPosition();
+                ApplyCombatJostle();
                 return;
             }
 
@@ -122,9 +128,7 @@ namespace TowerDefense.Runtime
                 }
             }
 
-            pathDistance += definition.speed * slowMultiplier * Time.deltaTime;
-            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 4f);
-            UpdateCrowdOffset();
+            UpdatePathPhysics();
             UpdateBurns();
             UpdateHealthBar();
             if (pathDistance >= path.TotalLength)
@@ -135,8 +139,6 @@ namespace TowerDefense.Runtime
                 gameObject.SetActive(false);
                 return;
             }
-
-            MoveToPathPosition();
         }
 
         public void ApplyKnockback(Vector3 origin, float distance)
@@ -153,7 +155,8 @@ namespace TowerDefense.Runtime
                 direction = Vector3.right;
             }
 
-            knockbackOffset += direction.normalized * distance;
+            movementVelocity += direction.normalized * distance * 2.4f;
+            knockbackOffset += direction.normalized * distance * 0.22f;
         }
 
         public void ApplyBurn(TowerActor source, float damagePerTick, float ticksPerSecond, float duration, int maxStacks)
@@ -305,23 +308,78 @@ namespace TowerDefense.Runtime
                 : definition.color);
         }
 
-        private void MoveToPathPosition()
+        private void SnapToPathPosition()
         {
             var pathPosition = path.Sample(pathDistance);
             var side = GetPathSide(pathDistance);
-            var tangent = GetPathTangent(pathDistance);
             var offset = side * laneOffset + crowdOffset + knockbackOffset;
-            var lateral = Vector3.Dot(offset, side);
+            transform.position = pathPosition + offset;
+        }
+
+        private void UpdatePathPhysics()
+        {
+            var deltaTime = Time.deltaTime;
+            var currentSpeed = definition.speed * slowMultiplier;
+            pathDistance += currentSpeed * deltaTime;
+            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, deltaTime * 3.2f);
+            UpdateCrowdOffset();
+
+            var side = GetPathSide(pathDistance);
+            var tangent = GetPathTangent(pathDistance);
+            var pathPosition = path.Sample(pathDistance);
+            var lookAheadPosition = path.Sample(Mathf.Min(path.TotalLength, pathDistance + PathLookAhead));
+            var desiredPosition = lookAheadPosition + side * laneOffset + crowdOffset + knockbackOffset;
+            var toDesired = desiredPosition - transform.position;
+            toDesired.y = 0f;
+
+            var desiredVelocity = toDesired.sqrMagnitude > 0.001f
+                ? toDesired.normalized * currentSpeed
+                : tangent * currentSpeed;
+
+            var separationVelocity = GetSeparationOffset(transform.position) * 2.4f;
+            desiredVelocity += separationVelocity;
+
+            movementVelocity = Vector3.MoveTowards(movementVelocity, desiredVelocity, SteeringAcceleration * deltaTime);
+            movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * 0.08f * deltaTime);
+
+            var nextPosition = transform.position + movementVelocity * deltaTime;
+            nextPosition.y = pathPosition.y;
+            nextPosition = ConstrainToRoad(nextPosition, pathPosition, side, tangent);
+            transform.position = nextPosition;
+        }
+
+        private void ApplyCombatJostle()
+        {
+            UpdateCrowdOffset();
+            var desiredOffset = crowdOffset + knockbackOffset;
+            if (desiredOffset.sqrMagnitude > 0.001f)
+            {
+                var nextPosition = transform.position + desiredOffset * Time.deltaTime * 0.85f;
+                var pathPosition = path.Sample(pathDistance);
+                nextPosition = ConstrainToRoad(nextPosition, pathPosition, GetPathSide(pathDistance), GetPathTangent(pathDistance));
+                transform.position = nextPosition;
+            }
+
+            movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * Time.deltaTime);
+            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 3.2f);
+        }
+
+        private Vector3 ConstrainToRoad(Vector3 position, Vector3 pathPosition, Vector3 side, Vector3 tangent)
+        {
+            var fromCenter = position - pathPosition;
+            fromCenter.y = 0f;
+            var lateral = Vector3.Dot(fromCenter, side);
             var clampedLateral = Mathf.Clamp(lateral, -RoadHalfWidth, RoadHalfWidth);
             if (!Mathf.Approximately(lateral, clampedLateral))
             {
                 var excess = lateral - clampedLateral;
-                knockbackOffset -= side * (excess * 1.25f);
-                knockbackOffset += tangent * UnityEngine.Random.Range(-0.18f, 0.18f);
-                offset -= side * excess;
+                position -= side * excess;
+                var lateralVelocity = Vector3.Dot(movementVelocity, side);
+                movementVelocity -= side * lateralVelocity * (1f + WallBounce);
+                movementVelocity += tangent * Mathf.Sign(Vector3.Dot(movementVelocity, tangent) + 0.01f) * Mathf.Abs(excess) * 0.65f;
             }
 
-            transform.position = pathPosition + offset;
+            return position;
         }
 
         private void UpdateCrowdOffset()
