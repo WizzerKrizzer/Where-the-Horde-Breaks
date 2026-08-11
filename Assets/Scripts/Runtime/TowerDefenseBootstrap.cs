@@ -1008,11 +1008,27 @@ namespace TowerDefense.Runtime
 
         private static WaveEntry[] BuildLevelOneWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
         {
-            return new[]
+            var entries = new List<WaveEntry>();
+            var remainingRunners = 170;
+            var remainingBrutes = 45;
+            while (remainingRunners > 0 || remainingBrutes > 0)
             {
-                new WaveEntry { enemy = runner, count = 170 },
-                new WaveEntry { enemy = brute, count = 45 }
-            };
+                if (remainingRunners > 0)
+                {
+                    var runnerCount = Mathf.Min(7, remainingRunners);
+                    entries.Add(new WaveEntry { enemy = runner, count = runnerCount });
+                    remainingRunners -= runnerCount;
+                }
+
+                if (remainingBrutes > 0)
+                {
+                    var bruteCount = Mathf.Min(2, remainingBrutes);
+                    entries.Add(new WaveEntry { enemy = brute, count = bruteCount });
+                    remainingBrutes -= bruteCount;
+                }
+            }
+
+            return entries.ToArray();
         }
 
         private static TowerDefinition CreateTower(
