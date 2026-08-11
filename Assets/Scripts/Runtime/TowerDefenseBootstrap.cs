@@ -76,8 +76,8 @@ namespace TowerDefense.Runtime
         {
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "BuildableGround";
-            ground.transform.position = new Vector3(0f, -0.08f, 0f);
-            ground.transform.localScale = new Vector3(72f, 0.1f, 44f);
+            ground.transform.position = new Vector3(0f, -0.08f, 1.5f);
+            ground.transform.localScale = new Vector3(82f, 0.1f, 50f);
             ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.15f, 0.23f, 0.18f));
         }
 
@@ -87,14 +87,14 @@ namespace TowerDefense.Runtime
             var route = routeObject.AddComponent<PathRoute>();
             var points = new[]
             {
-                new Vector3(-27.2f, 0f, -11.2f),
-                new Vector3(-20.4f, 0f, -8.8f),
-                new Vector3(-15f, 0f, -0.2f),
-                new Vector3(-6.8f, 0f, 3.6f),
-                new Vector3(1.4f, 0f, 0.8f),
-                new Vector3(6.6f, 0f, -6.8f),
-                new Vector3(15.4f, 0f, -4.4f),
-                new Vector3(24f, 0f, 4.6f)
+                new Vector3(-32f, 0f, 9.5f),
+                new Vector3(-20.5f, 0f, 9.5f),
+                new Vector3(-13.2f, 0f, 9.2f),
+                new Vector3(-13.2f, 0f, -7.8f),
+                new Vector3(3.8f, 0f, -7.8f),
+                new Vector3(3.8f, 0f, 10.2f),
+                new Vector3(15.6f, 0f, 10.2f),
+                new Vector3(26.5f, 0f, 10.2f)
             };
 
             route.SetWaypoints(points);
@@ -124,6 +124,7 @@ namespace TowerDefense.Runtime
 
             CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, direction.magnitude);
             CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, direction.magnitude);
+            CreateWallTexture(midpoint, forward, side, direction.magnitude, bankOffset);
         }
 
         private static void CreateRoadBank(string name, Vector3 position, Vector3 forward, float length)
@@ -134,6 +135,30 @@ namespace TowerDefense.Runtime
             bank.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             bank.transform.localScale = new Vector3(0.55f, 0.22f, length + 0.25f);
             bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
+        }
+
+        private static void CreateWallTexture(Vector3 midpoint, Vector3 forward, Vector3 side, float length, float bankOffset)
+        {
+            var count = Mathf.Max(3, Mathf.RoundToInt(length / 3.1f));
+            for (var i = 0; i < count; i++)
+            {
+                var t = count <= 1 ? 0.5f : i / (float)(count - 1);
+                var along = (t - 0.5f) * length;
+                var wobble = Mathf.Sin((midpoint.x + midpoint.z) * 0.37f + i * 1.91f) * 0.34f;
+                var scalePulse = 0.82f + Mathf.Abs(Mathf.Sin(i * 1.37f + length)) * 0.42f;
+                CreateRockChunk(midpoint + forward * along + side * (bankOffset + 0.34f + wobble), forward, scalePulse, i);
+                CreateRockChunk(midpoint + forward * along - side * (bankOffset + 0.34f - wobble), forward, scalePulse * 0.92f, i + 17);
+            }
+        }
+
+        private static void CreateRockChunk(Vector3 position, Vector3 forward, float scalePulse, int index)
+        {
+            var rock = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rock.name = "RoadWall_RoughStone";
+            rock.transform.position = position + Vector3.up * (0.14f + 0.015f * (index % 3));
+            rock.transform.rotation = Quaternion.LookRotation(forward, Vector3.up) * Quaternion.Euler(0f, 8f * ((index % 5) - 2), 0f);
+            rock.transform.localScale = new Vector3(0.8f * scalePulse, 0.28f, 0.5f + 0.24f * (index % 3));
+            rock.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.08f, 0.13f, 0.065f));
         }
     }
 
