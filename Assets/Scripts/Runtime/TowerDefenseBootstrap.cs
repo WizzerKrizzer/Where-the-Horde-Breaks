@@ -106,6 +106,7 @@ namespace TowerDefense.Runtime
             for (var i = 1; i < points.Length - 1; i++)
             {
                 CreatePathCorner(points[i]);
+                CreateRoadBankCorner(points[i - 1], points[i], points[i + 1]);
             }
 
             return route;
@@ -129,7 +130,6 @@ namespace TowerDefense.Runtime
 
             CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, direction.magnitude);
             CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, direction.magnitude);
-            CreateWallTexture(midpoint, forward, side, direction.magnitude, bankOffset);
         }
 
         private static void CreateRoadBank(string name, Vector3 position, Vector3 forward, float length)
@@ -151,28 +151,26 @@ namespace TowerDefense.Runtime
             corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
         }
 
-        private static void CreateWallTexture(Vector3 midpoint, Vector3 forward, Vector3 side, float length, float bankOffset)
+        private static void CreateRoadBankCorner(Vector3 previous, Vector3 corner, Vector3 next)
         {
-            var count = Mathf.Max(3, Mathf.RoundToInt(length / 3.1f));
-            for (var i = 0; i < count; i++)
-            {
-                var t = count <= 1 ? 0.5f : i / (float)(count - 1);
-                var along = (t - 0.5f) * length;
-                var wobble = Mathf.Sin((midpoint.x + midpoint.z) * 0.37f + i * 1.91f) * 0.16f;
-                var scalePulse = 0.68f + Mathf.Abs(Mathf.Sin(i * 1.37f + length)) * 0.26f;
-                CreateRockChunk(midpoint + forward * along + side * (bankOffset + 0.72f + wobble), forward, scalePulse, i);
-                CreateRockChunk(midpoint + forward * along - side * (bankOffset + 0.72f - wobble), forward, scalePulse * 0.92f, i + 17);
-            }
+            const float roadWidth = 5.4f;
+            const float bankOffset = roadWidth * 0.5f + 0.28f;
+            var incoming = (corner - previous).normalized;
+            var outgoing = (next - corner).normalized;
+            var incomingSide = Vector3.Cross(Vector3.up, incoming);
+            var outgoingSide = Vector3.Cross(Vector3.up, outgoing);
+
+            CreateRoadBankCornerCap(corner + (incomingSide + outgoingSide) * (bankOffset * 0.5f));
+            CreateRoadBankCornerCap(corner - (incomingSide + outgoingSide) * (bankOffset * 0.5f));
         }
 
-        private static void CreateRockChunk(Vector3 position, Vector3 forward, float scalePulse, int index)
+        private static void CreateRoadBankCornerCap(Vector3 position)
         {
-            var rock = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            rock.name = "RoadWall_RoughStone";
-            rock.transform.position = position + Vector3.up * (0.14f + 0.015f * (index % 3));
-            rock.transform.rotation = Quaternion.LookRotation(forward, Vector3.up) * Quaternion.Euler(0f, 8f * ((index % 5) - 2), 0f);
-            rock.transform.localScale = new Vector3(0.34f * scalePulse, 0.22f, 0.34f + 0.08f * (index % 3));
-            rock.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.08f, 0.13f, 0.065f));
+            var cap = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cap.name = "RoadBank_CornerCap";
+            cap.transform.position = position + Vector3.up * 0.08f;
+            cap.transform.localScale = new Vector3(0.82f, 0.24f, 0.82f);
+            cap.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
         }
     }
 
