@@ -926,7 +926,7 @@ namespace TowerDefense.UI
             var testingLabel = CreateText("DevTestingTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(testingLabel.GetComponent<RectTransform>(), new Vector2(0f, -208f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             testingLabel.text = "TESTING";
-            devRewardTestingButton = CreateButton("DevRewardTesting", content.transform, "REWARDS x5: OFF", new Vector2(0f, -234f), new Vector2(178f, 24f), 11);
+            devRewardTestingButton = CreateButton("DevRewardTesting", content.transform, "REWARDS: OFF", new Vector2(0f, -234f), new Vector2(178f, 24f), 11);
             devRewardTestingButton.onClick.AddListener(() =>
             {
                 session.ToggleRewardTesting();
@@ -1351,7 +1351,7 @@ namespace TowerDefense.UI
             HighlightToggleButton(debugSpawnToggleButton, debugSpawnPanelVisible);
             if (devRewardTestingButton != null)
             {
-                devRewardTestingButton.GetComponentInChildren<Text>().text = session.RewardTestingEnabled ? $"REWARDS x{session.RewardTestMultiplier}: ON" : "REWARDS x5: OFF";
+                devRewardTestingButton.GetComponentInChildren<Text>().text = session.RewardTestingEnabled ? $"REWARDS x{session.RewardTestMultiplier}: ON" : "REWARDS: OFF";
                 HighlightSpeedButton(devRewardTestingButton, session.RewardTestingEnabled);
             }
         }

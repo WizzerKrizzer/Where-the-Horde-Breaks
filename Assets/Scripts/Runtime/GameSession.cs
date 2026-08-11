@@ -110,7 +110,12 @@ namespace TowerDefense.Runtime
 
         public void ToggleRewardTesting()
         {
-            rewardTestMultiplier = rewardTestMultiplier > 1 ? 1 : 5;
+            rewardTestMultiplier = rewardTestMultiplier switch
+            {
+                1 => 5,
+                5 => 10,
+                _ => 1
+            };
         }
 
         public void ClearLevelRewardProgress()
