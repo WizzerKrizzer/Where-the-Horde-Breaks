@@ -128,8 +128,9 @@ namespace TowerDefense.Runtime
             segment.transform.localScale = new Vector3(roadWidth, 0.05f, direction.magnitude);
             segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
 
-            CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, direction.magnitude);
-            CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, direction.magnitude);
+            var bankLength = Mathf.Max(0.2f, direction.magnitude - roadWidth);
+            CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, bankLength);
+            CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, bankLength);
         }
 
         private static void CreateRoadBank(string name, Vector3 position, Vector3 forward, float length)
@@ -160,8 +161,15 @@ namespace TowerDefense.Runtime
             var incomingSide = Vector3.Cross(Vector3.up, incoming);
             var outgoingSide = Vector3.Cross(Vector3.up, outgoing);
 
-            CreateRoadBankCornerCap(corner + (incomingSide + outgoingSide) * (bankOffset * 0.5f));
-            CreateRoadBankCornerCap(corner - (incomingSide + outgoingSide) * (bankOffset * 0.5f));
+            var turnOuter = incomingSide + outgoingSide;
+            if (turnOuter.sqrMagnitude < 0.001f)
+            {
+                return;
+            }
+
+            turnOuter.Normalize();
+            CreateRoadBankCornerCap(corner + turnOuter * bankOffset);
+            CreateRoadBankCornerCap(corner - turnOuter * bankOffset);
         }
 
         private static void CreateRoadBankCornerCap(Vector3 position)
@@ -169,7 +177,7 @@ namespace TowerDefense.Runtime
             var cap = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cap.name = "RoadBank_CornerCap";
             cap.transform.position = position + Vector3.up * 0.08f;
-            cap.transform.localScale = new Vector3(0.82f, 0.24f, 0.82f);
+            cap.transform.localScale = new Vector3(1.35f, 0.24f, 1.35f);
             cap.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
         }
     }
