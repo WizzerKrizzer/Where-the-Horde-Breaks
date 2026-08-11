@@ -106,20 +106,19 @@ namespace TowerDefense.Runtime
             for (var i = 1; i < points.Length - 1; i++)
             {
                 CreatePathCorner(points[i]);
-                CreateRoadBankCorner(points[i - 1], points[i], points[i + 1]);
             }
 
+            CreatePathBoundary("PathBoundary_Left", points, 1f);
+            CreatePathBoundary("PathBoundary_Right", points, -1f);
             return route;
         }
 
         private static void CreatePathSegment(Vector3 from, Vector3 to)
         {
             const float roadWidth = 5.4f;
-            const float bankOffset = roadWidth * 0.5f + 0.28f;
             var midpoint = (from + to) * 0.5f + Vector3.up * 0.01f;
             var direction = to - from;
             var forward = direction.normalized;
-            var side = Vector3.Cross(Vector3.up, forward);
 
             var segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
             segment.name = "PathVisual";
@@ -128,19 +127,6 @@ namespace TowerDefense.Runtime
             segment.transform.localScale = new Vector3(roadWidth, 0.05f, direction.magnitude);
             segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
 
-            var bankLength = Mathf.Max(0.2f, direction.magnitude - roadWidth);
-            CreateRoadBank("RoadBank_Left", midpoint + side * bankOffset, forward, bankLength);
-            CreateRoadBank("RoadBank_Right", midpoint - side * bankOffset, forward, bankLength);
-        }
-
-        private static void CreateRoadBank(string name, Vector3 position, Vector3 forward, float length)
-        {
-            var bank = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            bank.name = name;
-            bank.transform.position = position + Vector3.up * 0.08f;
-            bank.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            bank.transform.localScale = new Vector3(0.55f, 0.22f, length + 0.25f);
-            bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
         }
 
         private static void CreatePathCorner(Vector3 position)
@@ -152,33 +138,61 @@ namespace TowerDefense.Runtime
             corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
         }
 
-        private static void CreateRoadBankCorner(Vector3 previous, Vector3 corner, Vector3 next)
+        private static void CreatePathBoundary(string name, Vector3[] points, float sideSign)
         {
             const float roadWidth = 5.4f;
             const float bankOffset = roadWidth * 0.5f + 0.28f;
-            var incoming = (corner - previous).normalized;
-            var outgoing = (next - corner).normalized;
-            var incomingSide = Vector3.Cross(Vector3.up, incoming);
-            var outgoingSide = Vector3.Cross(Vector3.up, outgoing);
+            var boundary = new GameObject(name);
+            var line = boundary.AddComponent<LineRenderer>();
+            line.useWorldSpace = true;
+            line.positionCount = points.Length;
+            line.widthMultiplier = 0.42f;
+            line.numCornerVertices = 4;
+            line.numCapVertices = 2;
+            line.material = BootstrapMaterials.Get(new Color(0.08f, 0.13f, 0.065f));
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
 
-            var turnOuter = incomingSide + outgoingSide;
-            if (turnOuter.sqrMagnitude < 0.001f)
+            for (var i = 0; i < points.Length; i++)
             {
-                return;
+                line.SetPosition(i, GetBoundaryPoint(points, i, sideSign, bankOffset) + Vector3.up * 0.13f);
             }
-
-            turnOuter.Normalize();
-            CreateRoadBankCornerCap(corner + turnOuter * bankOffset);
-            CreateRoadBankCornerCap(corner - turnOuter * bankOffset);
         }
 
-        private static void CreateRoadBankCornerCap(Vector3 position)
+        private static Vector3 GetBoundaryPoint(Vector3[] points, int index, float sideSign, float bankOffset)
         {
-            var cap = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cap.name = "RoadBank_CornerCap";
-            cap.transform.position = position + Vector3.up * 0.08f;
-            cap.transform.localScale = new Vector3(1.35f, 0.24f, 1.35f);
-            cap.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
+            if (points.Length < 2)
+            {
+                return points[index];
+            }
+
+            if (index == 0)
+            {
+                return points[index] + GetSegmentSide(points[0], points[1]) * sideSign * bankOffset;
+            }
+
+            if (index == points.Length - 1)
+            {
+                return points[index] + GetSegmentSide(points[index - 1], points[index]) * sideSign * bankOffset;
+            }
+
+            var incomingSide = GetSegmentSide(points[index - 1], points[index]) * sideSign;
+            var outgoingSide = GetSegmentSide(points[index], points[index + 1]) * sideSign;
+            var miter = incomingSide + outgoingSide;
+            if (miter.sqrMagnitude < 0.001f)
+            {
+                return points[index] + incomingSide * bankOffset;
+            }
+
+            miter.Normalize();
+            var scale = bankOffset / Mathf.Max(0.25f, Mathf.Abs(Vector3.Dot(miter, incomingSide)));
+            return points[index] + miter * scale;
+        }
+
+        private static Vector3 GetSegmentSide(Vector3 from, Vector3 to)
+        {
+            var forward = (to - from).normalized;
+            return Vector3.Cross(Vector3.up, forward);
         }
     }
 
