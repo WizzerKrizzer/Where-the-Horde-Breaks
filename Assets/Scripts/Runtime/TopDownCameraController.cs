@@ -31,7 +31,7 @@ namespace TowerDefense.Runtime
             var state = input.Current;
             var forward = Vector3.ProjectOnPlane(controlledCamera.transform.forward, Vector3.up).normalized;
             var right = Vector3.ProjectOnPlane(controlledCamera.transform.right, Vector3.up).normalized;
-            controlledCamera.transform.position += (right * state.Pan.x + forward * state.Pan.y) * (panSpeed * Time.deltaTime);
+            controlledCamera.transform.position += (right * state.Pan.x + forward * state.Pan.y) * (panSpeed * Time.unscaledDeltaTime);
             ClampCameraPosition();
 
             if (Mathf.Abs(state.Zoom) > 0.01f)
