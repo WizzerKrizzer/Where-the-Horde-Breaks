@@ -186,6 +186,40 @@ namespace TowerDefense.Runtime
             return GetEnemyByTargetingMode(position, range, canHitFlying, TowerTargetingMode.Closest);
         }
 
+        public bool TryGetLeadEnemyAimPoint(float radius, out Vector3 aimPoint)
+        {
+            aimPoint = Vector3.zero;
+            if (path == null || activeEnemies.Count == 0)
+            {
+                return false;
+            }
+
+            EnemyActor lead = null;
+            var bestPathDistance = float.MinValue;
+            foreach (var enemy in activeEnemies)
+            {
+                if (enemy == null || !enemy.IsAlive)
+                {
+                    continue;
+                }
+
+                if (enemy.PathDistance > bestPathDistance)
+                {
+                    lead = enemy;
+                    bestPathDistance = enemy.PathDistance;
+                }
+            }
+
+            if (lead == null)
+            {
+                return false;
+            }
+
+            var lookBack = Mathf.Max(0.2f, radius * 0.82f);
+            aimPoint = path.Sample(Mathf.Max(0f, lead.PathDistance - lookBack));
+            return true;
+        }
+
         public EnemyActor GetEnemyByTargetingMode(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode)
         {
             EnemyActor best = null;

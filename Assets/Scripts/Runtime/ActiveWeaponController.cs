@@ -43,6 +43,7 @@ namespace TowerDefense.Runtime
             }
         }
         public bool AutoFireEnabled { get; private set; }
+        public bool DevAutoActiveEnabled { get; set; }
         public float CooldownRemaining => Mathf.Max(0f, cooldown);
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
         public bool IsReady => CanFire && CooldownRemaining <= 0f;
@@ -69,6 +70,12 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (DevAutoActiveEnabled)
+            {
+                TryDevAutoFire();
+                return;
+            }
+
             if (towers != null && towers.GetNearestTower(input.Current.PointerWorld) != null)
             {
                 return;
@@ -90,6 +97,25 @@ namespace TowerDefense.Runtime
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds;
             SpawnImpactMarker(input.Current.PointerWorld);
+        }
+
+        private void TryDevAutoFire()
+        {
+            if (cooldown > 0f || enemies == null)
+            {
+                return;
+            }
+
+            if (!enemies.TryGetLeadEnemyAimPoint(Radius, out var aimPoint))
+            {
+                return;
+            }
+
+            var appliedDamage = enemies.DamageInRadius(aimPoint, Radius, Damage, MaxTargets, out var hitCount);
+            TotalDamageEvents += hitCount;
+            TotalDamageDealt += appliedDamage;
+            cooldown = CooldownSeconds;
+            SpawnImpactMarker(aimPoint);
         }
 
         private void SpawnImpactMarker(Vector3 position)

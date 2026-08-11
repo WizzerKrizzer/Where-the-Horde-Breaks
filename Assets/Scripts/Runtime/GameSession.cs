@@ -59,6 +59,7 @@ namespace TowerDefense.Runtime
         public int BaseActiveWeaponMaxTargets => baseActiveWeaponMaxTargets;
         public int RewardTestMultiplier => rewardTestMultiplier;
         public bool RewardTestingEnabled => rewardTestMultiplier > 1;
+        public bool DevAutoActiveEnabled => activeWeapon != null && activeWeapon.DevAutoActiveEnabled;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -118,6 +119,14 @@ namespace TowerDefense.Runtime
                 5 => 10,
                 _ => 1
             };
+        }
+
+        public void ToggleDevAutoActive()
+        {
+            if (activeWeapon != null)
+            {
+                activeWeapon.DevAutoActiveEnabled = !activeWeapon.DevAutoActiveEnabled;
+            }
         }
 
         public void ClearLevelRewardProgress()
