@@ -31,10 +31,10 @@ namespace TowerDefense.Runtime
         private Renderer bodyRenderer;
         private Transform healthFill;
         private const float RoadHalfWidth = 2.45f;
-        private const float PathLookAhead = 2.15f;
-        private const float SteeringAcceleration = 12.5f;
-        private const float WallBounce = 0.18f;
-        private const float RoadFriction = 2.2f;
+        private const float PathLookAhead = 3.35f;
+        private const float SteeringAcceleration = 6.8f;
+        private const float WallBounce = 0.32f;
+        private const float RoadFriction = 0.85f;
 
         public EnemyDefinition Definition => definition;
         public float Health => health;
@@ -336,7 +336,7 @@ namespace TowerDefense.Runtime
                 ? toDesired.normalized * currentSpeed
                 : tangent * currentSpeed;
 
-            var separationVelocity = GetSeparationOffset(transform.position) * 2.4f;
+            var separationVelocity = GetSeparationOffset(transform.position) * 3.1f;
             desiredVelocity += separationVelocity;
 
             movementVelocity = Vector3.MoveTowards(movementVelocity, desiredVelocity, SteeringAcceleration * deltaTime);

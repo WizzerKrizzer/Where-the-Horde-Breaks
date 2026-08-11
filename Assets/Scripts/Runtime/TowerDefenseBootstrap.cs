@@ -103,6 +103,11 @@ namespace TowerDefense.Runtime
                 CreatePathSegment(points[i - 1], points[i]);
             }
 
+            for (var i = 1; i < points.Length - 1; i++)
+            {
+                CreatePathCorner(points[i]);
+            }
+
             return route;
         }
 
@@ -137,6 +142,15 @@ namespace TowerDefense.Runtime
             bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.11f, 0.17f, 0.08f));
         }
 
+        private static void CreatePathCorner(Vector3 position)
+        {
+            var corner = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            corner.name = "PathCornerFill";
+            corner.transform.position = position + Vector3.up * 0.012f;
+            corner.transform.localScale = new Vector3(5.65f, 0.052f, 5.65f);
+            corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
+        }
+
         private static void CreateWallTexture(Vector3 midpoint, Vector3 forward, Vector3 side, float length, float bankOffset)
         {
             var count = Mathf.Max(3, Mathf.RoundToInt(length / 3.1f));
@@ -144,10 +158,10 @@ namespace TowerDefense.Runtime
             {
                 var t = count <= 1 ? 0.5f : i / (float)(count - 1);
                 var along = (t - 0.5f) * length;
-                var wobble = Mathf.Sin((midpoint.x + midpoint.z) * 0.37f + i * 1.91f) * 0.34f;
-                var scalePulse = 0.82f + Mathf.Abs(Mathf.Sin(i * 1.37f + length)) * 0.42f;
-                CreateRockChunk(midpoint + forward * along + side * (bankOffset + 0.34f + wobble), forward, scalePulse, i);
-                CreateRockChunk(midpoint + forward * along - side * (bankOffset + 0.34f - wobble), forward, scalePulse * 0.92f, i + 17);
+                var wobble = Mathf.Sin((midpoint.x + midpoint.z) * 0.37f + i * 1.91f) * 0.16f;
+                var scalePulse = 0.68f + Mathf.Abs(Mathf.Sin(i * 1.37f + length)) * 0.26f;
+                CreateRockChunk(midpoint + forward * along + side * (bankOffset + 0.72f + wobble), forward, scalePulse, i);
+                CreateRockChunk(midpoint + forward * along - side * (bankOffset + 0.72f - wobble), forward, scalePulse * 0.92f, i + 17);
             }
         }
 
@@ -157,7 +171,7 @@ namespace TowerDefense.Runtime
             rock.name = "RoadWall_RoughStone";
             rock.transform.position = position + Vector3.up * (0.14f + 0.015f * (index % 3));
             rock.transform.rotation = Quaternion.LookRotation(forward, Vector3.up) * Quaternion.Euler(0f, 8f * ((index % 5) - 2), 0f);
-            rock.transform.localScale = new Vector3(0.8f * scalePulse, 0.28f, 0.5f + 0.24f * (index % 3));
+            rock.transform.localScale = new Vector3(0.34f * scalePulse, 0.22f, 0.34f + 0.08f * (index % 3));
             rock.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.08f, 0.13f, 0.065f));
         }
     }
