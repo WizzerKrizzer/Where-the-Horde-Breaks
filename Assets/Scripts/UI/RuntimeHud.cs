@@ -42,6 +42,8 @@ namespace TowerDefense.UI
         private GameObject resultPanel;
         private Text resultTitle;
         private Text resultBody;
+        private GameObject devAutoPurchasePanel;
+        private Text devAutoPurchaseBody;
         private GameObject pausePanel;
         private bool pausePanelVisible;
         private float timeScaleBeforePause = 1f;
@@ -119,6 +121,7 @@ namespace TowerDefense.UI
             CreateSelectedTowerPanel(parent);
             CreateStartBattleButton(parent);
             CreateResultPanel(parent);
+            CreateDevAutoPurchasePanel(parent);
             CreatePausePanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
@@ -155,6 +158,7 @@ namespace TowerDefense.UI
             UpdateActiveWeaponSlot();
             UpdateDevSpeedButtons();
             UpdateResultPanel();
+            UpdateDevAutoPurchasePanel();
             UpdateStartBattleButton();
             UpdateUpgradeShortcutButton();
             UpdateUpgradePanel();
@@ -289,16 +293,28 @@ namespace TowerDefense.UI
 
         private void CreateResultPanel(Transform parent)
         {
-            resultPanel = CreatePanel("ResultPanel", parent, new Vector2(0f, 112f), new Vector2(380f, 128f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-            resultTitle = CreateText("ResultTitle", resultPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 24);
-            ConfigureCenteredRect(resultTitle.GetComponent<RectTransform>(), new Vector2(0f, 94f), new Vector2(330f, 30f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
-            resultBody = CreateText("ResultBody", resultPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 15);
-            ConfigureCenteredRect(resultBody.GetComponent<RectTransform>(), new Vector2(0f, 60f), new Vector2(330f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
-            CreateButton("RetryButton", resultPanel.transform, "RETRY", new Vector2(-72f, 24f), new Vector2(112f, 26f), 13)
+            resultPanel = CreatePanel("ResultPanel", parent, new Vector2(0f, 92f), new Vector2(470f, 194f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            resultTitle = CreateText("ResultTitle", resultPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 25);
+            ConfigureCenteredRect(resultTitle.GetComponent<RectTransform>(), new Vector2(0f, 156f), new Vector2(410f, 34f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            resultBody = CreateText("ResultBody", resultPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 14);
+            ConfigureCenteredRect(resultBody.GetComponent<RectTransform>(), new Vector2(0f, 96f), new Vector2(420f, 94f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            CreateButton("RetryButton", resultPanel.transform, "RETRY", new Vector2(-84f, 30f), new Vector2(124f, 28f), 13)
                 .onClick.AddListener(() => session.ResetToPlanning());
-            CreateButton("OpenUpgradesButton", resultPanel.transform, "UPGRADES", new Vector2(72f, 24f), new Vector2(112f, 26f), 13)
+            CreateButton("OpenUpgradesButton", resultPanel.transform, "UPGRADES", new Vector2(84f, 30f), new Vector2(124f, 28f), 13)
                 .onClick.AddListener(ShowUpgradePanel);
             resultPanel.SetActive(false);
+        }
+
+        private void CreateDevAutoPurchasePanel(Transform parent)
+        {
+            devAutoPurchasePanel = CreatePanel("DevAutoPurchasePanel", parent, new Vector2(0f, 82f), new Vector2(470f, 170f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            var title = CreateText("DevAutoPurchaseTitle", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 16);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 140f), new Vector2(410f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            title.text = "AUTO LOOP PURCHASES";
+            title.color = new Color(0.74f, 0.95f, 1f, 1f);
+            devAutoPurchaseBody = CreateText("DevAutoPurchaseBody", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(devAutoPurchaseBody.GetComponent<RectTransform>(), new Vector2(0f, 70f), new Vector2(420f, 110f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            devAutoPurchasePanel.SetActive(false);
         }
 
         private void CreatePausePanel(Transform parent)
@@ -1316,6 +1332,22 @@ namespace TowerDefense.UI
             resultBody.text = session.Won
                 ? $"Wave cleared. Lives: {session.Lives}\nKilled: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}{testProgressText}"
                 : $"The horde broke through. Killed: {session.EnemiesKilled}\nEarned: {earnedText}{testingText}{testProgressText}";
+        }
+
+        private void UpdateDevAutoPurchasePanel()
+        {
+            if (devAutoPurchasePanel == null || devAutoPurchaseBody == null)
+            {
+                return;
+            }
+
+            devAutoPurchasePanel.SetActive(session.DevAutoPurchaseWindowVisible && !IsUpgradePanelOpen());
+            if (!devAutoPurchasePanel.activeSelf)
+            {
+                return;
+            }
+
+            devAutoPurchaseBody.text = $"Bought this run:\n{session.DevLastAutoPurchaseDetails}\nNext run starts in a moment.";
         }
 
         private string FormatRunCurrencyDeltas()

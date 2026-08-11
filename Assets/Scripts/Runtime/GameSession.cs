@@ -40,9 +40,12 @@ namespace TowerDefense.Runtime
         private bool finished;
         private bool won;
         private bool devAutoTestLoopEnabled;
+        private bool devAutoTestLoopWaitingToStart;
         private float devAutoTestLoopTimer;
         private string devLastAutoPurchase = "None";
+        private string devLastAutoPurchaseDetails = "None";
         private const float DevAutoTestLoopDelay = 0.65f;
+        private const float DevAutoPurchaseWindowSeconds = 3f;
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
             new("steady_tithe_01", 3),
@@ -93,7 +96,9 @@ namespace TowerDefense.Runtime
         public bool RewardTestingEnabled => rewardTestMultiplier > 1;
         public bool DevAutoActiveEnabled => activeWeapon != null && activeWeapon.DevAutoActiveEnabled;
         public bool DevAutoTestLoopEnabled => devAutoTestLoopEnabled;
+        public bool DevAutoPurchaseWindowVisible => devAutoTestLoopEnabled && devAutoTestLoopWaitingToStart;
         public string DevLastAutoPurchase => devLastAutoPurchase;
+        public string DevLastAutoPurchaseDetails => devLastAutoPurchaseDetails;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -166,6 +171,7 @@ namespace TowerDefense.Runtime
         public void ToggleDevAutoTestLoop()
         {
             devAutoTestLoopEnabled = !devAutoTestLoopEnabled;
+            devAutoTestLoopWaitingToStart = false;
             devAutoTestLoopTimer = devAutoTestLoopEnabled ? 0f : DevAutoTestLoopDelay;
             if (devAutoTestLoopEnabled && activeWeapon != null)
             {
@@ -449,6 +455,19 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (devAutoTestLoopWaitingToStart)
+            {
+                devAutoTestLoopTimer -= Time.unscaledDeltaTime;
+                if (devAutoTestLoopTimer > 0f)
+                {
+                    return;
+                }
+
+                devAutoTestLoopWaitingToStart = false;
+                StartLevel();
+                return;
+            }
+
             if (finished)
             {
                 if (won)
@@ -464,18 +483,34 @@ namespace TowerDefense.Runtime
                 }
 
                 ResetToPlanning();
-                TryBuyDevAutoUpgrades();
+                var boughtUpgrades = TryBuyDevAutoUpgrades();
                 TryDevAutoPlaceTowers();
-                StartLevel();
-                devAutoTestLoopTimer = DevAutoTestLoopDelay;
+                if (boughtUpgrades)
+                {
+                    devAutoTestLoopWaitingToStart = true;
+                    devAutoTestLoopTimer = DevAutoPurchaseWindowSeconds;
+                }
+                else
+                {
+                    StartLevel();
+                    devAutoTestLoopTimer = DevAutoTestLoopDelay;
+                }
                 return;
             }
 
             if (IsPlanning)
             {
-                TryBuyDevAutoUpgrades();
+                var boughtUpgrades = TryBuyDevAutoUpgrades();
                 TryDevAutoPlaceTowers();
-                StartLevel();
+                if (!boughtUpgrades)
+                {
+                    StartLevel();
+                }
+                else
+                {
+                    devAutoTestLoopWaitingToStart = true;
+                    devAutoTestLoopTimer = DevAutoPurchaseWindowSeconds;
+                }
             }
         }
 
@@ -514,10 +549,14 @@ namespace TowerDefense.Runtime
             if (purchases.Count == 0)
             {
                 devLastAutoPurchase = "None affordable";
+                devLastAutoPurchaseDetails = "None affordable";
                 return false;
             }
 
             profileStore.Save(profile);
+            devLastAutoPurchaseDetails = purchases.Count <= 8
+                ? string.Join("\n", purchases)
+                : $"{string.Join("\n", purchases.GetRange(0, 8))}\n+{purchases.Count - 8} more";
             devLastAutoPurchase = purchases.Count <= 3
                 ? string.Join(", ", purchases)
                 : $"{string.Join(", ", purchases.GetRange(0, 3))} +{purchases.Count - 3} more";
@@ -593,11 +632,13 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            var fractions = new[] { 0.22f, 0.34f, 0.46f, 0.58f, 0.7f, 0.82f, 0.14f, 0.9f };
+            var fractions = new[] { 0.14f, 0.26f, 0.38f, 0.5f, 0.62f, 0.74f, 0.86f, 0.2f, 0.44f, 0.68f, 0.92f };
             var sideDistances = new[] { 4.05f, -4.05f, 5.2f, -5.2f, 6.25f, -6.25f };
+            var startIndex = Mathf.Max(0, towers.CountOf(definition)) % fractions.Length;
             for (var i = 0; i < fractions.Length; i++)
             {
-                var distance = path.TotalLength * fractions[i];
+                var fraction = fractions[(startIndex + i) % fractions.Length];
+                var distance = path.TotalLength * fraction;
                 var center = path.Sample(distance);
                 var tangent = GetPathTangent(distance);
                 var side = new Vector3(-tangent.z, 0f, tangent.x).normalized;
@@ -610,10 +651,37 @@ namespace TowerDefense.Runtime
                 {
                     var candidate = center + side * sideDistances[j];
                     candidate.y = 0f;
+                    if (IsTooCloseToSameDevTower(definition, candidate))
+                    {
+                        continue;
+                    }
+
                     if (towers.TryPlace(definition, candidate))
                     {
                         return true;
                     }
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsTooCloseToSameDevTower(TowerDefinition definition, Vector3 candidate)
+        {
+            const float minimumSpacing = 7.25f;
+            var minimumSpacingSq = minimumSpacing * minimumSpacing;
+            foreach (var tower in towers.Towers)
+            {
+                if (tower == null || tower.Definition != definition)
+                {
+                    continue;
+                }
+
+                var delta = tower.transform.position - candidate;
+                delta.y = 0f;
+                if (delta.sqrMagnitude < minimumSpacingSq)
+                {
+                    return true;
                 }
             }
 
