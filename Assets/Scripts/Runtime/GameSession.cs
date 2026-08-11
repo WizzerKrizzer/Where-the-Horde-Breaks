@@ -39,6 +39,25 @@ namespace TowerDefense.Runtime
         private bool running;
         private bool finished;
         private bool won;
+        private bool devAutoTestLoopEnabled;
+        private float devAutoTestLoopTimer;
+        private string devLastAutoPurchase = "None";
+        private const float DevAutoTestLoopDelay = 0.65f;
+        private static readonly string[] DevAutoUpgradePriority =
+        {
+            "archer_unlock",
+            "steady_tithe_01",
+            "archer_limit_01",
+            "archer_damage_01",
+            "archer_speed_01",
+            "archer_double_01",
+            "archer_flat_damage_01",
+            "archer_flat_speed_01",
+            "archer_projectile_speed_01",
+            "archer_range_01",
+            "projectile_aim_assist_01",
+            "base_health_01"
+        };
 
         public PlayerProfile Profile => profile;
         public LevelDefinition Level => level;
@@ -60,6 +79,8 @@ namespace TowerDefense.Runtime
         public int RewardTestMultiplier => rewardTestMultiplier;
         public bool RewardTestingEnabled => rewardTestMultiplier > 1;
         public bool DevAutoActiveEnabled => activeWeapon != null && activeWeapon.DevAutoActiveEnabled;
+        public bool DevAutoTestLoopEnabled => devAutoTestLoopEnabled;
+        public string DevLastAutoPurchase => devLastAutoPurchase;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -126,6 +147,16 @@ namespace TowerDefense.Runtime
             if (activeWeapon != null)
             {
                 activeWeapon.DevAutoActiveEnabled = !activeWeapon.DevAutoActiveEnabled;
+            }
+        }
+
+        public void ToggleDevAutoTestLoop()
+        {
+            devAutoTestLoopEnabled = !devAutoTestLoopEnabled;
+            devAutoTestLoopTimer = devAutoTestLoopEnabled ? 0f : DevAutoTestLoopDelay;
+            if (devAutoTestLoopEnabled && activeWeapon != null)
+            {
+                activeWeapon.DevAutoActiveEnabled = true;
             }
         }
 
@@ -332,6 +363,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            UpdateDevAutoTestLoop();
+
             var state = input.Current;
             if (state.RestartLevel)
             {
@@ -394,6 +427,84 @@ namespace TowerDefense.Runtime
             {
                 Finish(true);
             }
+        }
+
+        private void UpdateDevAutoTestLoop()
+        {
+            if (!devAutoTestLoopEnabled)
+            {
+                return;
+            }
+
+            if (finished)
+            {
+                if (won)
+                {
+                    devAutoTestLoopEnabled = false;
+                    return;
+                }
+
+                devAutoTestLoopTimer -= Time.unscaledDeltaTime;
+                if (devAutoTestLoopTimer > 0f)
+                {
+                    return;
+                }
+
+                TryBuyDevAutoUpgrade();
+                ResetToPlanning();
+                StartLevel();
+                devAutoTestLoopTimer = DevAutoTestLoopDelay;
+                return;
+            }
+
+            if (IsPlanning)
+            {
+                StartLevel();
+            }
+        }
+
+        private bool TryBuyDevAutoUpgrade()
+        {
+            for (var i = 0; i < DevAutoUpgradePriority.Length; i++)
+            {
+                var nodeId = DevAutoUpgradePriority[i];
+                if (!progression.CanPurchase(nodeId))
+                {
+                    continue;
+                }
+
+                if (!progression.TryPurchase(nodeId))
+                {
+                    continue;
+                }
+
+                ApplyProgressionStats();
+                profileStore.Save(profile);
+                devLastAutoPurchase = FormatAutoUpgradePurchase(nodeId);
+                return true;
+            }
+
+            devLastAutoPurchase = "None affordable";
+            return false;
+        }
+
+        private string FormatAutoUpgradePurchase(string nodeId)
+        {
+            if (skillTree?.nodes == null)
+            {
+                return nodeId;
+            }
+
+            for (var i = 0; i < skillTree.nodes.Length; i++)
+            {
+                var node = skillTree.nodes[i];
+                if (node != null && node.id == nodeId)
+                {
+                    return $"{node.displayName} {progression.GetPurchasedRank(nodeId)}/{progression.GetMaxRank(nodeId)}";
+                }
+            }
+
+            return nodeId;
         }
 
         public void StartLevel()
