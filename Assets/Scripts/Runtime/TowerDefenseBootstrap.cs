@@ -253,7 +253,7 @@ namespace TowerDefense.Runtime
 
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             wave.id = "wave_01";
-            wave.totalEnemyCount = 250;
+            wave.totalEnemyCount = 215;
             wave.spawnInterval = 0.5f;
             wave.randomSpawnBurstMin = 3;
             wave.randomSpawnBurstMax = 8;
@@ -1008,15 +1008,11 @@ namespace TowerDefense.Runtime
 
         private static WaveEntry[] BuildLevelOneWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
         {
-            var entries = new List<WaveEntry>();
-            for (var i = 0; i < 27; i++)
+            return new[]
             {
-                entries.Add(new WaveEntry { enemy = runner, count = 7 });
-                entries.Add(new WaveEntry { enemy = brute, count = 2 });
-            }
-
-            entries.Add(new WaveEntry { enemy = runner, count = 7 });
-            return entries.ToArray();
+                new WaveEntry { enemy = runner, count = 170 },
+                new WaveEntry { enemy = brute, count = 45 }
+            };
         }
 
         private static TowerDefinition CreateTower(
