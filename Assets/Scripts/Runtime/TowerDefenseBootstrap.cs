@@ -79,6 +79,68 @@ namespace TowerDefense.Runtime
             ground.transform.position = new Vector3(0f, -0.08f, 1.5f);
             ground.transform.localScale = new Vector3(82f, 0.1f, 50f);
             ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.15f, 0.23f, 0.18f));
+            CreateGroundTexture();
+        }
+
+        private static void CreateGroundTexture()
+        {
+            var root = new GameObject("GroundTexture");
+            var patches = new[]
+            {
+                new Vector3(-34f, 0f, -14f), new Vector3(-29f, 0f, 16f), new Vector3(-24f, 0f, -18f),
+                new Vector3(-17f, 0f, 1.5f), new Vector3(-8f, 0f, 16.5f), new Vector3(-5f, 0f, -16.5f),
+                new Vector3(9f, 0f, 15.5f), new Vector3(11f, 0f, -17f), new Vector3(19f, 0f, -12f),
+                new Vector3(26f, 0f, 17f), new Vector3(31f, 0f, -2f), new Vector3(35f, 0f, -17f),
+                new Vector3(-38f, 0f, 5f), new Vector3(38f, 0f, 9f), new Vector3(0f, 0f, 20f)
+            };
+
+            for (var i = 0; i < patches.Length; i++)
+            {
+                var size = 0.55f + Mathf.Abs(Mathf.Sin(i * 1.71f)) * 0.75f;
+                var color = i % 3 == 0
+                    ? new Color(0.11f, 0.19f, 0.12f)
+                    : new Color(0.18f, 0.27f, 0.18f);
+                CreateGroundPatch(root.transform, patches[i], size, color, i);
+            }
+
+            for (var i = 0; i < 42; i++)
+            {
+                var x = -38f + i * 1.85f;
+                var z = 20.5f + Mathf.Sin(i * 0.83f) * 1.1f;
+                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.22f + 0.08f * (i % 4), new Color(0.09f, 0.16f, 0.1f), i + 50);
+            }
+
+            for (var i = 0; i < 36; i++)
+            {
+                var x = -37f + i * 2.1f;
+                var z = -21.2f + Mathf.Sin(i * 1.12f) * 0.9f;
+                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.18f + 0.07f * (i % 5), new Color(0.1f, 0.17f, 0.105f), i + 100);
+            }
+        }
+
+        private static void CreateGroundPatch(Transform parent, Vector3 position, float size, Color color, int index)
+        {
+            var patch = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            patch.name = "GroundTexturePatch";
+            patch.transform.SetParent(parent, false);
+            patch.transform.position = position + Vector3.up * -0.012f;
+            patch.transform.rotation = Quaternion.Euler(0f, index * 23f, 0f);
+            patch.transform.localScale = new Vector3(size * (1.4f + 0.25f * (index % 3)), 0.018f, size * (0.55f + 0.18f * (index % 4)));
+            patch.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
+            RemovePrimitiveCollider(patch);
+        }
+
+        private static void RemovePrimitiveCollider(GameObject target)
+        {
+            var components = target.GetComponents<Component>();
+            for (var i = 0; i < components.Length; i++)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
         }
 
         private static PathRoute CreatePath()
