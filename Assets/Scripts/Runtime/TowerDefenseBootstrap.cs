@@ -9,20 +9,24 @@ namespace TowerDefense.Runtime
 {
     public sealed class TowerDefenseBootstrap : MonoBehaviour
     {
+        private Camera mainCamera;
+        private TopDownCameraController cameraController;
+        private GameObject mapRoot;
+
         private void Awake()
         {
             var content = SampleContent.Create();
             var camera = CreateCamera();
+            mainCamera = camera;
             CreateLight();
-            CreateGround();
-            var route = CreatePath();
-            CreateMapDecor();
+            var route = LoadLevelMap(content.Level);
 
             var input = gameObject.AddComponent<PlayerInputRouter>();
             input.Initialize(camera);
 
-            var cameraController = gameObject.AddComponent<TopDownCameraController>();
+            cameraController = gameObject.AddComponent<TopDownCameraController>();
             cameraController.Initialize(camera, input);
+            ApplyLevelCamera(content.Level);
 
             var enemyManager = new GameObject("EnemyManager").AddComponent<EnemyManager>();
             var corpseManager = new GameObject("EnemyCorpses").AddComponent<EnemyCorpseManager>();
@@ -35,9 +39,11 @@ namespace TowerDefense.Runtime
 
             var session = gameObject.AddComponent<GameSession>();
             session.Initialize(
+                content.Levels,
                 content.Level,
                 content.SkillTree,
                 route,
+                LoadLevelMap,
                 content.Towers,
                 enemyManager,
                 towerManager,
@@ -49,6 +55,33 @@ namespace TowerDefense.Runtime
             placementFeedback.Initialize(session, input, towerManager);
 
             RuntimeHud.Create(session, input, towerManager, enemyManager, activeWeapon);
+        }
+
+        private PathRoute LoadLevelMap(LevelDefinition level)
+        {
+            if (mapRoot != null)
+            {
+                Destroy(mapRoot);
+            }
+
+            mapRoot = new GameObject("LevelMap");
+            CreateGround(mapRoot.transform);
+            var route = CreatePath(level, mapRoot.transform);
+            CreateMapDecor(mapRoot.transform);
+            ApplyLevelCamera(level);
+            return route;
+        }
+
+        private void ApplyLevelCamera(LevelDefinition level)
+        {
+            if (level == null || mainCamera == null)
+            {
+                return;
+            }
+
+            mainCamera.transform.position = level.cameraPosition;
+            mainCamera.fieldOfView = level.cameraFieldOfView;
+            cameraController?.ApplyView(level.cameraPosition, level.cameraFieldOfView, level.cameraMinBounds, level.cameraMaxBounds);
         }
 
         private static Camera CreateCamera()
@@ -73,19 +106,21 @@ namespace TowerDefense.Runtime
             go.transform.rotation = Quaternion.Euler(55f, 35f, 0f);
         }
 
-        private static void CreateGround()
+        private static void CreateGround(Transform parent)
         {
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "BuildableGround";
+            ground.transform.SetParent(parent, false);
             ground.transform.position = new Vector3(0f, -0.08f, 1.5f);
             ground.transform.localScale = new Vector3(82f, 0.1f, 50f);
             ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
-            CreateGroundTexture();
+            CreateGroundTexture(parent);
         }
 
-        private static void CreateGroundTexture()
+        private static void CreateGroundTexture(Transform parent)
         {
             var root = new GameObject("GroundTexture");
+            root.transform.SetParent(parent, false);
             var patches = new[]
             {
                 new Vector3(-34f, 0f, -14f), new Vector3(-29f, 0f, 16f), new Vector3(-24f, 0f, -18f),
@@ -144,11 +179,14 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private static PathRoute CreatePath()
+        private static PathRoute CreatePath(LevelDefinition level, Transform parent)
         {
             var routeObject = new GameObject("PathRoute");
+            routeObject.transform.SetParent(parent, false);
             var route = routeObject.AddComponent<PathRoute>();
-            var points = new[]
+            var points = level?.pathWaypoints != null && level.pathWaypoints.Length > 1
+                ? level.pathWaypoints
+                : new[]
             {
                 new Vector3(-32f, 0f, 9.5f),
                 new Vector3(-20.5f, 0f, 9.5f),
@@ -161,22 +199,32 @@ namespace TowerDefense.Runtime
             };
 
             route.SetWaypoints(points);
+            CreatePathVisuals(parent, points);
+            if (level?.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
+            {
+                CreatePathVisuals(parent, level.secondaryPathWaypoints);
+            }
+
+            return route;
+        }
+
+        private static void CreatePathVisuals(Transform parent, Vector3[] points)
+        {
             for (var i = 1; i < points.Length; i++)
             {
-                CreatePathSegment(points[i - 1], points[i]);
+                CreatePathSegment(parent, points[i - 1], points[i]);
             }
 
             for (var i = 1; i < points.Length - 1; i++)
             {
-                CreatePathCorner(points[i]);
+                CreatePathCorner(parent, points[i]);
             }
 
-            CreatePathBoundary("PathBoundary_Left", points, 1f);
-            CreatePathBoundary("PathBoundary_Right", points, -1f);
-            return route;
+            CreatePathBoundary(parent, "PathBoundary_Left", points, 1f);
+            CreatePathBoundary(parent, "PathBoundary_Right", points, -1f);
         }
 
-        private static void CreatePathSegment(Vector3 from, Vector3 to)
+        private static void CreatePathSegment(Transform parent, Vector3 from, Vector3 to)
         {
             const float roadWidth = 5.4f;
             var midpoint = (from + to) * 0.5f + Vector3.up * 0.09f;
@@ -185,6 +233,7 @@ namespace TowerDefense.Runtime
 
             var shadow = GameObject.CreatePrimitive(PrimitiveType.Cube);
             shadow.name = "PathContactShadow";
+            shadow.transform.SetParent(parent, false);
             shadow.transform.position = (from + to) * 0.5f + Vector3.up * 0.002f;
             shadow.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             shadow.transform.localScale = new Vector3(roadWidth + 0.7f, 0.018f, direction.magnitude + 0.18f);
@@ -193,6 +242,7 @@ namespace TowerDefense.Runtime
 
             var segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
             segment.name = "PathVisual";
+            segment.transform.SetParent(parent, false);
             segment.transform.position = midpoint;
             segment.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             segment.transform.localScale = new Vector3(roadWidth, 0.08f, direction.magnitude);
@@ -200,6 +250,7 @@ namespace TowerDefense.Runtime
 
             var rut = GameObject.CreatePrimitive(PrimitiveType.Cube);
             rut.name = "PathWornCenter";
+            rut.transform.SetParent(parent, false);
             rut.transform.position = midpoint + Vector3.up * 0.046f;
             rut.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             rut.transform.localScale = new Vector3(roadWidth * 0.34f, 0.012f, direction.magnitude * 0.96f);
@@ -207,14 +258,15 @@ namespace TowerDefense.Runtime
             RemovePrimitiveCollider(rut);
 
             var side = Vector3.Cross(Vector3.up, forward);
-            CreatePathEdgeAO(midpoint, forward, side, direction.magnitude, roadWidth, 1f);
-            CreatePathEdgeAO(midpoint, forward, side, direction.magnitude, roadWidth, -1f);
+            CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, roadWidth, 1f);
+            CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, roadWidth, -1f);
         }
 
-        private static void CreatePathEdgeAO(Vector3 midpoint, Vector3 forward, Vector3 side, float length, float roadWidth, float sideSign)
+        private static void CreatePathEdgeAO(Transform parent, Vector3 midpoint, Vector3 forward, Vector3 side, float length, float roadWidth, float sideSign)
         {
             var ao = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ao.name = "PathEdgeAO";
+            ao.transform.SetParent(parent, false);
             ao.transform.position = midpoint + side * sideSign * (roadWidth * 0.5f + 0.12f) + Vector3.up * -0.078f;
             ao.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
             ao.transform.localScale = new Vector3(0.42f, 0.012f, length * 0.98f);
@@ -222,20 +274,22 @@ namespace TowerDefense.Runtime
             RemovePrimitiveCollider(ao);
         }
 
-        private static void CreatePathCorner(Vector3 position)
+        private static void CreatePathCorner(Transform parent, Vector3 position)
         {
             var corner = GameObject.CreatePrimitive(PrimitiveType.Cube);
             corner.name = "PathCornerFill";
+            corner.transform.SetParent(parent, false);
             corner.transform.position = position + Vector3.up * 0.092f;
             corner.transform.localScale = new Vector3(5.65f, 0.082f, 5.65f);
             corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
         }
 
-        private static void CreatePathBoundary(string name, Vector3[] points, float sideSign)
+        private static void CreatePathBoundary(Transform parent, string name, Vector3[] points, float sideSign)
         {
             const float roadWidth = 5.4f;
             const float bankOffset = roadWidth * 0.5f + 0.28f;
             var boundary = new GameObject(name);
+            boundary.transform.SetParent(parent, false);
             var line = boundary.AddComponent<LineRenderer>();
             line.useWorldSpace = true;
             line.positionCount = points.Length;
@@ -288,9 +342,10 @@ namespace TowerDefense.Runtime
             return Vector3.Cross(Vector3.up, forward);
         }
 
-        private static void CreateMapDecor()
+        private static void CreateMapDecor(Transform parent)
         {
             var root = new GameObject("MapDecor");
+            root.transform.SetParent(parent, false);
             CreateTrees(root.transform);
             CreateRuinedHouses(root.transform);
             CreatePondAndVillageProps(root.transform);
@@ -494,6 +549,7 @@ namespace TowerDefense.Runtime
     internal sealed class SampleContent
     {
         public LevelDefinition Level { get; private set; }
+        public IReadOnlyList<LevelDefinition> Levels { get; private set; }
         public SkillTreeDefinition SkillTree { get; private set; }
         public IReadOnlyList<TowerDefinition> Towers { get; private set; }
 
@@ -618,12 +674,43 @@ namespace TowerDefense.Runtime
             level.displayName = "Broken Green Pass";
             level.startingLives = 10;
             level.wave = wave;
+            level.pathWaypoints = CreateLevelOnePath();
+            level.cameraPosition = new Vector3(0f, 24f, -20f);
+            level.cameraFieldOfView = 45f;
+            level.cameraMinBounds = new Vector2(-36f, -22f);
+            level.cameraMaxBounds = new Vector2(36f, 22f);
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
             level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 8);
             level.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             level.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
             level.recommendedTactics = "Use early Archer Towers to thin Goblin Runners, then place them around bends so their range covers the road for longer. Save Volley of Arrows for dense mixed packs or Brutes that are about to leak through.";
+
+            var levelTwoWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelTwoWave.id = "wave_02_placeholder";
+            levelTwoWave.totalEnemyCount = 0;
+            levelTwoWave.spawnInterval = 0.45f;
+            levelTwoWave.randomSpawnBurstMin = 4;
+            levelTwoWave.randomSpawnBurstMax = 9;
+            levelTwoWave.entries = System.Array.Empty<WaveEntry>();
+
+            var levelTwo = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelTwo.id = "level_02";
+            levelTwo.displayName = "Twin Serpent Road";
+            levelTwo.startingLives = 12;
+            levelTwo.wave = levelTwoWave;
+            levelTwo.pathWaypoints = CreateLevelTwoPath();
+            levelTwo.secondaryPathWaypoints = CreateLevelTwoSecondaryPath();
+            levelTwo.cameraPosition = new Vector3(0f, 34f, -26f);
+            levelTwo.cameraFieldOfView = 48f;
+            levelTwo.cameraMinBounds = new Vector2(-54f, -30f);
+            levelTwo.cameraMaxBounds = new Vector2(54f, 30f);
+            levelTwo.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelTwo.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelTwo.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 12);
+            levelTwo.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelTwo.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelTwo.recommendedTactics = "A symmetrical split road. Defenses near the fork and the rejoin should cover both lanes, while long-range towers can exploit the broad middle stretch.";
 
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
@@ -1338,8 +1425,60 @@ namespace TowerDefense.Runtime
             return new SampleContent
             {
                 Level = level,
+                Levels = new[] { level, levelTwo },
                 SkillTree = tree,
                 Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
+            };
+        }
+
+        private static Vector3[] CreateLevelOnePath()
+        {
+            return new[]
+            {
+                new Vector3(-32f, 0f, 9.5f),
+                new Vector3(-20.5f, 0f, 9.5f),
+                new Vector3(-13.2f, 0f, 9.2f),
+                new Vector3(-13.2f, 0f, -7.8f),
+                new Vector3(3.8f, 0f, -7.8f),
+                new Vector3(3.8f, 0f, 10.2f),
+                new Vector3(15.6f, 0f, 10.2f),
+                new Vector3(26.5f, 0f, 10.2f)
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoPath()
+        {
+            return new[]
+            {
+                new Vector3(-48f, 0f, 0f),
+                new Vector3(-36f, 0f, 0f),
+                new Vector3(-25f, 0f, 5.2f),
+                new Vector3(-18f, 0f, 12.8f),
+                new Vector3(-6f, 0f, 16.6f),
+                new Vector3(6f, 0f, 16.6f),
+                new Vector3(15.8f, 0f, 12.8f),
+                new Vector3(13.6f, 0f, 3.6f),
+                new Vector3(25f, 0f, 5.2f),
+                new Vector3(36f, 0f, 0f),
+                new Vector3(48f, 0f, 0f)
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoSecondaryPath()
+        {
+            return new[]
+            {
+                new Vector3(-48f, 0f, 0f),
+                new Vector3(-36f, 0f, 0f),
+                new Vector3(-25f, 0f, -5.2f),
+                new Vector3(-18f, 0f, -12.8f),
+                new Vector3(-6f, 0f, -16.6f),
+                new Vector3(6f, 0f, -16.6f),
+                new Vector3(15.8f, 0f, -12.8f),
+                new Vector3(13.6f, 0f, -3.6f),
+                new Vector3(25f, 0f, -5.2f),
+                new Vector3(36f, 0f, 0f),
+                new Vector3(48f, 0f, 0f)
             };
         }
 

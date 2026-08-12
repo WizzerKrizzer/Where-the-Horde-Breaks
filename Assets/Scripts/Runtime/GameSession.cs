@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TowerDefense.Data;
 using TowerDefense.Input;
@@ -14,6 +15,7 @@ namespace TowerDefense.Runtime
         private readonly RewardService rewards = new();
         private ProfileStore profileStore;
         private PlayerProfile profile;
+        private IReadOnlyList<LevelDefinition> allLevels;
         private LevelDefinition level;
         private SkillTreeDefinition skillTree;
         private ProgressionService progression;
@@ -23,6 +25,7 @@ namespace TowerDefense.Runtime
         private WorldPopupManager popups;
         private PlayerInputRouter input;
         private PathRoute path;
+        private Func<LevelDefinition, PathRoute> loadLevelMap;
         private IReadOnlyList<TowerDefinition> allTowerDefinitions;
         private readonly Dictionary<string, TowerBaseStats> baseTowerStats = new();
         private readonly Dictionary<CurrencyType, int> runStartCurrencies = new();
@@ -77,6 +80,7 @@ namespace TowerDefense.Runtime
 
         public PlayerProfile Profile => profile;
         public LevelDefinition Level => level;
+        public IReadOnlyList<LevelDefinition> AllLevels => allLevels ?? Array.Empty<LevelDefinition>();
         public int Lives => lives;
         public int EnemiesKilled => enemiesKilled;
         public bool IsPlanning => !running && !finished;
@@ -134,6 +138,60 @@ namespace TowerDefense.Runtime
         public LevelProgressRecord GetLevelProgress(string levelId = null)
         {
             return profile.GetOrCreateLevelProgress(string.IsNullOrEmpty(levelId) ? level.id : levelId);
+        }
+
+        public bool IsLevelUnlocked(LevelDefinition definition)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            if (definition.id == "level_01")
+            {
+                return true;
+            }
+
+            if (profile.unlockedLevelIds.Contains(definition.id) || profile.clearedLevelIds.Contains(definition.id))
+            {
+                return true;
+            }
+
+            return definition.id == "level_02" && profile.clearedLevelIds.Contains("level_01");
+        }
+
+        public bool SelectLevel(string levelId)
+        {
+            if (running || string.IsNullOrEmpty(levelId) || allLevels == null)
+            {
+                return false;
+            }
+
+            var nextLevel = FindLevel(levelId);
+            if (nextLevel == null || nextLevel == level)
+            {
+                return false;
+            }
+
+            SaveLayout();
+            enemies?.StopWave();
+            towers?.RemoveAll();
+            level = nextLevel;
+            path = loadLevelMap != null ? loadLevelMap(level) : path;
+            towers.Initialize(enemies, path, GetUnlockedTowers());
+            ApplyProgressionStats();
+            enemiesKilled = 0;
+            killRewardMassProgress = 0f;
+            CaptureRunStartCurrencies();
+            lastRunCurrencyDeltas.Clear();
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+            lives = maxLivesForRun;
+            towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+            profileStore.Save(profile);
+            return true;
         }
 
         public void AddCurrency(CurrencyType currency, int amount)
@@ -329,9 +387,11 @@ namespace TowerDefense.Runtime
         }
 
         public void Initialize(
+            IReadOnlyList<LevelDefinition> levelDefinitions,
             LevelDefinition levelDefinition,
             SkillTreeDefinition skillTree,
             PathRoute path,
+            Func<LevelDefinition, PathRoute> levelMapLoader,
             IReadOnlyList<TowerDefinition> availableTowers,
             EnemyManager enemyManager,
             TowerManager towerManager,
@@ -339,6 +399,7 @@ namespace TowerDefense.Runtime
             WorldPopupManager popupManager,
             PlayerInputRouter inputRouter)
         {
+            allLevels = levelDefinitions;
             level = levelDefinition;
             this.skillTree = skillTree;
             profileStore = new ProfileStore();
@@ -350,6 +411,7 @@ namespace TowerDefense.Runtime
             popups = popupManager;
             input = inputRouter;
             this.path = path;
+            loadLevelMap = levelMapLoader;
             allTowerDefinitions = availableTowers;
             CaptureBaseTowerStats();
             baseActiveWeaponDamage = activeWeapon.Damage;
@@ -373,6 +435,24 @@ namespace TowerDefense.Runtime
             ApplyProgressionStats();
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+        }
+
+        private LevelDefinition FindLevel(string levelId)
+        {
+            if (allLevels == null)
+            {
+                return null;
+            }
+
+            for (var i = 0; i < allLevels.Count; i++)
+            {
+                if (allLevels[i] != null && allLevels[i].id == levelId)
+                {
+                    return allLevels[i];
+                }
+            }
+
+            return null;
         }
 
         private void Update()

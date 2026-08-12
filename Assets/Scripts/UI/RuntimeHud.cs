@@ -908,7 +908,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 618f);
+            contentRect.sizeDelta = new Vector2(214f, 694f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -1004,6 +1004,14 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -560f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
             autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
+
+            var levelsLabel = CreateText("DevLevelsTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            ConfigureCenteredRect(levelsLabel.GetComponent<RectTransform>(), new Vector2(0f, -592f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            levelsLabel.text = "LEVEL MAPS";
+            CreateButton("DevLoadLevel1", content.transform, "LOAD LEVEL 1", new Vector2(0f, -618f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.SelectLevel("level_01"));
+            CreateButton("DevLoadLevel2", content.transform, "LOAD LEVEL 2", new Vector2(0f, -646f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.SelectLevel("level_02"));
 
             devPanelVisible = false;
             devPanel.SetActive(false);
@@ -1609,13 +1617,20 @@ namespace TowerDefense.UI
 
         private void AddLevelCodexEntries(List<CodexEntry> entries)
         {
-            var level = session.Level;
-            if (level == null)
+            var levels = session.AllLevels;
+            if (levels == null || levels.Count == 0)
             {
                 return;
             }
 
-            entries.Add(new CodexEntry(level.id, level.displayName, FormatLevelCodexDetails(level)));
+            for (var i = 0; i < levels.Count; i++)
+            {
+                var level = levels[i];
+                if (level != null)
+                {
+                    entries.Add(new CodexEntry(level.id, level.displayName, FormatLevelCodexDetails(level)));
+                }
+            }
         }
 
         private void AddTurretCodexEntries(List<CodexEntry> entries)

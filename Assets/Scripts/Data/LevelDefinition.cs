@@ -9,6 +9,12 @@ namespace TowerDefense.Data
         public string displayName = "First Pass";
         public int startingLives = 20;
         public WaveDefinition wave;
+        public Vector3[] pathWaypoints;
+        public Vector3[] secondaryPathWaypoints;
+        public Vector3 cameraPosition = new(0f, 24f, -20f);
+        public float cameraFieldOfView = 45f;
+        public Vector2 cameraMinBounds = new(-36f, -22f);
+        public Vector2 cameraMaxBounds = new(36f, 22f);
         public CurrencyAmount firstClearReward = new(CurrencyType.VictorySigil, 1);
         public CurrencyAmount perfectClearReward = new(CurrencyType.PerfectSigil, 1);
         public CurrencyAmount replayReward = new(CurrencyType.KillEssence, 3);

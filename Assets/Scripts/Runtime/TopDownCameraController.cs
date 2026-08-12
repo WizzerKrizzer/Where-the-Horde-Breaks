@@ -21,6 +21,21 @@ namespace TowerDefense.Runtime
             input = router;
         }
 
+        public void ApplyView(Vector3 position, float fieldOfView, Vector2 min, Vector2 max)
+        {
+            if (controlledCamera == null)
+            {
+                return;
+            }
+
+            controlledCamera.transform.position = position;
+            controlledCamera.fieldOfView = fieldOfView;
+            minBounds = min;
+            maxBounds = max;
+            maxHeight = Mathf.Max(maxHeight, position.y + 8f);
+            ClampCameraPosition();
+        }
+
         private void LateUpdate()
         {
             if (controlledCamera == null || input == null)
