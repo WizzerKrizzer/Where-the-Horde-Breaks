@@ -122,10 +122,24 @@ namespace TowerDefense.Runtime
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             go.name = "ActiveWeaponImpact";
-            go.transform.position = position + Vector3.up * 0.03f;
+            go.transform.position = position + Vector3.up * 0.2f;
             go.transform.localScale = new Vector3(Radius * 2f, 0.05f, Radius * 2f);
             go.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.35f, 0.12f, 0.45f));
+            RemovePrimitiveCollider(go);
             Destroy(go, 0.18f);
+        }
+
+        private static void RemovePrimitiveCollider(GameObject target)
+        {
+            var components = target.GetComponents<Component>();
+            for (var i = 0; i < components.Length; i++)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
         }
     }
 }

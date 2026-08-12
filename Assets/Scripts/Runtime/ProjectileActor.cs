@@ -208,12 +208,26 @@ namespace TowerDefense.Runtime
 
             var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             marker.name = "CatapultImpact";
-            marker.transform.position = impactPosition + Vector3.up * 0.03f;
+            marker.transform.position = impactPosition + Vector3.up * 0.2f;
             marker.transform.localScale = new Vector3(radius * 2f, 0.04f, radius * 2f);
             marker.GetComponent<Renderer>().material = BootstrapMaterials.Get(sourceTower != null && sourceTower.appliesFire
                 ? new Color(1f, 0.32f, 0.05f, 0.42f)
                 : new Color(0.58f, 0.44f, 0.27f, 0.35f));
+            RemovePrimitiveCollider(marker);
             Destroy(marker, 0.25f);
+        }
+
+        private static void RemovePrimitiveCollider(GameObject target)
+        {
+            var components = target.GetComponents<Component>();
+            for (var i = 0; i < components.Length; i++)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
         }
 
         private void Deactivate()
