@@ -59,7 +59,7 @@ namespace TowerDefense.Runtime
             var renderer = GetComponent<Renderer>();
             if (renderer != null)
             {
-                renderer.material = BootstrapMaterials.Get(towerDefinition.color);
+                renderer.sharedMaterial = BootstrapMaterials.Get(towerDefinition.color);
             }
 
             if (towerDefinition.behavior == TowerBehavior.Barrier)

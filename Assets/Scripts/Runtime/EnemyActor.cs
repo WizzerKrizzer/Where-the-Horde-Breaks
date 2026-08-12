@@ -36,6 +36,8 @@ namespace TowerDefense.Runtime
         private GameObject healthRoot;
         private Transform healthFill;
         private float healthBarTimer;
+        private float visualBudgetTimer;
+        private int visualBudgetBucket;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
         private const float SteeringAcceleration = 6.8f;
@@ -87,8 +89,11 @@ namespace TowerDefense.Runtime
                 bodyRenderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
                 bodyRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 bodyRenderer.receiveShadows = false;
+                bodyRenderer.enabled = true;
             }
 
+            visualBudgetBucket = Mathf.Abs(GetInstanceID()) % 12;
+            visualBudgetTimer = UnityEngine.Random.Range(0f, 0.25f);
             healthBarTimer = 0f;
             if (healthRoot != null)
             {
@@ -125,6 +130,7 @@ namespace TowerDefense.Runtime
             }
 
             UpdateHealthBarVisibility();
+            UpdateVisualBudget(frameDeltaTime);
             accumulatedSimulationTime += frameDeltaTime;
             if (!ShouldRunSimulationThisFrame())
             {
@@ -553,6 +559,11 @@ namespace TowerDefense.Runtime
                 return position;
             }
 
+            if (owner.ActiveEnemyCount >= 900)
+            {
+                return position;
+            }
+
             var correction = Vector3.zero;
             var candidates = GetSeparationCandidates(position, 2.6f);
             foreach (var other in candidates)
@@ -590,8 +601,29 @@ namespace TowerDefense.Runtime
 
         private IEnumerable<EnemyActor> GetSeparationCandidates(Vector3 origin, float endpointRadius)
         {
-            owner.CollectNearbyEnemies(origin, endpointSeeking ? endpointRadius : 3.8f, nearbyEnemies);
+            owner.CollectNearbyEnemies(origin, endpointSeeking ? endpointRadius : 3.8f, nearbyEnemies, GetSeparationNeighborLimit());
             return nearbyEnemies;
+        }
+
+        private int GetSeparationNeighborLimit()
+        {
+            var activeCount = owner != null ? owner.ActiveEnemyCount : 0;
+            if (activeCount >= 2500)
+            {
+                return 10;
+            }
+
+            if (activeCount >= 1200)
+            {
+                return 14;
+            }
+
+            if (activeCount >= 650)
+            {
+                return 20;
+            }
+
+            return 30;
         }
 
         private float GetDesiredSeparationDistance(EnemyActor other)
@@ -833,6 +865,54 @@ namespace TowerDefense.Runtime
             var toEnemy = transform.position - camera.transform.position;
             toEnemy.y = 0f;
             return toEnemy.sqrMagnitude <= MaxHealthBarCameraDistance * MaxHealthBarCameraDistance;
+        }
+
+        private void UpdateVisualBudget(float deltaTime)
+        {
+            if (bodyRenderer == null || owner == null)
+            {
+                return;
+            }
+
+            visualBudgetTimer -= deltaTime;
+            if (visualBudgetTimer > 0f)
+            {
+                return;
+            }
+
+            visualBudgetTimer = 0.18f;
+            var activeCount = owner.ActiveEnemyCount;
+            if (activeCount < 650)
+            {
+                bodyRenderer.enabled = true;
+                return;
+            }
+
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                bodyRenderer.enabled = true;
+                return;
+            }
+
+            var viewport = camera.WorldToViewportPoint(transform.position);
+            if (viewport.z < 0f || viewport.x < -0.12f || viewport.x > 1.12f || viewport.y < -0.12f || viewport.y > 1.12f)
+            {
+                bodyRenderer.enabled = false;
+                return;
+            }
+
+            var toEnemy = transform.position - camera.transform.position;
+            toEnemy.y = 0f;
+            var closeToCamera = toEnemy.sqrMagnitude <= 28f * 28f;
+            if (closeToCamera || camera.transform.position.y < 58f)
+            {
+                bodyRenderer.enabled = true;
+                return;
+            }
+
+            var visualStride = activeCount >= 2500 ? 4 : activeCount >= 1400 ? 3 : 2;
+            bodyRenderer.enabled = visualBudgetBucket % visualStride == 0;
         }
 
         private struct BurnStack
