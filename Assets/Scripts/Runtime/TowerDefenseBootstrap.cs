@@ -1092,13 +1092,13 @@ namespace TowerDefense.Runtime
                 {
                     id = "projectile_aim_assist_01",
                     displayName = "Guiding Fletches",
-                    description = "Each rank gives projectile towers 20% attraction toward nearby enemies.",
+                    description = "Each rank gives Archer Tower projectiles 20% attraction toward nearby enemies.",
                     radialPosition = new Vector2(-700f, 112f),
                     maxRanks = 5,
                     prerequisiteNodeIds = new[] { "archer_flat_damage_01", "archer_flat_speed_01" },
                     costGrowthMultiplier = 2.5f,
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerAimAssistPercent, value = 20f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerAimAssistPercent, targetId = "archer", value = 20f } }
                 },
                 new SkillNodeDefinition
                 {

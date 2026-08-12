@@ -1124,7 +1124,6 @@ namespace TowerDefense.Runtime
             var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
             var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
             var towerFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent) / 100f;
-            var towerAimAssist = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.TowerAimAssistPercent) / 100f);
             var activeDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent) / 100f;
             var activeCooldownMultiplier = Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCooldownPercent) / 100f);
             var activeRadiusBonus = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRadiusFlat);
@@ -1152,7 +1151,8 @@ namespace TowerDefense.Runtime
                     towerDefinition.damage = baseDamage * (1f + perTypeDamagePercent / 100f) + perTypeDamageFlat;
                     towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, baseFireRate * (1f + perTypeFireRatePercent / 100f) + perTypeFireRateFlat);
                     towerDefinition.projectileSpeed *= 1f + perTypeProjectileSpeedPercent / 100f;
-                    towerDefinition.aimAssistStrength = towerDefinition.behavior == TowerBehavior.Projectile ? towerAimAssist : 0f;
+                    var perTypeAimAssist = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.TowerAimAssistPercent, towerDefinition.id) / 100f);
+                    towerDefinition.aimAssistStrength = towerDefinition.behavior == TowerBehavior.Projectile ? perTypeAimAssist : 0f;
 
                     towers.SetPerTypeLimitBonus(towerDefinition.id, perTypeBonus);
                     towers.SetPerTypeDamageMultiplier(towerDefinition.id, 1f);
