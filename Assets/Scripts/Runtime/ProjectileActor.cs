@@ -6,6 +6,7 @@ namespace TowerDefense.Runtime
 {
     public sealed class ProjectileActor : MonoBehaviour
     {
+        private static readonly Queue<ProjectileActor> Pool = new();
         private TowerActor source;
         private TowerDefinition sourceTower;
         private EnemyManager enemies;
@@ -23,7 +24,30 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyActor> hitEnemies = new();
         private readonly List<EnemyActor> nearbyEnemies = new();
 
-        public void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
+        public static void Spawn(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage, Color projectileColor)
+        {
+            var projectile = Pool.Count > 0 ? Pool.Dequeue() : CreatePooledProjectile();
+            projectile.gameObject.name = $"Projectile_{towerDefinition.id}";
+            projectile.transform.position = sourceTowerActor.transform.position + Vector3.up * 0.45f;
+            projectile.transform.localScale = Vector3.one * (towerDefinition.projectilePattern == ProjectilePattern.ArcSplash ? 0.34f : 0.16f);
+            var renderer = projectile.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = BootstrapMaterials.Get(projectileColor);
+            }
+
+            projectile.Fire(sourceTowerActor, towerDefinition, targetEnemy, enemyManager, projectileDamage);
+        }
+
+        private static ProjectileActor CreatePooledProjectile()
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            RemovePrimitiveCollider(go);
+            go.SetActive(false);
+            return go.AddComponent<ProjectileActor>();
+        }
+
+        private void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
         {
             source = sourceTowerActor;
             sourceTower = towerDefinition;
@@ -237,7 +261,8 @@ namespace TowerDefense.Runtime
         private void Deactivate()
         {
             active = false;
-            Destroy(gameObject);
+            gameObject.SetActive(false);
+            Pool.Enqueue(this);
         }
     }
 }

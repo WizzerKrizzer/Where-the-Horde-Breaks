@@ -14,6 +14,7 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
         private readonly List<EnemyActor> targetCandidates = new();
+        private static Mesh sharedEnemyMesh;
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
@@ -652,15 +653,52 @@ namespace TowerDefense.Runtime
 
         private EnemyActor CreateEnemyActor(EnemyDefinition enemyDefinition)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            var go = new GameObject($"Enemy_{enemyDefinition.id}");
             go.name = $"Enemy_{enemyDefinition.id}";
             go.transform.SetParent(transform);
-            RemovePrimitiveColliders(go);
-            var renderer = go.GetComponent<Renderer>();
+            var meshFilter = go.AddComponent<MeshFilter>();
+            meshFilter.sharedMesh = GetSharedEnemyMesh();
+            var renderer = go.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             return go.AddComponent<EnemyActor>();
+        }
+
+        private static Mesh GetSharedEnemyMesh()
+        {
+            if (sharedEnemyMesh != null)
+            {
+                return sharedEnemyMesh;
+            }
+
+            sharedEnemyMesh = new Mesh
+            {
+                name = "LowPolyEnemy"
+            };
+            sharedEnemyMesh.vertices = new[]
+            {
+                new Vector3(0f, 1f, 0f),
+                new Vector3(0.46f, 0.45f, 0f),
+                new Vector3(0.32f, 0.45f, 0.32f),
+                new Vector3(0f, 0.45f, 0.46f),
+                new Vector3(-0.32f, 0.45f, 0.32f),
+                new Vector3(-0.46f, 0.45f, 0f),
+                new Vector3(-0.32f, 0.45f, -0.32f),
+                new Vector3(0f, 0.45f, -0.46f),
+                new Vector3(0.32f, 0.45f, -0.32f),
+                new Vector3(0f, -0.05f, 0f),
+            };
+            sharedEnemyMesh.triangles = new[]
+            {
+                0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5,
+                0, 5, 6, 0, 6, 7, 0, 7, 8, 0, 8, 1,
+                9, 2, 1, 9, 3, 2, 9, 4, 3, 9, 5, 4,
+                9, 6, 5, 9, 7, 6, 9, 8, 7, 9, 1, 8
+            };
+            sharedEnemyMesh.RecalculateNormals();
+            sharedEnemyMesh.RecalculateBounds();
+            return sharedEnemyMesh;
         }
 
         private static void RemovePrimitiveColliders(GameObject gameObject)
