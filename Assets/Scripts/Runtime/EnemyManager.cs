@@ -30,6 +30,7 @@ namespace TowerDefense.Runtime
         private int totalResolved;
 
         public IReadOnlyList<EnemyActor> ActiveEnemies => activeEnemies;
+        public int ActiveEnemyCount => activeEnemies.Count;
         public int TotalSpawned => totalSpawned;
         public int TotalResolved => totalResolved;
         public bool HasWave => wave != null;
@@ -649,7 +650,9 @@ namespace TowerDefense.Runtime
             go.transform.SetParent(transform);
             RemovePrimitiveColliders(go);
             var renderer = go.GetComponent<Renderer>();
-            renderer.material = BootstrapMaterials.Get(enemyDefinition.color);
+            renderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
             return go.AddComponent<EnemyActor>();
         }
 

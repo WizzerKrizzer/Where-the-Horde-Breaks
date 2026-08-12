@@ -27,6 +27,8 @@ namespace TowerDefense.Runtime
         private bool waitingToRevive;
         private bool endpointSeeking;
         private float reviveTimer;
+        private float accumulatedSimulationTime;
+        private float stepDeltaTime;
         private float currentMaxHealth;
         private bool active;
         private ICombatTarget currentCombatTarget;
@@ -71,13 +73,17 @@ namespace TowerDefense.Runtime
             reviveUsed = false;
             waitingToRevive = false;
             reviveTimer = 0f;
+            accumulatedSimulationTime = 0f;
+            stepDeltaTime = 0f;
             active = true;
             currentCombatTarget = null;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
             bodyRenderer = GetComponent<Renderer>();
             if (bodyRenderer != null)
             {
-                bodyRenderer.material = BootstrapMaterials.Get(enemyDefinition.color);
+                bodyRenderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
+                bodyRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                bodyRenderer.receiveShadows = false;
             }
 
             healthBarTimer = 0f;
@@ -93,9 +99,10 @@ namespace TowerDefense.Runtime
 
         private void Update()
         {
+            var frameDeltaTime = Time.deltaTime;
             if (waitingToRevive)
             {
-                reviveTimer -= Time.deltaTime;
+                reviveTimer -= frameDeltaTime;
                 if (reviveTimer <= 0f)
                 {
                     waitingToRevive = false;
@@ -115,10 +122,18 @@ namespace TowerDefense.Runtime
             }
 
             UpdateHealthBarVisibility();
+            accumulatedSimulationTime += frameDeltaTime;
+            if (!ShouldRunSimulationThisFrame())
+            {
+                return;
+            }
+
+            stepDeltaTime = accumulatedSimulationTime;
+            accumulatedSimulationTime = 0f;
 
             if (slowTimer > 0f)
             {
-                slowTimer -= Time.deltaTime;
+                slowTimer -= stepDeltaTime;
             }
             else
             {
@@ -137,7 +152,7 @@ namespace TowerDefense.Runtime
 
             if (definition.healsEnemies)
             {
-                healCooldown -= Time.deltaTime;
+                healCooldown -= stepDeltaTime;
                 if (healCooldown <= 0f)
                 {
                     owner.HealEnemiesInRadius(transform.position, definition.healRadius, definition.healAmount, this);
@@ -263,6 +278,18 @@ namespace TowerDefense.Runtime
             ReleaseCombatTarget();
         }
 
+        private bool ShouldRunSimulationThisFrame()
+        {
+            var activeCount = owner != null ? owner.ActiveEnemyCount : 0;
+            var frameStride = activeCount >= 1100 ? 4 : activeCount >= 650 ? 3 : activeCount >= 250 ? 2 : 1;
+            if (frameStride <= 1)
+            {
+                return true;
+            }
+
+            return Mathf.Abs(GetInstanceID()) % frameStride == Time.frameCount % frameStride;
+        }
+
         private bool TryAttackCombatTarget()
         {
             if (definition.isFlying)
@@ -289,7 +316,7 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            attackCooldown -= Time.deltaTime;
+            attackCooldown -= stepDeltaTime;
             if (attackCooldown > 0f)
             {
                 return true;
@@ -329,7 +356,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            bodyRenderer.material = BootstrapMaterials.Get(slowed
+            bodyRenderer.sharedMaterial = BootstrapMaterials.Get(slowed
                 ? Color.Lerp(definition.color, new Color(0.28f, 0.72f, 1f), 0.58f)
                 : definition.color);
         }
@@ -344,7 +371,7 @@ namespace TowerDefense.Runtime
 
         private void UpdateEndpointPhysics()
         {
-            var deltaTime = Time.deltaTime;
+            var deltaTime = stepDeltaTime;
             var currentSpeed = definition.speed * slowMultiplier;
             var nearestRoad = path.GetNearestRoadPointToward(transform.position, path.EndPoint, out var roadTangent);
             nearestRoad.y = transform.position.y;
@@ -376,7 +403,7 @@ namespace TowerDefense.Runtime
 
         private void UpdatePathPhysics()
         {
-            var deltaTime = Time.deltaTime;
+            var deltaTime = stepDeltaTime;
             var currentSpeed = definition.speed * slowMultiplier;
             pathDistance += currentSpeed * deltaTime;
             knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, deltaTime * 3.2f);
@@ -414,14 +441,14 @@ namespace TowerDefense.Runtime
             var desiredOffset = crowdOffset + knockbackOffset;
             if (desiredOffset.sqrMagnitude > 0.001f)
             {
-                var nextPosition = transform.position + desiredOffset * Time.deltaTime * 0.85f;
+                var nextPosition = transform.position + desiredOffset * stepDeltaTime * 0.85f;
                 var pathPosition = path.Sample(pathDistance);
                 nextPosition = ConstrainToRoad(nextPosition, pathPosition, GetPathSide(pathDistance), GetPathTangent(pathDistance));
                 transform.position = nextPosition;
             }
 
-            movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * Time.deltaTime);
-            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, Time.deltaTime * 3.2f);
+            movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * stepDeltaTime);
+            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, stepDeltaTime * 3.2f);
         }
 
         private Vector3 ConstrainToRoad(Vector3 position, Vector3 pathPosition, Vector3 side, Vector3 tangent)
@@ -468,8 +495,8 @@ namespace TowerDefense.Runtime
         private void UpdateCrowdOffset()
         {
             var desiredOffset = GetSeparationOffset(transform.position);
-            crowdOffset = Vector3.MoveTowards(crowdOffset, desiredOffset, Time.deltaTime * 4.2f);
-            crowdOffset = Vector3.MoveTowards(crowdOffset, Vector3.zero, Time.deltaTime * 0.18f);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, desiredOffset, stepDeltaTime * 4.2f);
+            crowdOffset = Vector3.MoveTowards(crowdOffset, Vector3.zero, stepDeltaTime * 0.18f);
         }
 
         private Vector3 GetSeparationOffset(Vector3 origin)
@@ -661,8 +688,8 @@ namespace TowerDefense.Runtime
             for (var i = burnStacks.Count - 1; i >= 0; i--)
             {
                 var burn = burnStacks[i];
-                burn.remainingDuration -= Time.deltaTime;
-                burn.tickTimer -= Time.deltaTime;
+                burn.remainingDuration -= stepDeltaTime;
+                burn.tickTimer -= stepDeltaTime;
 
                 while (burn.tickTimer <= 0f && burn.remainingDuration > 0f && IsAlive)
                 {

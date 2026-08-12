@@ -16,7 +16,8 @@ namespace TowerDefense.Runtime
 
             material = new Material(Shader.Find("Standard"))
             {
-                color = color
+                color = color,
+                enableInstancing = true
             };
             if (color.a < 0.99f)
             {
