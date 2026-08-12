@@ -338,7 +338,7 @@ namespace TowerDefense.Runtime
             selectionDisc.SetActive(selected);
             if (selected)
             {
-                selectionDisc.transform.position = transform.position + Vector3.up * 0.055f;
+                selectionDisc.transform.position = transform.position + Vector3.up * 0.24f;
                 selectionDisc.transform.localScale = new Vector3(definition.range * 2f, 0.035f, definition.range * 2f);
             }
         }
@@ -361,7 +361,7 @@ namespace TowerDefense.Runtime
 
             EnsureAuraVisual();
             auraDisc.SetActive(definition.slowPercent > 0f && definition.slowCapacity > 0f);
-            auraDisc.transform.position = transform.position + Vector3.up * 0.035f;
+            auraDisc.transform.position = transform.position + Vector3.up * 0.22f;
             auraDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
         }
 

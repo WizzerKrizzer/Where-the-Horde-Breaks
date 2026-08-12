@@ -57,7 +57,7 @@ namespace TowerDefense.Runtime
             SetVisible(true);
             previewTower.transform.position = position + Vector3.up * 0.35f;
             TowerVisualFactory.ApplyScale(previewTower.transform, definition);
-            rangeDisc.transform.position = position + Vector3.up * 0.04f;
+            rangeDisc.transform.position = position + Vector3.up * 0.24f;
             rangeDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
 
             previewRenderer.material = BootstrapMaterials.Get(canPlace ? new Color(0.82f, 0.95f, 1f, 0.78f) : new Color(1f, 0.72f, 0.32f, 0.78f));
