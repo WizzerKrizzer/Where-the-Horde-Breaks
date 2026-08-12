@@ -626,12 +626,12 @@ namespace TowerDefense.Runtime
 
             if (endpointSeeking)
             {
-                path.GetNearestRoadPointToward(position, path.EndPoint, out var tangent);
-                return Vector3.Cross(Vector3.up, tangent.normalized);
+                path.GetNearestRoadPointToward(position, path.EndPoint, out var endpointTangent);
+                return Vector3.Cross(Vector3.up, endpointTangent.normalized);
             }
 
-            path.GetNearestRoadPoint(position, out var tangent);
-            return Vector3.Cross(Vector3.up, tangent.normalized);
+            path.GetNearestRoadPoint(position, out var roadTangent);
+            return Vector3.Cross(Vector3.up, roadTangent.normalized);
         }
 
         private Vector3 GetEndpointDirection()
