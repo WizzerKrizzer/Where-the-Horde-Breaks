@@ -6,7 +6,7 @@ namespace TowerDefense.Runtime
     public sealed class TopDownCameraController : MonoBehaviour
     {
         [SerializeField] private float panSpeed = 26f;
-        [SerializeField] private float mouseDragSensitivity = 1.15f;
+        [SerializeField] private float mouseDragSensitivity = 3.35f;
         [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float minHeight = 8f;
         [SerializeField] private float maxHeight = 60f;
