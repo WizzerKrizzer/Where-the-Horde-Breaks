@@ -79,7 +79,7 @@ namespace TowerDefense.Runtime
             ground.name = "BuildableGround";
             ground.transform.position = new Vector3(0f, -0.08f, 1.5f);
             ground.transform.localScale = new Vector3(82f, 0.1f, 50f);
-            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.15f, 0.23f, 0.18f));
+            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
             CreateGroundTexture();
         }
 
@@ -99,8 +99,8 @@ namespace TowerDefense.Runtime
             {
                 var size = 0.55f + Mathf.Abs(Mathf.Sin(i * 1.71f)) * 0.75f;
                 var color = i % 3 == 0
-                    ? new Color(0.11f, 0.19f, 0.12f)
-                    : new Color(0.18f, 0.27f, 0.18f);
+                    ? new Color(0.23f, 0.29f, 0.19f)
+                    : new Color(0.34f, 0.41f, 0.27f);
                 CreateGroundPatch(root.transform, patches[i], size, color, i);
             }
 
@@ -108,14 +108,14 @@ namespace TowerDefense.Runtime
             {
                 var x = -38f + i * 1.85f;
                 var z = 20.5f + Mathf.Sin(i * 0.83f) * 1.1f;
-                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.22f + 0.08f * (i % 4), new Color(0.09f, 0.16f, 0.1f), i + 50);
+                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.22f + 0.08f * (i % 4), new Color(0.23f, 0.29f, 0.18f), i + 50);
             }
 
             for (var i = 0; i < 36; i++)
             {
                 var x = -37f + i * 2.1f;
                 var z = -21.2f + Mathf.Sin(i * 1.12f) * 0.9f;
-                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.18f + 0.07f * (i % 5), new Color(0.1f, 0.17f, 0.105f), i + 100);
+                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.18f + 0.07f * (i % 5), new Color(0.22f, 0.28f, 0.17f), i + 100);
             }
         }
 
@@ -124,7 +124,7 @@ namespace TowerDefense.Runtime
             var patch = GameObject.CreatePrimitive(PrimitiveType.Cube);
             patch.name = "GroundTexturePatch";
             patch.transform.SetParent(parent, false);
-            patch.transform.position = position + Vector3.up * -0.012f;
+            patch.transform.position = position + Vector3.up * -0.015f;
             patch.transform.rotation = Quaternion.Euler(0f, index * 23f, 0f);
             patch.transform.localScale = new Vector3(size * (1.4f + 0.25f * (index % 3)), 0.018f, size * (0.55f + 0.18f * (index % 4)));
             patch.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
@@ -179,26 +179,56 @@ namespace TowerDefense.Runtime
         private static void CreatePathSegment(Vector3 from, Vector3 to)
         {
             const float roadWidth = 5.4f;
-            var midpoint = (from + to) * 0.5f + Vector3.up * 0.01f;
+            var midpoint = (from + to) * 0.5f + Vector3.up * 0.09f;
             var direction = to - from;
             var forward = direction.normalized;
+
+            var shadow = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shadow.name = "PathContactShadow";
+            shadow.transform.position = (from + to) * 0.5f + Vector3.up * 0.002f;
+            shadow.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            shadow.transform.localScale = new Vector3(roadWidth + 0.7f, 0.018f, direction.magnitude + 0.18f);
+            shadow.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f));
+            RemovePrimitiveCollider(shadow);
 
             var segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
             segment.name = "PathVisual";
             segment.transform.position = midpoint;
             segment.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            segment.transform.localScale = new Vector3(roadWidth, 0.05f, direction.magnitude);
-            segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
+            segment.transform.localScale = new Vector3(roadWidth, 0.08f, direction.magnitude);
+            segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
 
+            var rut = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rut.name = "PathWornCenter";
+            rut.transform.position = midpoint + Vector3.up * 0.046f;
+            rut.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            rut.transform.localScale = new Vector3(roadWidth * 0.34f, 0.012f, direction.magnitude * 0.96f);
+            rut.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.31f, 0.2f));
+            RemovePrimitiveCollider(rut);
+
+            var side = Vector3.Cross(Vector3.up, forward);
+            CreatePathEdgeAO(midpoint, forward, side, direction.magnitude, roadWidth, 1f);
+            CreatePathEdgeAO(midpoint, forward, side, direction.magnitude, roadWidth, -1f);
+        }
+
+        private static void CreatePathEdgeAO(Vector3 midpoint, Vector3 forward, Vector3 side, float length, float roadWidth, float sideSign)
+        {
+            var ao = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ao.name = "PathEdgeAO";
+            ao.transform.position = midpoint + side * sideSign * (roadWidth * 0.5f + 0.12f) + Vector3.up * -0.078f;
+            ao.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            ao.transform.localScale = new Vector3(0.42f, 0.012f, length * 0.98f);
+            ao.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.22f, 0.28f, 0.18f));
+            RemovePrimitiveCollider(ao);
         }
 
         private static void CreatePathCorner(Vector3 position)
         {
             var corner = GameObject.CreatePrimitive(PrimitiveType.Cube);
             corner.name = "PathCornerFill";
-            corner.transform.position = position + Vector3.up * 0.012f;
-            corner.transform.localScale = new Vector3(5.65f, 0.052f, 5.65f);
-            corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.25f, 0.08f));
+            corner.transform.position = position + Vector3.up * 0.092f;
+            corner.transform.localScale = new Vector3(5.65f, 0.082f, 5.65f);
+            corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
         }
 
         private static void CreatePathBoundary(string name, Vector3[] points, float sideSign)
@@ -209,16 +239,16 @@ namespace TowerDefense.Runtime
             var line = boundary.AddComponent<LineRenderer>();
             line.useWorldSpace = true;
             line.positionCount = points.Length;
-            line.widthMultiplier = 0.42f;
+            line.widthMultiplier = 0.22f;
             line.numCornerVertices = 4;
             line.numCapVertices = 2;
-            line.material = BootstrapMaterials.Get(new Color(0.13f, 0.34f, 0.13f));
+            line.material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
 
             for (var i = 0; i < points.Length; i++)
             {
-                line.SetPosition(i, GetBoundaryPoint(points, i, sideSign, bankOffset) + Vector3.up * 0.13f);
+                line.SetPosition(i, GetBoundaryPoint(points, i, sideSign, bankOffset) + Vector3.up * 0.165f);
             }
         }
 
@@ -288,18 +318,33 @@ namespace TowerDefense.Runtime
             trunk.name = "DecorTree_Trunk";
             trunk.transform.SetParent(parent, false);
             trunk.transform.position = position + Vector3.up * 0.45f;
-            trunk.transform.localScale = new Vector3(0.22f * scale, 0.55f * scale, 0.22f * scale);
-            trunk.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.28f, 0.16f, 0.075f));
+            trunk.transform.localScale = new Vector3((0.18f + 0.04f * (index % 3)) * scale, 0.55f * scale, (0.2f + 0.03f * ((index + 1) % 3)) * scale);
+            trunk.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.24f, 0.16f, 0.09f));
             RemovePrimitiveCollider(trunk);
 
             var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             crown.name = "DecorTree_Crown";
             crown.transform.SetParent(parent, false);
             crown.transform.position = position + Vector3.up * (1.06f * scale);
-            crown.transform.localScale = new Vector3(1.05f * scale, 0.7f * scale, 1.05f * scale);
-            var green = index % 2 == 0 ? new Color(0.08f, 0.32f, 0.11f) : new Color(0.12f, 0.4f, 0.14f);
+            crown.transform.localScale = new Vector3((0.9f + 0.13f * (index % 3)) * scale, (0.55f + 0.07f * ((index + 2) % 3)) * scale, (0.98f + 0.16f * ((index + 1) % 3)) * scale);
+            var green = index % 4 == 0
+                ? new Color(0.35f, 0.42f, 0.23f)
+                : index % 3 == 0
+                    ? new Color(0.18f, 0.35f, 0.15f)
+                    : new Color(0.13f, 0.31f, 0.12f);
             crown.GetComponent<Renderer>().material = BootstrapMaterials.Get(green);
             RemovePrimitiveCollider(crown);
+
+            if (index % 5 == 2)
+            {
+                var sideBlob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                sideBlob.name = "DecorTree_CrownLobe";
+                sideBlob.transform.SetParent(parent, false);
+                sideBlob.transform.position = position + new Vector3(0.28f * scale, 0.94f * scale, -0.2f * scale);
+                sideBlob.transform.localScale = new Vector3(0.55f, 0.36f, 0.52f) * scale;
+                sideBlob.GetComponent<Renderer>().material = BootstrapMaterials.Get(green * 0.92f);
+                RemovePrimitiveCollider(sideBlob);
+            }
         }
 
         private static void CreateRuinedHouses(Transform parent)
