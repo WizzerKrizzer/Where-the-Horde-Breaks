@@ -18,6 +18,8 @@ namespace TowerDefense.Data
         public float cameraFieldOfView = 45f;
         public float cameraMinHeight = 8f;
         public float cameraMaxHeight = 60f;
+        public float cameraPanSpeed = 26f;
+        public float cameraMouseDragSensitivity = 3.35f;
         public Vector2 cameraMinBounds = new(-36f, -22f);
         public Vector2 cameraMaxBounds = new(36f, 22f);
         public CurrencyAmount firstClearReward = new(CurrencyType.VictorySigil, 1);

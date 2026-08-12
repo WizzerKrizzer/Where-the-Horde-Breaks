@@ -22,7 +22,7 @@ namespace TowerDefense.Runtime
             input = router;
         }
 
-        public void ApplyView(Vector3 position, float fieldOfView, float minZoomHeight, float maxZoomHeight, Vector2 min, Vector2 max)
+        public void ApplyView(Vector3 position, float fieldOfView, float minZoomHeight, float maxZoomHeight, float levelPanSpeed, float levelMouseDragSensitivity, Vector2 min, Vector2 max)
         {
             if (controlledCamera == null)
             {
@@ -33,6 +33,8 @@ namespace TowerDefense.Runtime
             controlledCamera.fieldOfView = fieldOfView;
             minHeight = Mathf.Max(1f, minZoomHeight);
             maxHeight = Mathf.Max(minHeight + 1f, maxZoomHeight);
+            panSpeed = Mathf.Max(1f, levelPanSpeed);
+            mouseDragSensitivity = Mathf.Max(0.1f, levelMouseDragSensitivity);
             minBounds = min;
             maxBounds = max;
             ClampCameraPosition();

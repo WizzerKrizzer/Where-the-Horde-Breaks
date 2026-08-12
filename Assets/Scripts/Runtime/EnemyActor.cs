@@ -281,7 +281,7 @@ namespace TowerDefense.Runtime
         private bool ShouldRunSimulationThisFrame()
         {
             var activeCount = owner != null ? owner.ActiveEnemyCount : 0;
-            var frameStride = activeCount >= 1100 ? 4 : activeCount >= 650 ? 3 : activeCount >= 250 ? 2 : 1;
+            var frameStride = activeCount >= 1600 ? 8 : activeCount >= 1000 ? 6 : activeCount >= 650 ? 5 : activeCount >= 300 ? 3 : activeCount >= 180 ? 2 : 1;
             if (frameStride <= 1)
             {
                 return true;

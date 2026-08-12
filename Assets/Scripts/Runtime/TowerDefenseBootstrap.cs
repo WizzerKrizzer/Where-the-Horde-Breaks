@@ -81,7 +81,7 @@ namespace TowerDefense.Runtime
 
             mainCamera.transform.position = level.cameraPosition;
             mainCamera.fieldOfView = level.cameraFieldOfView;
-            cameraController?.ApplyView(level.cameraPosition, level.cameraFieldOfView, level.cameraMinHeight, level.cameraMaxHeight, level.cameraMinBounds, level.cameraMaxBounds);
+            cameraController?.ApplyView(level.cameraPosition, level.cameraFieldOfView, level.cameraMinHeight, level.cameraMaxHeight, level.cameraPanSpeed, level.cameraMouseDragSensitivity, level.cameraMinBounds, level.cameraMaxBounds);
         }
 
         private static Camera CreateCamera()
@@ -763,6 +763,8 @@ namespace TowerDefense.Runtime
             level.cameraFieldOfView = 45f;
             level.cameraMinHeight = 8f;
             level.cameraMaxHeight = 60f;
+            level.cameraPanSpeed = 26f;
+            level.cameraMouseDragSensitivity = 3.35f;
             level.cameraMinBounds = new Vector2(-36f, -22f);
             level.cameraMaxBounds = new Vector2(36f, 22f);
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
@@ -798,6 +800,8 @@ namespace TowerDefense.Runtime
             levelTwo.cameraFieldOfView = 50f;
             levelTwo.cameraMinHeight = 10f;
             levelTwo.cameraMaxHeight = 88f;
+            levelTwo.cameraPanSpeed = 38f;
+            levelTwo.cameraMouseDragSensitivity = 4.75f;
             levelTwo.cameraMinBounds = new Vector2(-62f, -34f);
             levelTwo.cameraMaxBounds = new Vector2(62f, 34f);
             levelTwo.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
@@ -828,6 +832,8 @@ namespace TowerDefense.Runtime
             levelThree.cameraFieldOfView = 52f;
             levelThree.cameraMinHeight = 12f;
             levelThree.cameraMaxHeight = 120f;
+            levelThree.cameraPanSpeed = 48f;
+            levelThree.cameraMouseDragSensitivity = 5.9f;
             levelThree.cameraMinBounds = new Vector2(-74f, -41f);
             levelThree.cameraMaxBounds = new Vector2(74f, 41f);
             levelThree.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
