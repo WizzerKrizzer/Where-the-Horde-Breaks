@@ -843,6 +843,39 @@ namespace TowerDefense.Runtime
             levelThree.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
             levelThree.recommendedTactics = "A long experimental route for mixed enemy roles. Use anti-air coverage before Harpies appear, preserve burst damage for Witch Shamans, and avoid relying only on frontline units once Vampires and Zombies enter the stream.";
 
+            var levelFourWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelFourWave.id = "wave_04_stress_test";
+            levelFourWave.totalEnemyCount = 10000;
+            levelFourWave.spawnInterval = 0.28f;
+            levelFourWave.randomSpawnBurstMin = 22;
+            levelFourWave.randomSpawnBurstMax = 48;
+            levelFourWave.useEndpointSeeking = true;
+            levelFourWave.entries = BuildLevelFourStressWaveEntries(runner, brute, shaman, vampire, harpy, zombie);
+
+            var levelFour = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelFour.id = "level_04";
+            levelFour.displayName = "Stress Field: Ten Thousand";
+            levelFour.startingLives = 30;
+            levelFour.wave = levelFourWave;
+            levelFour.pathWaypoints = CreateLevelFourPath();
+            levelFour.groundCenter = new Vector3(0f, -0.08f, 0f);
+            levelFour.groundSize = new Vector3(230f, 0.1f, 132f);
+            levelFour.decorVariant = 4;
+            levelFour.cameraPosition = new Vector3(0f, 78f, -62f);
+            levelFour.cameraFieldOfView = 54f;
+            levelFour.cameraMinHeight = 16f;
+            levelFour.cameraMaxHeight = 180f;
+            levelFour.cameraPanSpeed = 72f;
+            levelFour.cameraMouseDragSensitivity = 8.5f;
+            levelFour.cameraMinBounds = new Vector2(-112f, -63f);
+            levelFour.cameraMaxBounds = new Vector2(112f, 63f);
+            levelFour.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelFour.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelFour.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 28);
+            levelFour.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelFour.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelFour.recommendedTactics = "Prototype stress map. The route is oversized and the wave is intentionally excessive so horde rendering, simulation ticking, and endpoint-seeking crowd movement can be profiled under pressure.";
+
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
             tree.nodes = new[]
@@ -1556,7 +1589,7 @@ namespace TowerDefense.Runtime
             return new SampleContent
             {
                 Level = level,
-                Levels = new[] { level, levelTwo, levelThree },
+                Levels = new[] { level, levelTwo, levelThree, levelFour },
                 SkillTree = tree,
                 Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
             };
@@ -1633,6 +1666,32 @@ namespace TowerDefense.Runtime
             };
         }
 
+        private static Vector3[] CreateLevelFourPath()
+        {
+            return new[]
+            {
+                new Vector3(-104f, 0f, 30f),
+                new Vector3(-82f, 0f, 30f),
+                new Vector3(-64f, 0f, 20f),
+                new Vector3(-52f, 0f, 2f),
+                new Vector3(-66f, 0f, -22f),
+                new Vector3(-42f, 0f, -42f),
+                new Vector3(-10f, 0f, -48f),
+                new Vector3(18f, 0f, -34f),
+                new Vector3(1f, 0f, -10f),
+                new Vector3(-18f, 0f, 8f),
+                new Vector3(2f, 0f, 31f),
+                new Vector3(36f, 0f, 44f),
+                new Vector3(70f, 0f, 36f),
+                new Vector3(88f, 0f, 14f),
+                new Vector3(70f, 0f, -8f),
+                new Vector3(42f, 0f, -12f),
+                new Vector3(54f, 0f, -38f),
+                new Vector3(86f, 0f, -42f),
+                new Vector3(106f, 0f, -22f)
+            };
+        }
+
         private static EnemyDefinition CreateEnemy(string id, string name, EnemyRole role, string shortDescription, string weaknessDescription, float hp, float speed, int lifeDamage, int killReward, Color color, float scale)
         {
             var enemy = ScriptableObject.CreateInstance<EnemyDefinition>();
@@ -1695,6 +1754,28 @@ namespace TowerDefense.Runtime
             AddWaveEntries(entries, vampire, 55, 2);
             AddWaveEntries(entries, brute, 135, 6);
             AddWaveEntries(entries, runner, 150, 18);
+            return entries.ToArray();
+        }
+
+        private static WaveEntry[] BuildLevelFourStressWaveEntries(
+            EnemyDefinition runner,
+            EnemyDefinition brute,
+            EnemyDefinition shaman,
+            EnemyDefinition vampire,
+            EnemyDefinition harpy,
+            EnemyDefinition zombie)
+        {
+            var entries = new List<WaveEntry>();
+            AddWaveEntries(entries, runner, 2550, 42);
+            AddWaveEntries(entries, zombie, 1150, 24);
+            AddWaveEntries(entries, runner, 1700, 44);
+            AddWaveEntries(entries, brute, 950, 16);
+            AddWaveEntries(entries, shaman, 250, 5);
+            AddWaveEntries(entries, harpy, 900, 20);
+            AddWaveEntries(entries, runner, 1300, 46);
+            AddWaveEntries(entries, zombie, 800, 22);
+            AddWaveEntries(entries, vampire, 180, 4);
+            AddWaveEntries(entries, brute, 220, 12);
             return entries.ToArray();
         }
 
