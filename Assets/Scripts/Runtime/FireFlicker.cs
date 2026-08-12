@@ -15,8 +15,8 @@ namespace TowerDefense.Runtime
 
         private void Update()
         {
-            var pulse = 1f + Mathf.Sin(Time.time * 9.5f + phase) * 0.12f + Mathf.Sin(Time.time * 17.3f + phase) * 0.06f;
-            transform.localScale = new Vector3(baseScale.x * pulse, baseScale.y * (1.08f - (pulse - 1f) * 0.45f), baseScale.z * pulse);
+            var pulse = 1f + Mathf.Sin(Time.time * 8.5f + phase) * 0.045f + Mathf.Sin(Time.time * 15.3f + phase) * 0.025f;
+            transform.localScale = new Vector3(baseScale.x * pulse, baseScale.y * (1.02f - (pulse - 1f) * 0.18f), baseScale.z * pulse);
         }
     }
 }

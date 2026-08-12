@@ -263,7 +263,7 @@ namespace TowerDefense.Runtime
             var root = new GameObject("MapDecor");
             CreateTrees(root.transform);
             CreateRuinedHouses(root.transform);
-            CreateWaterAndBridge(root.transform);
+            CreatePondAndVillageProps(root.transform);
             CreateVillageFires(root.transform);
         }
 
@@ -316,20 +316,38 @@ namespace TowerDefense.Runtime
             root.transform.position = position;
             root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            CreateDecorCube(root.transform, "Ruin_WallA", new Vector3(-0.85f, 0.28f, 0f), new Vector3(0.22f, 0.58f, 1.8f) * scale, new Color(0.35f, 0.31f, 0.24f));
-            CreateDecorCube(root.transform, "Ruin_WallB", new Vector3(0.55f, 0.22f, -0.72f), new Vector3(1.7f, 0.44f, 0.2f) * scale, new Color(0.31f, 0.27f, 0.21f));
-            CreateDecorCube(root.transform, "Ruin_BeamA", new Vector3(0.1f, 0.62f, 0.42f), new Vector3(1.7f, 0.14f, 0.18f) * scale, new Color(0.2f, 0.12f, 0.065f));
-            CreateDecorCube(root.transform, "Ruin_RubbleA", new Vector3(0.8f, 0.08f, 0.55f), new Vector3(0.45f, 0.15f, 0.32f) * scale, new Color(0.23f, 0.22f, 0.18f));
-            CreateDecorCube(root.transform, "Ruin_RubbleB", new Vector3(-0.15f, 0.06f, -0.95f), new Vector3(0.55f, 0.12f, 0.28f) * scale, new Color(0.26f, 0.23f, 0.18f));
+            var stone = new Color(0.36f, 0.33f, 0.27f);
+            var darkStone = new Color(0.24f, 0.23f, 0.2f);
+            var timber = new Color(0.23f, 0.13f, 0.065f);
+            var thatch = new Color(0.38f, 0.29f, 0.15f);
+
+            CreateDecorCube(root.transform, "Ruin_Floor", new Vector3(0f, 0.015f, 0f), new Vector3(2.8f, 0.03f, 2.05f) * scale, new Color(0.2f, 0.18f, 0.14f));
+            CreateDecorCube(root.transform, "Ruin_BackWall", new Vector3(0f, 0.44f, 0.92f), new Vector3(2.65f, 0.88f, 0.2f) * scale, stone);
+            CreateDecorCube(root.transform, "Ruin_LeftWall", new Vector3(-1.22f, 0.34f, -0.08f), new Vector3(0.22f, 0.68f, 1.85f) * scale, stone);
+            CreateDecorCube(root.transform, "Ruin_RightStub", new Vector3(1.18f, 0.24f, 0.48f), new Vector3(0.2f, 0.48f, 0.82f) * scale, darkStone);
+            CreateDecorCube(root.transform, "Ruin_DoorGapLintel", new Vector3(0.15f, 0.82f, -0.98f), new Vector3(1.35f, 0.16f, 0.18f) * scale, timber);
+
+            var roofA = CreateDecorCube(root.transform, "Ruin_CollapsedRoofA", new Vector3(-0.45f, 0.82f, 0.1f), new Vector3(1.65f, 0.16f, 1.05f) * scale, thatch);
+            roofA.transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+            var roofB = CreateDecorCube(root.transform, "Ruin_CollapsedRoofB", new Vector3(0.6f, 0.34f, -0.45f), new Vector3(1.2f, 0.13f, 0.85f) * scale, thatch * 0.82f);
+            roofB.transform.localRotation = Quaternion.Euler(0f, 0f, 24f);
+
+            CreateDecorCube(root.transform, "Ruin_BeamA", new Vector3(-0.1f, 0.67f, 0.2f), new Vector3(2.45f, 0.12f, 0.14f) * scale, timber);
+            CreateDecorCube(root.transform, "Ruin_BeamB", new Vector3(0.35f, 0.18f, -0.85f), new Vector3(1.65f, 0.12f, 0.13f) * scale, timber);
+            CreateDecorCube(root.transform, "Ruin_RubbleA", new Vector3(0.95f, 0.08f, -0.1f), new Vector3(0.5f, 0.16f, 0.34f) * scale, darkStone);
+            CreateDecorCube(root.transform, "Ruin_RubbleB", new Vector3(-0.2f, 0.07f, -0.78f), new Vector3(0.48f, 0.14f, 0.28f) * scale, darkStone);
+            CreateDecorCube(root.transform, "Ruin_RubbleC", new Vector3(0.35f, 0.06f, 1.22f), new Vector3(0.62f, 0.12f, 0.26f) * scale, darkStone);
         }
 
-        private static void CreateWaterAndBridge(Transform parent)
+        private static void CreatePondAndVillageProps(Transform parent)
         {
-            CreateDecorCube(parent, "DecorPond", new Vector3(-34f, -0.025f, 2.5f), new Vector3(5.6f, 0.025f, 3.2f), new Color(0.07f, 0.27f, 0.36f));
-            CreateDecorCube(parent, "DecorRiver", new Vector3(32.5f, -0.024f, 2.5f), new Vector3(2.4f, 0.024f, 11f), new Color(0.06f, 0.24f, 0.34f));
-            CreateDecorCube(parent, "DecorBridge_A", new Vector3(32.5f, 0.02f, 2.5f), new Vector3(3.2f, 0.08f, 0.34f), new Color(0.34f, 0.22f, 0.12f));
-            CreateDecorCube(parent, "DecorBridge_B", new Vector3(32.5f, 0.08f, 1.9f), new Vector3(3f, 0.08f, 0.16f), new Color(0.22f, 0.14f, 0.08f));
-            CreateDecorCube(parent, "DecorBridge_C", new Vector3(32.5f, 0.08f, 3.1f), new Vector3(3f, 0.08f, 0.16f), new Color(0.22f, 0.14f, 0.08f));
+            CreatePond(parent, new Vector3(-34f, 0f, 2.5f), 1.05f);
+            CreateWell(parent, new Vector3(31.5f, 0f, 3.8f), 0.85f);
+            CreateDecorCube(parent, "DecorCartBroken_Axle", new Vector3(29.4f, 0.13f, -12.5f), new Vector3(1.35f, 0.12f, 0.16f), new Color(0.24f, 0.14f, 0.075f));
+            var cartBed = CreateDecorCube(parent, "DecorCartBroken_Bed", new Vector3(29.1f, 0.18f, -12.15f), new Vector3(1.15f, 0.16f, 0.65f), new Color(0.3f, 0.19f, 0.09f));
+            cartBed.transform.rotation = Quaternion.Euler(0f, -18f, 0f);
+            CreateDecorCube(parent, "DecorCrates", new Vector3(-30.5f, 0.16f, 15.4f), new Vector3(0.62f, 0.32f, 0.62f), new Color(0.31f, 0.2f, 0.1f));
+            CreateDecorCube(parent, "DecorCrates", new Vector3(-29.8f, 0.12f, 16.1f), new Vector3(0.48f, 0.24f, 0.48f), new Color(0.27f, 0.17f, 0.085f));
         }
 
         private static void CreateVillageFires(Transform parent)
@@ -343,23 +361,76 @@ namespace TowerDefense.Runtime
         {
             var baseAsh = CreateDecorCube(parent, "DecorFire_Ash", position + Vector3.up * 0.02f, new Vector3(0.9f, 0.035f, 0.65f) * scale, new Color(0.08f, 0.075f, 0.07f));
             baseAsh.transform.rotation = Quaternion.Euler(0f, 24f, 0f);
+            for (var i = 0; i < 6; i++)
+            {
+                var angle = i * Mathf.PI * 2f / 6f;
+                var rockPosition = position + new Vector3(Mathf.Cos(angle) * 0.48f * scale, 0.07f, Mathf.Sin(angle) * 0.36f * scale);
+                CreateDecorCube(parent, "DecorFire_RingStone", rockPosition, new Vector3(0.18f, 0.12f, 0.16f) * scale, new Color(0.18f, 0.17f, 0.15f));
+            }
 
             var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             flame.name = "DecorFire_Flame";
             flame.transform.SetParent(parent, false);
             flame.transform.position = position + Vector3.up * (0.34f * scale);
-            flame.transform.localScale = new Vector3(0.42f, 0.72f, 0.42f) * scale;
+            flame.transform.localScale = new Vector3(0.32f, 0.58f, 0.32f) * scale;
             flame.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.44f, 0.08f));
             flame.AddComponent<FireFlicker>();
             RemovePrimitiveCollider(flame);
+
+            var flameCore = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            flameCore.name = "DecorFire_Core";
+            flameCore.transform.SetParent(parent, false);
+            flameCore.transform.position = position + Vector3.up * (0.42f * scale);
+            flameCore.transform.localScale = new Vector3(0.18f, 0.38f, 0.18f) * scale;
+            flameCore.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.82f, 0.24f));
+            flameCore.AddComponent<FireFlicker>();
+            RemovePrimitiveCollider(flameCore);
 
             var glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             glow.name = "DecorFire_Glow";
             glow.transform.SetParent(parent, false);
             glow.transform.position = position + Vector3.up * (0.2f * scale);
-            glow.transform.localScale = new Vector3(1.2f, 0.08f, 1.2f) * scale;
+            glow.transform.localScale = new Vector3(0.95f, 0.04f, 0.95f) * scale;
             glow.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.75f, 0.22f, 0.04f, 0.55f));
             RemovePrimitiveCollider(glow);
+        }
+
+        private static void CreatePond(Transform parent, Vector3 position, float scale)
+        {
+            var bank = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            bank.name = "DecorPond_Bank";
+            bank.transform.SetParent(parent, false);
+            bank.transform.position = position + Vector3.up * 0.005f;
+            bank.transform.localScale = new Vector3(3.4f * scale, 0.015f, 2.05f * scale);
+            bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.09f, 0.18f, 0.11f));
+            RemovePrimitiveCollider(bank);
+
+            var water = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            water.name = "DecorPond_Water";
+            water.transform.SetParent(parent, false);
+            water.transform.position = position + Vector3.up * 0.025f;
+            water.transform.localScale = new Vector3(2.75f * scale, 0.012f, 1.55f * scale);
+            water.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.06f, 0.26f, 0.36f));
+            RemovePrimitiveCollider(water);
+
+            CreateDecorCube(parent, "DecorPond_ReedA", position + new Vector3(-2.1f, 0.18f, 0.78f) * scale, new Vector3(0.12f, 0.36f, 0.08f) * scale, new Color(0.16f, 0.31f, 0.12f));
+            CreateDecorCube(parent, "DecorPond_ReedB", position + new Vector3(1.9f, 0.14f, -0.62f) * scale, new Vector3(0.1f, 0.28f, 0.08f) * scale, new Color(0.14f, 0.29f, 0.1f));
+        }
+
+        private static void CreateWell(Transform parent, Vector3 position, float scale)
+        {
+            var baseStone = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            baseStone.name = "DecorWell_StoneRing";
+            baseStone.transform.SetParent(parent, false);
+            baseStone.transform.position = position + Vector3.up * 0.24f * scale;
+            baseStone.transform.localScale = new Vector3(0.9f * scale, 0.26f * scale, 0.9f * scale);
+            baseStone.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.28f, 0.27f, 0.24f));
+            RemovePrimitiveCollider(baseStone);
+
+            CreateDecorCube(parent, "DecorWell_PostA", position + new Vector3(-0.62f, 0.76f, 0f) * scale, new Vector3(0.13f, 0.92f, 0.13f) * scale, new Color(0.22f, 0.13f, 0.065f));
+            CreateDecorCube(parent, "DecorWell_PostB", position + new Vector3(0.62f, 0.76f, 0f) * scale, new Vector3(0.13f, 0.92f, 0.13f) * scale, new Color(0.22f, 0.13f, 0.065f));
+            var roof = CreateDecorCube(parent, "DecorWell_Roof", position + new Vector3(0f, 1.28f, 0f) * scale, new Vector3(1.65f, 0.16f, 1f) * scale, new Color(0.38f, 0.25f, 0.12f));
+            roof.transform.rotation = Quaternion.Euler(0f, 0f, 6f);
         }
 
         private static GameObject CreateDecorCube(Transform parent, string name, Vector3 localPosition, Vector3 scale, Color color)
