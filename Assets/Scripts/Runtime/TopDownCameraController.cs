@@ -6,6 +6,7 @@ namespace TowerDefense.Runtime
     public sealed class TopDownCameraController : MonoBehaviour
     {
         [SerializeField] private float panSpeed = 26f;
+        [SerializeField] private float mouseDragSensitivity = 1.15f;
         [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float minHeight = 8f;
         [SerializeField] private float maxHeight = 60f;
@@ -48,6 +49,13 @@ namespace TowerDefense.Runtime
             var forward = Vector3.ProjectOnPlane(controlledCamera.transform.forward, Vector3.up).normalized;
             var right = Vector3.ProjectOnPlane(controlledCamera.transform.right, Vector3.up).normalized;
             controlledCamera.transform.position += (right * state.Pan.x + forward * state.Pan.y) * (panSpeed * Time.unscaledDeltaTime);
+            if (state.MousePanDelta.sqrMagnitude > 0.001f)
+            {
+                var verticalWorldSpan = 2f * controlledCamera.transform.position.y * Mathf.Tan(controlledCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+                var worldPerPixel = verticalWorldSpan / Mathf.Max(1f, Screen.height);
+                controlledCamera.transform.position += (-right * state.MousePanDelta.x - forward * state.MousePanDelta.y) * (worldPerPixel * mouseDragSensitivity);
+            }
+
             ClampCameraPosition();
 
             if (Mathf.Abs(state.Zoom) > 0.01f)

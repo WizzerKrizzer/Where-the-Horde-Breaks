@@ -39,9 +39,10 @@ namespace TowerDefense.Input
 
             var pointerOverUi = IsPointerOverBlockingUi();
             var pan = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
+            var mousePanDelta = Vector2.zero;
             if (!pointerOverUi && UnityEngine.Input.GetMouseButton(1))
             {
-                pan += new Vector2(-UnityEngine.Input.GetAxisRaw("Mouse X"), -UnityEngine.Input.GetAxisRaw("Mouse Y")) * 14f;
+                mousePanDelta = new Vector2(UnityEngine.Input.GetAxisRaw("Mouse X"), UnityEngine.Input.GetAxisRaw("Mouse Y"));
             }
 
             UpdateTowerHotkeySelection();
@@ -50,6 +51,7 @@ namespace TowerDefense.Input
             Current = new GameInputState
             {
                 Pan = pan,
+                MousePanDelta = mousePanDelta,
                 Zoom = pointerOverUi ? 0f : UnityEngine.Input.mouseScrollDelta.y,
                 FireActive = leftClick,
                 PlaceTower = leftClick,

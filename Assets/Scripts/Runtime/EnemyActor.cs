@@ -30,6 +30,7 @@ namespace TowerDefense.Runtime
         private bool active;
         private ICombatTarget currentCombatTarget;
         private Renderer bodyRenderer;
+        private GameObject healthRoot;
         private Transform healthFill;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
@@ -77,7 +78,15 @@ namespace TowerDefense.Runtime
                 bodyRenderer.material = BootstrapMaterials.Get(enemyDefinition.color);
             }
 
-            EnsureHealthBar();
+            if (!endpointSeeking)
+            {
+                EnsureHealthBar();
+            }
+            else if (healthRoot != null)
+            {
+                healthRoot.SetActive(false);
+            }
+
             UpdateHealthBar();
             gameObject.SetActive(true);
             SnapToPathPosition();
@@ -341,7 +350,9 @@ namespace TowerDefense.Runtime
             var endpointDirection = toEnd.sqrMagnitude > 0.001f ? toEnd.normalized : roadTangent;
 
             var forwardBias = Vector3.Dot(roadTangent, endpointDirection) >= 0f ? roadTangent : -roadTangent;
-            var desiredDirection = (endpointDirection * 0.62f + forwardBias * 0.88f).normalized;
+            var centerPull = nearestRoad - transform.position;
+            centerPull.y = 0f;
+            var desiredDirection = (endpointDirection * 0.22f + forwardBias * 1.15f + centerPull.normalized * 0.55f).normalized;
             var separationVelocity = GetSeparationOffset(transform.position) * (SeparationVelocityScale * 1.18f);
             var desiredVelocity = desiredDirection * currentSpeed + separationVelocity;
 
@@ -469,7 +480,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (!endpointSeeking && Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
+                if (!IsRelevantSeparationNeighbor(other, origin))
                 {
                     continue;
                 }
@@ -512,7 +523,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (!endpointSeeking && Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
+                if (!IsRelevantSeparationNeighbor(other, position))
                 {
                     continue;
                 }
@@ -542,6 +553,18 @@ namespace TowerDefense.Runtime
         {
             var combinedScale = definition.visualScale + (other.Definition?.visualScale ?? definition.visualScale);
             return Mathf.Max(0.62f, combinedScale * SeparationRadiusScale);
+        }
+
+        private bool IsRelevantSeparationNeighbor(EnemyActor other, Vector3 origin)
+        {
+            if (!endpointSeeking)
+            {
+                return Mathf.Abs(other.PathDistance - pathDistance) <= SeparationPathWindow;
+            }
+
+            var dx = other.transform.position.x - origin.x;
+            var dz = other.transform.position.z - origin.z;
+            return dx * dx + dz * dz <= 10.5f;
         }
 
         private Vector3 GetPathTangent(float distance)
@@ -642,10 +665,12 @@ namespace TowerDefense.Runtime
         {
             if (healthFill != null)
             {
+                healthRoot?.SetActive(true);
                 return;
             }
 
             var root = new GameObject("HealthBar");
+            healthRoot = root;
             root.transform.SetParent(transform, false);
             root.transform.localPosition = new Vector3(0f, 1.35f, 0f);
             root.transform.localRotation = Quaternion.identity;
@@ -670,6 +695,11 @@ namespace TowerDefense.Runtime
         private void UpdateHealthBar()
         {
             if (healthFill == null || definition == null)
+            {
+                return;
+            }
+
+            if (healthRoot != null && !healthRoot.activeSelf)
             {
                 return;
             }

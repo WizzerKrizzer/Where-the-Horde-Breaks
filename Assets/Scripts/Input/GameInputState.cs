@@ -5,6 +5,7 @@ namespace TowerDefense.Input
     public struct GameInputState
     {
         public Vector2 Pan;
+        public Vector2 MousePanDelta;
         public float Zoom;
         public bool FireActive;
         public bool PlaceTower;

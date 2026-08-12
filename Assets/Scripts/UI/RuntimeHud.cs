@@ -18,6 +18,7 @@ namespace TowerDefense.UI
         private EnemyManager enemies;
         private ActiveWeaponController activeWeapon;
         private Text statusText;
+        private Text fpsText;
         private Text towerText;
         private GameObject activeWeaponSlot;
         private Image activeWeaponIcon;
@@ -115,7 +116,9 @@ namespace TowerDefense.UI
         {
             statusText = CreateText("Status", parent, new Vector2(12f, -12f), TextAnchor.UpperLeft, 13);
             statusText.GetComponent<RectTransform>().sizeDelta = new Vector2(420f, 96f);
-            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -84f), TextAnchor.UpperLeft, 13);
+            fpsText = CreateText("FpsCounter", parent, new Vector2(12f, -106f), TextAnchor.UpperLeft, 11);
+            fpsText.GetComponent<RectTransform>().sizeDelta = new Vector2(120f, 22f);
+            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
             CreateActiveWeaponSlot(parent);
             CreateSelectedTowerPanel(parent);
@@ -161,6 +164,7 @@ namespace TowerDefense.UI
             }
 
             statusText.text = text.ToString();
+            UpdateFpsCounter();
             UpdateTowerText();
             UpdateSelectedTowerPanel();
             UpdateActiveWeaponSlot();
@@ -172,6 +176,23 @@ namespace TowerDefense.UI
             UpdateUpgradePanel();
             UpdateStatsPanel();
             UpdateCodexPanel();
+        }
+
+        private void UpdateFpsCounter()
+        {
+            if (fpsText == null)
+            {
+                return;
+            }
+
+            var delta = Time.unscaledDeltaTime;
+            var fps = delta > 0.0001f ? 1f / delta : 0f;
+            fpsText.text = $"FPS: {fps:0}";
+            fpsText.color = fps >= 55f
+                ? new Color(0.55f, 1f, 0.6f, 0.95f)
+                : fps >= 30f
+                    ? new Color(1f, 0.85f, 0.35f, 0.95f)
+                    : new Color(1f, 0.35f, 0.3f, 0.95f);
         }
 
         private void HandleHudShortcuts()
