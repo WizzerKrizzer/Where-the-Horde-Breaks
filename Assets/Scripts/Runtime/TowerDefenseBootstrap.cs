@@ -65,9 +65,9 @@ namespace TowerDefense.Runtime
             }
 
             mapRoot = new GameObject("LevelMap");
-            CreateGround(mapRoot.transform);
+            CreateGround(mapRoot.transform, level);
             var route = CreatePath(level, mapRoot.transform);
-            CreateMapDecor(mapRoot.transform);
+            CreateMapDecor(mapRoot.transform, level);
             ApplyLevelCamera(level);
             return route;
         }
@@ -106,21 +106,27 @@ namespace TowerDefense.Runtime
             go.transform.rotation = Quaternion.Euler(55f, 35f, 0f);
         }
 
-        private static void CreateGround(Transform parent)
+        private static void CreateGround(Transform parent, LevelDefinition level)
         {
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "BuildableGround";
             ground.transform.SetParent(parent, false);
-            ground.transform.position = new Vector3(0f, -0.08f, 1.5f);
-            ground.transform.localScale = new Vector3(82f, 0.1f, 50f);
+            ground.transform.position = level != null ? level.groundCenter : new Vector3(0f, -0.08f, 1.5f);
+            ground.transform.localScale = level != null ? level.groundSize : new Vector3(82f, 0.1f, 50f);
             ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
-            CreateGroundTexture(parent);
+            CreateGroundTexture(parent, level);
         }
 
-        private static void CreateGroundTexture(Transform parent)
+        private static void CreateGroundTexture(Transform parent, LevelDefinition level)
         {
             var root = new GameObject("GroundTexture");
             root.transform.SetParent(parent, false);
+            if (level != null && level.decorVariant == 2)
+            {
+                CreateLargeMapGroundTexture(root.transform, level.groundCenter, level.groundSize);
+                return;
+            }
+
             var patches = new[]
             {
                 new Vector3(-34f, 0f, -14f), new Vector3(-29f, 0f, 16f), new Vector3(-24f, 0f, -18f),
@@ -151,6 +157,27 @@ namespace TowerDefense.Runtime
                 var x = -37f + i * 2.1f;
                 var z = -21.2f + Mathf.Sin(i * 1.12f) * 0.9f;
                 CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.18f + 0.07f * (i % 5), new Color(0.22f, 0.28f, 0.17f), i + 100);
+            }
+        }
+
+        private static void CreateLargeMapGroundTexture(Transform parent, Vector3 center, Vector3 size)
+        {
+            var left = center.x - size.x * 0.5f + 4f;
+            var right = center.x + size.x * 0.5f - 4f;
+            var bottom = center.z - size.z * 0.5f + 4f;
+            var top = center.z + size.z * 0.5f - 4f;
+            for (var i = 0; i < 70; i++)
+            {
+                var x = Mathf.Lerp(left, right, Mathf.Abs(Mathf.Sin(i * 2.173f)));
+                var z = Mathf.Lerp(bottom, top, Mathf.Abs(Mathf.Sin(i * 1.417f + 0.31f)));
+                var avoidCenter = Mathf.Abs(z) < 19f && x > -48f && x < 48f;
+                if (avoidCenter)
+                {
+                    z += z >= 0f ? 10f : -10f;
+                }
+
+                var color = i % 4 == 0 ? new Color(0.22f, 0.28f, 0.17f) : new Color(0.33f, 0.4f, 0.26f);
+                CreateGroundPatch(parent, new Vector3(x, 0f, z), 0.25f + 0.12f * (i % 5), color, i + 200);
             }
         }
 
@@ -342,14 +369,44 @@ namespace TowerDefense.Runtime
             return Vector3.Cross(Vector3.up, forward);
         }
 
-        private static void CreateMapDecor(Transform parent)
+        private static void CreateMapDecor(Transform parent, LevelDefinition level)
         {
             var root = new GameObject("MapDecor");
             root.transform.SetParent(parent, false);
+            if (level != null && level.decorVariant == 2)
+            {
+                CreateLevelTwoDecor(root.transform);
+                return;
+            }
+
             CreateTrees(root.transform);
             CreateRuinedHouses(root.transform);
             CreatePondAndVillageProps(root.transform);
             CreateVillageFires(root.transform);
+        }
+
+        private static void CreateLevelTwoDecor(Transform parent)
+        {
+            CreateTreeCluster(parent, new Vector3(-58f, 0f, 23f), 5, 0);
+            CreateTreeCluster(parent, new Vector3(-52f, 0f, -23f), 4, 10);
+            CreateTreeCluster(parent, new Vector3(54f, 0f, 23f), 5, 20);
+            CreateTreeCluster(parent, new Vector3(57f, 0f, -22f), 4, 30);
+            CreateTreeCluster(parent, new Vector3(0f, 0f, 28f), 3, 40);
+            CreateTreeCluster(parent, new Vector3(0f, 0f, -28f), 3, 50);
+            CreateRuinedHouse(parent, new Vector3(-44f, 0f, 18f), 0.9f, -8f);
+            CreateRuinedHouse(parent, new Vector3(44f, 0f, -18f), 0.9f, 172f);
+            CreateWell(parent, new Vector3(0f, 0f, 25f), 0.7f);
+            CreateDecorCube(parent, "DecorLevel2MarkerStoneA", new Vector3(-34f, 0.12f, 0f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
+            CreateDecorCube(parent, "DecorLevel2MarkerStoneB", new Vector3(34f, 0.12f, 0f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
+        }
+
+        private static void CreateTreeCluster(Transform parent, Vector3 center, int count, int seed)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var offset = new Vector3(Mathf.Sin((seed + i) * 1.7f) * 2.4f, 0f, Mathf.Cos((seed + i) * 1.31f) * 2.1f);
+                CreateTree(parent, center + offset, 0.75f + 0.12f * (i % 4), seed + i);
+            }
         }
 
         private static void CreateTrees(Transform parent)
@@ -675,6 +732,9 @@ namespace TowerDefense.Runtime
             level.startingLives = 10;
             level.wave = wave;
             level.pathWaypoints = CreateLevelOnePath();
+            level.groundCenter = new Vector3(0f, -0.08f, 1.5f);
+            level.groundSize = new Vector3(82f, 0.1f, 50f);
+            level.decorVariant = 1;
             level.cameraPosition = new Vector3(0f, 24f, -20f);
             level.cameraFieldOfView = 45f;
             level.cameraMinBounds = new Vector2(-36f, -22f);
@@ -701,10 +761,13 @@ namespace TowerDefense.Runtime
             levelTwo.wave = levelTwoWave;
             levelTwo.pathWaypoints = CreateLevelTwoPath();
             levelTwo.secondaryPathWaypoints = CreateLevelTwoSecondaryPath();
-            levelTwo.cameraPosition = new Vector3(0f, 34f, -26f);
-            levelTwo.cameraFieldOfView = 48f;
-            levelTwo.cameraMinBounds = new Vector2(-54f, -30f);
-            levelTwo.cameraMaxBounds = new Vector2(54f, 30f);
+            levelTwo.groundCenter = new Vector3(0f, -0.08f, 0f);
+            levelTwo.groundSize = new Vector3(126f, 0.1f, 70f);
+            levelTwo.decorVariant = 2;
+            levelTwo.cameraPosition = new Vector3(0f, 42f, -32f);
+            levelTwo.cameraFieldOfView = 50f;
+            levelTwo.cameraMinBounds = new Vector2(-62f, -34f);
+            levelTwo.cameraMaxBounds = new Vector2(62f, 34f);
             levelTwo.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             levelTwo.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
             levelTwo.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 12);
