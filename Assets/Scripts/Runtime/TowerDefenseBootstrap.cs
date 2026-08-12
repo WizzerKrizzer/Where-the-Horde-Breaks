@@ -805,10 +805,10 @@ namespace TowerDefense.Runtime
 
             var levelThreeWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelThreeWave.id = "wave_03_foundation";
-            levelThreeWave.totalEnemyCount = 840;
-            levelThreeWave.spawnInterval = 0.38f;
-            levelThreeWave.randomSpawnBurstMin = 6;
-            levelThreeWave.randomSpawnBurstMax = 14;
+            levelThreeWave.totalEnemyCount = 2040;
+            levelThreeWave.spawnInterval = 0.34f;
+            levelThreeWave.randomSpawnBurstMin = 9;
+            levelThreeWave.randomSpawnBurstMax = 20;
             levelThreeWave.entries = BuildLevelThreeWaveEntries(runner, brute, shaman, vampire, harpy, zombie);
 
             var levelThree = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -1672,17 +1672,17 @@ namespace TowerDefense.Runtime
             EnemyDefinition zombie)
         {
             var entries = new List<WaveEntry>();
-            AddWaveEntries(entries, runner, 160, 12);
-            AddWaveEntries(entries, zombie, 95, 7);
-            AddWaveEntries(entries, runner, 120, 10);
-            AddWaveEntries(entries, brute, 48, 3);
-            AddWaveEntries(entries, shaman, 18, 1);
-            AddWaveEntries(entries, runner, 135, 12);
-            AddWaveEntries(entries, harpy, 54, 4);
-            AddWaveEntries(entries, zombie, 80, 6);
-            AddWaveEntries(entries, vampire, 20, 1);
-            AddWaveEntries(entries, brute, 52, 4);
-            AddWaveEntries(entries, runner, 58, 8);
+            AddWaveEntries(entries, runner, 360, 18);
+            AddWaveEntries(entries, zombie, 230, 11);
+            AddWaveEntries(entries, runner, 270, 17);
+            AddWaveEntries(entries, brute, 120, 5);
+            AddWaveEntries(entries, shaman, 45, 2);
+            AddWaveEntries(entries, runner, 330, 20);
+            AddWaveEntries(entries, harpy, 135, 7);
+            AddWaveEntries(entries, zombie, 210, 10);
+            AddWaveEntries(entries, vampire, 55, 2);
+            AddWaveEntries(entries, brute, 135, 6);
+            AddWaveEntries(entries, runner, 150, 18);
             return entries.ToArray();
         }
 
