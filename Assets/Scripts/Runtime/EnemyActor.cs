@@ -24,6 +24,7 @@ namespace TowerDefense.Runtime
         private float slowMultiplier = 1f;
         private bool reviveUsed;
         private bool waitingToRevive;
+        private bool endpointSeeking;
         private float reviveTimer;
         private float currentMaxHealth;
         private bool active;
@@ -46,18 +47,19 @@ namespace TowerDefense.Runtime
         public bool IsAlive => active && health > 0f;
         public event Action<EnemyActor> Died;
 
-        public void Initialize(EnemyDefinition enemyDefinition, PathRoute route, EnemyManager enemyOwner, float initialOffset)
+        public void Initialize(EnemyDefinition enemyDefinition, PathRoute route, EnemyManager enemyOwner, float initialOffset, bool useEndpointSeeking = false)
         {
             definition = enemyDefinition;
             path = route;
             owner = enemyOwner;
+            endpointSeeking = useEndpointSeeking;
             currentMaxHealth = enemyDefinition.maxHealth;
             health = currentMaxHealth;
             pathDistance = initialOffset;
             laneOffset = UnityEngine.Random.Range(-1.35f, 1.35f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
             crowdOffset = Vector3.zero;
             knockbackOffset = Vector3.zero;
-            movementVelocity = GetPathTangent(pathDistance) * enemyDefinition.speed;
+            movementVelocity = (endpointSeeking ? GetEndpointDirection() : GetPathTangent(pathDistance)) * enemyDefinition.speed;
             burnStacks.Clear();
             attackCooldown = 0f;
             healCooldown = enemyDefinition.healInterval;
@@ -132,10 +134,17 @@ namespace TowerDefense.Runtime
                 }
             }
 
-            UpdatePathPhysics();
+            if (endpointSeeking)
+            {
+                UpdateEndpointPhysics();
+            }
+            else
+            {
+                UpdatePathPhysics();
+            }
             UpdateBurns();
             UpdateHealthBar();
-            if (pathDistance >= path.TotalLength)
+            if ((!endpointSeeking && pathDistance >= path.TotalLength) || (endpointSeeking && HasReachedEndpoint()))
             {
                 active = false;
                 ReleaseCombatTarget();
@@ -320,6 +329,36 @@ namespace TowerDefense.Runtime
             transform.position = pathPosition + offset;
         }
 
+        private void UpdateEndpointPhysics()
+        {
+            var deltaTime = Time.deltaTime;
+            var currentSpeed = definition.speed * slowMultiplier;
+            var nearestRoad = path.GetNearestRoadPoint(transform.position, out var roadTangent);
+            nearestRoad.y = transform.position.y;
+
+            var toEnd = path.EndPoint - transform.position;
+            toEnd.y = 0f;
+            var endpointDirection = toEnd.sqrMagnitude > 0.001f ? toEnd.normalized : roadTangent;
+
+            var forwardBias = Vector3.Dot(roadTangent, endpointDirection) >= 0f ? roadTangent : -roadTangent;
+            var desiredDirection = (endpointDirection * 0.62f + forwardBias * 0.88f).normalized;
+            var separationVelocity = GetSeparationOffset(transform.position) * (SeparationVelocityScale * 1.18f);
+            var desiredVelocity = desiredDirection * currentSpeed + separationVelocity;
+
+            movementVelocity = Vector3.MoveTowards(movementVelocity, desiredVelocity, SteeringAcceleration * 1.18f * deltaTime);
+            movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * 0.06f * deltaTime);
+            knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, deltaTime * 3.2f);
+
+            var nextPosition = transform.position + (movementVelocity * deltaTime) + (knockbackOffset * deltaTime * 0.45f);
+            nextPosition.y = nearestRoad.y;
+            nextPosition = ConstrainToNearestRoad(nextPosition);
+            nextPosition = ApplyHardOverlapCorrection(nextPosition, GetRoadSide(nextPosition));
+            nextPosition = ConstrainToNearestRoad(nextPosition);
+            transform.position = nextPosition;
+
+            pathDistance = Mathf.Max(0f, path.TotalLength - Vector3.Distance(transform.position, path.EndPoint));
+        }
+
         private void UpdatePathPhysics()
         {
             var deltaTime = Time.deltaTime;
@@ -388,6 +427,26 @@ namespace TowerDefense.Runtime
             return position;
         }
 
+        private Vector3 ConstrainToNearestRoad(Vector3 position)
+        {
+            var roadPoint = path.GetNearestRoadPoint(position, out var tangent);
+            var side = Vector3.Cross(Vector3.up, tangent.normalized);
+            var fromCenter = position - roadPoint;
+            fromCenter.y = 0f;
+            var lateral = Vector3.Dot(fromCenter, side);
+            var clampedLateral = Mathf.Clamp(lateral, -RoadHalfWidth, RoadHalfWidth);
+            if (!Mathf.Approximately(lateral, clampedLateral))
+            {
+                var excess = lateral - clampedLateral;
+                position -= side * excess;
+                var lateralVelocity = Vector3.Dot(movementVelocity, side);
+                movementVelocity -= side * lateralVelocity * (1f + WallBounce * 1.65f);
+                movementVelocity += tangent.normalized * Mathf.Abs(excess) * 0.72f;
+            }
+
+            return position;
+        }
+
         private void UpdateCrowdOffset()
         {
             var desiredOffset = GetSeparationOffset(transform.position);
@@ -410,7 +469,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
+                if (!endpointSeeking && Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
                 {
                     continue;
                 }
@@ -421,7 +480,7 @@ namespace TowerDefense.Runtime
                 var desiredDistance = GetDesiredSeparationDistance(other);
                 if (distance <= 0.001f)
                 {
-                    away = GetPathSide(pathDistance) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
+                    away = (endpointSeeking ? GetRoadSide(origin) : GetPathSide(pathDistance)) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
                     distance = 0.001f;
                 }
 
@@ -453,7 +512,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
+                if (!endpointSeeking && Mathf.Abs(other.PathDistance - pathDistance) > SeparationPathWindow)
                 {
                     continue;
                 }
@@ -516,6 +575,41 @@ namespace TowerDefense.Runtime
             }
 
             return Vector3.Cross(Vector3.up, tangent.normalized);
+        }
+
+        private Vector3 GetRoadSide(Vector3 position)
+        {
+            if (path == null)
+            {
+                return Vector3.right;
+            }
+
+            path.GetNearestRoadPoint(position, out var tangent);
+            return Vector3.Cross(Vector3.up, tangent.normalized);
+        }
+
+        private Vector3 GetEndpointDirection()
+        {
+            if (path == null)
+            {
+                return Vector3.forward;
+            }
+
+            var direction = path.EndPoint - path.Sample(pathDistance);
+            direction.y = 0f;
+            return direction.sqrMagnitude < 0.001f ? Vector3.forward : direction.normalized;
+        }
+
+        private bool HasReachedEndpoint()
+        {
+            if (path == null)
+            {
+                return false;
+            }
+
+            var toEnd = path.EndPoint - transform.position;
+            toEnd.y = 0f;
+            return toEnd.sqrMagnitude <= 4.5f;
         }
 
         private void UpdateBurns()

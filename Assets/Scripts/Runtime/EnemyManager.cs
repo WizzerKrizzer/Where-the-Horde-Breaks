@@ -514,7 +514,7 @@ namespace TowerDefense.Runtime
         private void Spawn(EnemyDefinition enemyDefinition, float initialOffset, bool countTowardWaveTotal)
         {
             var actor = pool.Count > 0 ? pool.Dequeue() : CreateEnemyActor(enemyDefinition);
-            actor.Initialize(enemyDefinition, path, this, Mathf.Clamp(initialOffset, 0f, path.TotalLength));
+            actor.Initialize(enemyDefinition, path, this, Mathf.Clamp(initialOffset, 0f, path.TotalLength), wave != null && wave.useEndpointSeeking);
             activeEnemies.Add(actor);
             if (countTowardWaveTotal)
             {

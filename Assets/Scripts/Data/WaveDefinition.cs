@@ -11,6 +11,7 @@ namespace TowerDefense.Data
         public int randomSpawnBurstMin;
         public int randomSpawnBurstMax;
         public int[] spawnBurstPattern;
+        public bool useEndpointSeeking;
         public WaveEntry[] entries;
     }
 }

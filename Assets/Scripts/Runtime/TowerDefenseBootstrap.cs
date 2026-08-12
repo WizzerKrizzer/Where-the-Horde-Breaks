@@ -229,6 +229,7 @@ namespace TowerDefense.Runtime
             CreatePathVisuals(parent, points);
             if (level?.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
             {
+                route.SetSecondaryWaypoints(level.secondaryPathWaypoints);
                 CreatePathVisuals(parent, level.secondaryPathWaypoints);
             }
 
@@ -748,11 +749,15 @@ namespace TowerDefense.Runtime
 
             var levelTwoWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelTwoWave.id = "wave_02_placeholder";
-            levelTwoWave.totalEnemyCount = 0;
+            levelTwoWave.totalEnemyCount = 500;
             levelTwoWave.spawnInterval = 0.45f;
-            levelTwoWave.randomSpawnBurstMin = 4;
-            levelTwoWave.randomSpawnBurstMax = 9;
-            levelTwoWave.entries = System.Array.Empty<WaveEntry>();
+            levelTwoWave.randomSpawnBurstMin = 5;
+            levelTwoWave.randomSpawnBurstMax = 12;
+            levelTwoWave.useEndpointSeeking = true;
+            levelTwoWave.entries = new[]
+            {
+                new WaveEntry { enemy = runner, count = 500 }
+            };
 
             var levelTwo = ScriptableObject.CreateInstance<LevelDefinition>();
             levelTwo.id = "level_02";
