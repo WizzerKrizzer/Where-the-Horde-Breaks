@@ -211,7 +211,7 @@ namespace TowerDefense.Runtime
             line.widthMultiplier = 0.42f;
             line.numCornerVertices = 4;
             line.numCapVertices = 2;
-            line.material = BootstrapMaterials.Get(new Color(0.08f, 0.13f, 0.065f));
+            line.material = BootstrapMaterials.Get(new Color(0.13f, 0.34f, 0.13f));
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
 
