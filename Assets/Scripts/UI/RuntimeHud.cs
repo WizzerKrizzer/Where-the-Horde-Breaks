@@ -143,6 +143,14 @@ namespace TowerDefense.UI
             var profile = session.Profile;
             var text = new StringBuilder();
             text.AppendLine($"{session.Level.displayName}   Lives: {session.Lives}");
+            if (session.Level.wave == null || session.Level.wave.totalEnemyCount <= 0)
+            {
+                text.AppendLine("Wave: placeholder / no enemies");
+            }
+            else if (session.Level.wave.useEndpointSeeking)
+            {
+                text.AppendLine("Wave: endpoint flow test");
+            }
             text.AppendLine($"Spawned: {enemies.TotalSpawned}");
             text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.KillEssence)}   {FormatCurrencyBalance(profile, CurrencyType.VictorySigil)}   {FormatCurrencyBalance(profile, CurrencyType.PerfectSigil)}");
             text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.ChallengeToken)}   {FormatCurrencyBalance(profile, CurrencyType.BossCore)}");
@@ -1012,6 +1020,8 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.SelectLevel("level_01"));
             CreateButton("DevLoadLevel2", content.transform, "LOAD LEVEL 2", new Vector2(0f, -646f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_02"));
+            CreateButton("DevLoadLevel3", content.transform, "LOAD LEVEL 3", new Vector2(0f, -674f), new Vector2(178f, 24f), 11)
+                .onClick.AddListener(() => session.SelectLevel("level_03"));
 
             devPanelVisible = false;
             devPanel.SetActive(false);
@@ -1687,7 +1697,11 @@ namespace TowerDefense.UI
             text.AppendLine("Wave");
             text.AppendLine($"Total enemies: {level.wave?.totalEnemyCount ?? 0}");
             text.AppendLine(FormatWaveComposition(level.wave));
-            text.AppendLine($"Path length: {session.PathLength:0.0}m");
+            text.AppendLine($"Path length: {GetLevelPathLength(level):0.0}m");
+            if (level.wave != null && level.wave.useEndpointSeeking)
+            {
+                text.AppendLine("Pathing: endpoint-seeking crowd flow");
+            }
             text.AppendLine($"Estimated duration: {FormatWaveDuration(level.wave)}");
             text.AppendLine();
             text.AppendLine("Recommended tactics");
@@ -1763,6 +1777,33 @@ namespace TowerDefense.UI
             }
 
             return text.ToString();
+        }
+
+        private static float GetLevelPathLength(LevelDefinition level)
+        {
+            if (level?.pathWaypoints == null || level.pathWaypoints.Length < 2)
+            {
+                return 0f;
+            }
+
+            var length = GetPolylineLength(level.pathWaypoints);
+            if (level.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
+            {
+                length = Mathf.Max(length, GetPolylineLength(level.secondaryPathWaypoints));
+            }
+
+            return length;
+        }
+
+        private static float GetPolylineLength(Vector3[] points)
+        {
+            var length = 0f;
+            for (var i = 1; i < points.Length; i++)
+            {
+                length += Vector3.Distance(points[i - 1], points[i]);
+            }
+
+            return length;
         }
 
         private static string FormatWaveDuration(WaveDefinition wave)

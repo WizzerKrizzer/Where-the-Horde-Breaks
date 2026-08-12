@@ -2,19 +2,23 @@
 
 **Where the Horde Breaks** is a PC tower defense roguelite prototype about building a defense before each battle, then surviving relentless waves with permanent progression and an actively aimed weapon.
 
-This repository currently contains an early Unity prototype focused on validating the core loop: build, start wave, fight, earn currencies, retry, and spend upgrades.
+This repository currently contains an early Unity prototype focused on validating the core loop: build, start wave, fight, earn currencies, retry, spend upgrades, and test increasingly dense enemy flow.
 
 ## Current Prototype
 
 - Top-down 2.5D tower defense camera with pan and zoom.
 - Build phase before each wave.
 - Combat phase with tower automation and a mouse-aimed active weapon.
-- Fixed enemy path with continuous wave spawning.
+- Continuous waves with fixed-path and experimental endpoint-seeking enemy movement.
 - Persistent per-level tower layout.
 - Permanent currencies and profile save data.
 - Prototype skill tree / upgrade panel.
-- Dev wallet for testing currencies, upgrade reset, and test speed.
+- Dev wallet for testing currencies, upgrade reset, test speed, level loading, save snapshots, and automated balance runs.
 - Enemy health bars, tower placement preview, range display, and placement error popups.
+- Three prototype levels:
+  - Level 1: playable balance target and first progression slice.
+  - Level 2: larger split-road map with experimental crowd-flow pathing.
+  - Level 3: foundation map with mixed undead/support/flying enemies for future design work.
 
 ## Unity Version
 
@@ -45,6 +49,9 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 - `Space` / `Enter`: start the wave
 - Left mouse during combat: fire active weapon
 - `R`: return to build phase / retry with saved tower positions
+- `Tab`: open damage stats
+- `G`: open the Breaker's Grimoire
+- `` ` ``: open developer tools
 
 ## Prototype UI
 
@@ -52,7 +59,8 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 - Result panel appears after victory or defeat.
 - `Retry` returns to build phase.
 - `Upgrades` opens the prototype skill tree.
-- `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, and test speed.
+- `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, test speed, save/load dev snapshots, switch prototype levels, and run balance automation.
+- The Breaker's Grimoire contains prototype entries for turrets, active weapons, enemies, bosses, and levels.
 
 ## Design Direction
 
@@ -64,7 +72,7 @@ Planned systems include:
 - Unlockable tower types and tower limits.
 - Multiple permanent currencies.
 - Level replay rewards and challenge objectives.
-- More enemy roles, support units, saboteurs, bosses, and high-density horde optimization.
+- More enemy roles, support units, saboteurs, bosses, multi-path maps, and high-density horde optimization.
 - Future mobile-port-friendly architecture.
 
 ## Status

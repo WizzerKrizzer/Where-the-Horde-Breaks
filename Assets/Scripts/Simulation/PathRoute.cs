@@ -11,6 +11,8 @@ namespace TowerDefense.Simulation
         public IReadOnlyList<Vector3> Waypoints => waypoints;
         public IReadOnlyList<Vector3> SecondaryWaypoints => secondaryWaypoints;
         public float TotalLength { get; private set; }
+        public bool HasUsableRoute => waypoints.Count > 1;
+        public Vector3 StartPoint => waypoints.Count > 0 ? waypoints[0] : transform.position;
         public Vector3 EndPoint => waypoints.Count > 0 ? waypoints[^1] : transform.position;
 
         private void Awake()
@@ -36,12 +38,17 @@ namespace TowerDefense.Simulation
 
         public Vector3 Sample(float distance)
         {
+            if (waypoints.Count == 0)
+            {
+                return transform.position;
+            }
+
             return PathSampler.Sample(waypoints, distance);
         }
 
         public Vector3 GetNearestRoadPoint(Vector3 position, out Vector3 tangent)
         {
-            var bestPoint = position;
+            var bestPoint = waypoints.Count > 0 ? waypoints[0] : position;
             var bestTangent = Vector3.forward;
             var bestDistanceSq = float.PositiveInfinity;
             FindNearestPointOnRoute(waypoints, position, ref bestPoint, ref bestTangent, ref bestDistanceSq);

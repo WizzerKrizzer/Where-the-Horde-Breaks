@@ -54,6 +54,10 @@ namespace TowerDefense.Runtime
             totalSpawned = 0;
             totalResolved = 0;
             BuildSpawnSequence();
+            if (path == null || !path.HasUsableRoute || spawnSequence.Count == 0)
+            {
+                wave = null;
+            }
         }
 
         public void StopWave()
@@ -64,7 +68,7 @@ namespace TowerDefense.Runtime
 
         public void SpawnDebug(EnemyDefinition enemyDefinition, PathRoute route)
         {
-            if (enemyDefinition == null || route == null)
+            if (enemyDefinition == null || route == null || !route.HasUsableRoute)
             {
                 return;
             }
@@ -75,7 +79,7 @@ namespace TowerDefense.Runtime
 
         public void SpawnConvertedEnemy(EnemyDefinition enemyDefinition, Vector3 position)
         {
-            if (enemyDefinition == null || path == null)
+            if (enemyDefinition == null || path == null || !path.HasUsableRoute)
             {
                 return;
             }
@@ -513,6 +517,11 @@ namespace TowerDefense.Runtime
 
         private void Spawn(EnemyDefinition enemyDefinition, float initialOffset, bool countTowardWaveTotal)
         {
+            if (path == null || !path.HasUsableRoute)
+            {
+                return;
+            }
+
             var actor = pool.Count > 0 ? pool.Dequeue() : CreateEnemyActor(enemyDefinition);
             actor.Initialize(enemyDefinition, path, this, Mathf.Clamp(initialOffset, 0f, path.TotalLength), wave != null && wave.useEndpointSeeking);
             activeEnemies.Add(actor);
