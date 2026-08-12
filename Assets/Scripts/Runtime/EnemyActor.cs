@@ -33,6 +33,7 @@ namespace TowerDefense.Runtime
         private Renderer bodyRenderer;
         private GameObject healthRoot;
         private Transform healthFill;
+        private float healthBarTimer;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
         private const float SteeringAcceleration = 6.8f;
@@ -79,11 +80,8 @@ namespace TowerDefense.Runtime
                 bodyRenderer.material = BootstrapMaterials.Get(enemyDefinition.color);
             }
 
-            if (!endpointSeeking)
-            {
-                EnsureHealthBar();
-            }
-            else if (healthRoot != null)
+            healthBarTimer = 0f;
+            if (healthRoot != null)
             {
                 healthRoot.SetActive(false);
             }
@@ -105,6 +103,7 @@ namespace TowerDefense.Runtime
                     health = currentMaxHealth * 0.5f;
                     gameObject.SetActive(true);
                     SnapToPathPosition();
+                    ShowHealthBarBriefly();
                     UpdateHealthBar();
                 }
                 return;
@@ -114,6 +113,8 @@ namespace TowerDefense.Runtime
             {
                 return;
             }
+
+            UpdateHealthBarVisibility();
 
             if (slowTimer > 0f)
             {
@@ -218,6 +219,7 @@ namespace TowerDefense.Runtime
             }
 
             health = Mathf.Min(currentMaxHealth, health + amount);
+            ShowHealthBarBriefly();
             UpdateHealthBar();
         }
 
@@ -230,6 +232,7 @@ namespace TowerDefense.Runtime
 
             var appliedDamage = Mathf.Min(health, damage);
             health -= damage;
+            ShowHealthBarBriefly();
             UpdateHealthBar();
             if (health > 0f)
             {
@@ -557,12 +560,7 @@ namespace TowerDefense.Runtime
 
         private IEnumerable<EnemyActor> GetSeparationCandidates(Vector3 origin, float endpointRadius)
         {
-            if (!endpointSeeking)
-            {
-                return owner.ActiveEnemies;
-            }
-
-            owner.CollectNearbyEnemies(origin, endpointRadius, nearbyEnemies);
+            owner.CollectNearbyEnemies(origin, endpointSeeking ? endpointRadius : 3.8f, nearbyEnemies);
             return nearbyEnemies;
         }
 
@@ -705,6 +703,7 @@ namespace TowerDefense.Runtime
             background.transform.localPosition = Vector3.zero;
             background.transform.localScale = new Vector3(1.15f, 0.08f, 0.12f);
             background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.03f, 0.03f, 0.035f, 1f));
+            RemovePrimitiveColliders(background);
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fill.name = "HealthBarFill";
@@ -712,7 +711,21 @@ namespace TowerDefense.Runtime
             fill.transform.localPosition = new Vector3(-0.575f, 0.012f, 0f);
             fill.transform.localScale = new Vector3(1.15f, 0.09f, 0.14f);
             fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.22f, 1f, 0.25f, 1f));
+            RemovePrimitiveColliders(fill);
             healthFill = fill.transform;
+        }
+
+        private static void RemovePrimitiveColliders(GameObject gameObject)
+        {
+            var components = gameObject.GetComponents<Component>();
+            for (var i = components.Length - 1; i >= 0; i--)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
         }
 
         private void UpdateHealthBar()
@@ -730,6 +743,32 @@ namespace TowerDefense.Runtime
             var normalizedHealth = Mathf.Clamp01(health / currentMaxHealth);
             healthFill.localScale = new Vector3(1.15f * normalizedHealth, 0.09f, 0.14f);
             healthFill.localPosition = new Vector3(-0.575f + 0.575f * normalizedHealth, 0.012f, 0f);
+        }
+
+        private void ShowHealthBarBriefly()
+        {
+            if (!IsAlive)
+            {
+                return;
+            }
+
+            EnsureHealthBar();
+            healthBarTimer = 1f;
+            healthRoot?.SetActive(true);
+        }
+
+        private void UpdateHealthBarVisibility()
+        {
+            if (healthRoot == null || !healthRoot.activeSelf)
+            {
+                return;
+            }
+
+            healthBarTimer -= Time.deltaTime;
+            if (healthBarTimer <= 0f)
+            {
+                healthRoot.SetActive(false);
+            }
         }
 
         private struct BurnStack
