@@ -81,7 +81,7 @@ namespace TowerDefense.Runtime
 
             mainCamera.transform.position = level.cameraPosition;
             mainCamera.fieldOfView = level.cameraFieldOfView;
-            cameraController?.ApplyView(level.cameraPosition, level.cameraFieldOfView, level.cameraMinBounds, level.cameraMaxBounds);
+            cameraController?.ApplyView(level.cameraPosition, level.cameraFieldOfView, level.cameraMinHeight, level.cameraMaxHeight, level.cameraMinBounds, level.cameraMaxBounds);
         }
 
         private static Camera CreateCamera()
@@ -761,6 +761,8 @@ namespace TowerDefense.Runtime
             level.decorVariant = 1;
             level.cameraPosition = new Vector3(0f, 24f, -20f);
             level.cameraFieldOfView = 45f;
+            level.cameraMinHeight = 8f;
+            level.cameraMaxHeight = 60f;
             level.cameraMinBounds = new Vector2(-36f, -22f);
             level.cameraMaxBounds = new Vector2(36f, 22f);
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
@@ -794,6 +796,8 @@ namespace TowerDefense.Runtime
             levelTwo.decorVariant = 2;
             levelTwo.cameraPosition = new Vector3(0f, 42f, -32f);
             levelTwo.cameraFieldOfView = 50f;
+            levelTwo.cameraMinHeight = 10f;
+            levelTwo.cameraMaxHeight = 88f;
             levelTwo.cameraMinBounds = new Vector2(-62f, -34f);
             levelTwo.cameraMaxBounds = new Vector2(62f, 34f);
             levelTwo.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
@@ -822,6 +826,8 @@ namespace TowerDefense.Runtime
             levelThree.decorVariant = 3;
             levelThree.cameraPosition = new Vector3(0f, 50f, -38f);
             levelThree.cameraFieldOfView = 52f;
+            levelThree.cameraMinHeight = 12f;
+            levelThree.cameraMaxHeight = 120f;
             levelThree.cameraMinBounds = new Vector2(-74f, -41f);
             levelThree.cameraMaxBounds = new Vector2(74f, 41f);
             levelThree.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);

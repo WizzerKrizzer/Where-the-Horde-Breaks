@@ -16,6 +16,8 @@ namespace TowerDefense.Data
         public int decorVariant;
         public Vector3 cameraPosition = new(0f, 24f, -20f);
         public float cameraFieldOfView = 45f;
+        public float cameraMinHeight = 8f;
+        public float cameraMaxHeight = 60f;
         public Vector2 cameraMinBounds = new(-36f, -22f);
         public Vector2 cameraMaxBounds = new(36f, 22f);
         public CurrencyAmount firstClearReward = new(CurrencyType.VictorySigil, 1);
