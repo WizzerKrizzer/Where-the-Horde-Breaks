@@ -12,10 +12,14 @@ namespace TowerDefense.Runtime
         private readonly List<ICombatTarget> combatTargets = new();
         private readonly Queue<EnemyActor> pool = new();
         private readonly List<EnemyDefinition> spawnSequence = new();
+        private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
         private readonly List<EnemyDistance> damageCandidates = new();
+        private const float SpatialCellSize = 3.2f;
+        private const int MaxNearbyEnemyResults = 42;
+        private int spatialBucketsFrame = -1;
         private float elapsed;
         private float spawnWindowStartTime;
         private float nextSpawnTime;
@@ -100,6 +104,88 @@ namespace TowerDefense.Runtime
                 Spawn(spawnSequence[totalSpawned]);
                 AdvanceSpawnSchedule();
             }
+        }
+
+        public void CollectNearbyEnemies(Vector3 position, float radius, List<EnemyActor> results)
+        {
+            results.Clear();
+            if (activeEnemies.Count == 0 || radius <= 0f)
+            {
+                return;
+            }
+
+            RebuildSpatialBucketsIfNeeded();
+            var center = GetSpatialCell(position);
+            var cellRadius = Mathf.CeilToInt(radius / SpatialCellSize);
+            var radiusSq = radius * radius;
+            for (var x = center.x - cellRadius; x <= center.x + cellRadius; x++)
+            {
+                for (var y = center.y - cellRadius; y <= center.y + cellRadius; y++)
+                {
+                    if (!spatialBuckets.TryGetValue(new Vector2Int(x, y), out var bucket))
+                    {
+                        continue;
+                    }
+
+                    for (var i = 0; i < bucket.Count; i++)
+                    {
+                        var enemy = bucket[i];
+                        if (enemy == null || !enemy.IsAlive)
+                        {
+                            continue;
+                        }
+
+                        var offset = enemy.transform.position - position;
+                        if (offset.x * offset.x + offset.z * offset.z <= radiusSq)
+                        {
+                            results.Add(enemy);
+                            if (results.Count >= MaxNearbyEnemyResults)
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void RebuildSpatialBucketsIfNeeded()
+        {
+            if (spatialBucketsFrame == Time.frameCount)
+            {
+                return;
+            }
+
+            spatialBucketsFrame = Time.frameCount;
+            foreach (var bucket in spatialBuckets.Values)
+            {
+                bucket.Clear();
+            }
+
+            for (var i = 0; i < activeEnemies.Count; i++)
+            {
+                var enemy = activeEnemies[i];
+                if (enemy == null || !enemy.IsAlive)
+                {
+                    continue;
+                }
+
+                var cell = GetSpatialCell(enemy.transform.position);
+                if (!spatialBuckets.TryGetValue(cell, out var bucket))
+                {
+                    bucket = new List<EnemyActor>(16);
+                    spatialBuckets.Add(cell, bucket);
+                }
+
+                bucket.Add(enemy);
+            }
+        }
+
+        private static Vector2Int GetSpatialCell(Vector3 position)
+        {
+            return new Vector2Int(
+                Mathf.FloorToInt(position.x / SpatialCellSize),
+                Mathf.FloorToInt(position.z / SpatialCellSize));
         }
 
         private void BuildSpawnSequence()
@@ -504,6 +590,7 @@ namespace TowerDefense.Runtime
             }
 
             activeEnemies.Clear();
+            spatialBucketsFrame = -1;
             if (clearCombatTargets)
             {
                 combatTargets.Clear();
@@ -560,9 +647,23 @@ namespace TowerDefense.Runtime
             var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             go.name = $"Enemy_{enemyDefinition.id}";
             go.transform.SetParent(transform);
+            RemovePrimitiveColliders(go);
             var renderer = go.GetComponent<Renderer>();
             renderer.material = BootstrapMaterials.Get(enemyDefinition.color);
             return go.AddComponent<EnemyActor>();
+        }
+
+        private static void RemovePrimitiveColliders(GameObject gameObject)
+        {
+            var components = gameObject.GetComponents<Component>();
+            for (var i = components.Length - 1; i >= 0; i--)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
         }
 
         private readonly struct EnemyDistance

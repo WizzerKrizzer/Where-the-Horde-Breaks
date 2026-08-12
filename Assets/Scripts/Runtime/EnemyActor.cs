@@ -18,6 +18,7 @@ namespace TowerDefense.Runtime
         private Vector3 knockbackOffset;
         private Vector3 movementVelocity;
         private readonly List<BurnStack> burnStacks = new();
+        private readonly List<EnemyActor> nearbyEnemies = new(32);
         private float attackCooldown;
         private float healCooldown;
         private float slowTimer;
@@ -342,7 +343,7 @@ namespace TowerDefense.Runtime
         {
             var deltaTime = Time.deltaTime;
             var currentSpeed = definition.speed * slowMultiplier;
-            var nearestRoad = path.GetNearestRoadPoint(transform.position, out var roadTangent);
+            var nearestRoad = path.GetNearestRoadPointToward(transform.position, path.EndPoint, out var roadTangent);
             nearestRoad.y = transform.position.y;
 
             var toEnd = path.EndPoint - transform.position;
@@ -440,7 +441,10 @@ namespace TowerDefense.Runtime
 
         private Vector3 ConstrainToNearestRoad(Vector3 position)
         {
-            var roadPoint = path.GetNearestRoadPoint(position, out var tangent);
+            Vector3 tangent;
+            var roadPoint = endpointSeeking
+                ? path.GetNearestRoadPointToward(position, path.EndPoint, out tangent)
+                : path.GetNearestRoadPoint(position, out tangent);
             var side = Vector3.Cross(Vector3.up, tangent.normalized);
             var fromCenter = position - roadPoint;
             fromCenter.y = 0f;
@@ -473,7 +477,8 @@ namespace TowerDefense.Runtime
             }
 
             var offset = Vector3.zero;
-            foreach (var other in owner.ActiveEnemies)
+            var candidates = GetSeparationCandidates(origin, 3.3f);
+            foreach (var other in candidates)
             {
                 if (other == null || other == this || !other.IsAlive)
                 {
@@ -516,7 +521,8 @@ namespace TowerDefense.Runtime
             }
 
             var correction = Vector3.zero;
-            foreach (var other in owner.ActiveEnemies)
+            var candidates = GetSeparationCandidates(position, 2.6f);
+            foreach (var other in candidates)
             {
                 if (other == null || other == this || !other.IsAlive || other.Definition == null)
                 {
@@ -547,6 +553,17 @@ namespace TowerDefense.Runtime
             }
 
             return position + Vector3.ClampMagnitude(correction, 0.55f);
+        }
+
+        private IEnumerable<EnemyActor> GetSeparationCandidates(Vector3 origin, float endpointRadius)
+        {
+            if (!endpointSeeking)
+            {
+                return owner.ActiveEnemies;
+            }
+
+            owner.CollectNearbyEnemies(origin, endpointRadius, nearbyEnemies);
+            return nearbyEnemies;
         }
 
         private float GetDesiredSeparationDistance(EnemyActor other)
@@ -605,6 +622,12 @@ namespace TowerDefense.Runtime
             if (path == null)
             {
                 return Vector3.right;
+            }
+
+            if (endpointSeeking)
+            {
+                path.GetNearestRoadPointToward(position, path.EndPoint, out var tangent);
+                return Vector3.Cross(Vector3.up, tangent.normalized);
             }
 
             path.GetNearestRoadPoint(position, out var tangent);

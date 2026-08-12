@@ -51,8 +51,26 @@ namespace TowerDefense.Simulation
             var bestPoint = waypoints.Count > 0 ? waypoints[0] : position;
             var bestTangent = Vector3.forward;
             var bestDistanceSq = float.PositiveInfinity;
-            FindNearestPointOnRoute(waypoints, position, ref bestPoint, ref bestTangent, ref bestDistanceSq);
-            FindNearestPointOnRoute(secondaryWaypoints, position, ref bestPoint, ref bestTangent, ref bestDistanceSq);
+            FindNearestPointOnRoute(waypoints, position, Vector3.zero, ref bestPoint, ref bestTangent, ref bestDistanceSq);
+            FindNearestPointOnRoute(secondaryWaypoints, position, Vector3.zero, ref bestPoint, ref bestTangent, ref bestDistanceSq);
+            tangent = bestTangent.sqrMagnitude < 0.001f ? Vector3.forward : bestTangent.normalized;
+            return bestPoint;
+        }
+
+        public Vector3 GetNearestRoadPointToward(Vector3 position, Vector3 target, out Vector3 tangent)
+        {
+            var bestPoint = waypoints.Count > 0 ? waypoints[0] : position;
+            var bestTangent = Vector3.forward;
+            var bestScore = float.PositiveInfinity;
+            var directionToTarget = target - position;
+            directionToTarget.y = 0f;
+            if (directionToTarget.sqrMagnitude > 0.001f)
+            {
+                directionToTarget.Normalize();
+            }
+
+            FindNearestPointOnRoute(waypoints, position, directionToTarget, ref bestPoint, ref bestTangent, ref bestScore);
+            FindNearestPointOnRoute(secondaryWaypoints, position, directionToTarget, ref bestPoint, ref bestTangent, ref bestScore);
             tangent = bestTangent.sqrMagnitude < 0.001f ? Vector3.forward : bestTangent.normalized;
             return bestPoint;
         }
@@ -60,9 +78,10 @@ namespace TowerDefense.Simulation
         private static void FindNearestPointOnRoute(
             IReadOnlyList<Vector3> route,
             Vector3 position,
+            Vector3 preferredDirection,
             ref Vector3 bestPoint,
             ref Vector3 bestTangent,
-            ref float bestDistanceSq)
+            ref float bestScore)
         {
             if (route == null || route.Count < 2)
             {
@@ -83,9 +102,16 @@ namespace TowerDefense.Simulation
                 var t = Mathf.Clamp01(Vector3.Dot(position - from, segment) / segmentLengthSq);
                 var point = from + segment * t;
                 var distanceSq = (position - point).sqrMagnitude;
-                if (distanceSq < bestDistanceSq)
+                var score = distanceSq;
+                if (preferredDirection.sqrMagnitude > 0.001f)
                 {
-                    bestDistanceSq = distanceSq;
+                    var tangent = segment.normalized;
+                    score -= Mathf.Abs(Vector3.Dot(tangent, preferredDirection)) * 2.25f;
+                }
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
                     bestPoint = point;
                     bestTangent = segment.normalized;
                 }
