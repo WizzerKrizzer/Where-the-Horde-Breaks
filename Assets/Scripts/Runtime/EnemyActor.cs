@@ -45,6 +45,9 @@ namespace TowerDefense.Runtime
         private const float SeparationRadiusScale = 0.94f;
         private const float SeparationVelocityScale = 5.6f;
         private const float MaxGroundSeparationOffset = 2.05f;
+        private const int MaxEnemiesWithHealthBars = 180;
+        private const float MaxHealthBarCameraHeight = 42f;
+        private const float MaxHealthBarCameraDistance = 30f;
 
         public EnemyDefinition Definition => definition;
         public float Health => health;
@@ -729,7 +732,7 @@ namespace TowerDefense.Runtime
             background.transform.SetParent(root.transform, false);
             background.transform.localPosition = Vector3.zero;
             background.transform.localScale = new Vector3(1.15f, 0.08f, 0.12f);
-            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.03f, 0.03f, 0.035f, 1f));
+            background.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.03f, 0.03f, 0.035f, 1f));
             RemovePrimitiveColliders(background);
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -737,7 +740,7 @@ namespace TowerDefense.Runtime
             fill.transform.SetParent(root.transform, false);
             fill.transform.localPosition = new Vector3(-0.575f, 0.012f, 0f);
             fill.transform.localScale = new Vector3(1.15f, 0.09f, 0.14f);
-            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.22f, 1f, 0.25f, 1f));
+            fill.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.22f, 1f, 0.25f, 1f));
             RemovePrimitiveColliders(fill);
             healthFill = fill.transform;
         }
@@ -774,8 +777,13 @@ namespace TowerDefense.Runtime
 
         private void ShowHealthBarBriefly()
         {
-            if (!IsAlive)
+            if (!IsAlive || !ShouldShowHealthBar())
             {
+                if (healthRoot != null)
+                {
+                    healthRoot.SetActive(false);
+                }
+
                 return;
             }
 
@@ -791,11 +799,40 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (!ShouldShowHealthBar())
+            {
+                healthRoot.SetActive(false);
+                return;
+            }
+
             healthBarTimer -= Time.deltaTime;
             if (healthBarTimer <= 0f)
             {
                 healthRoot.SetActive(false);
             }
+        }
+
+        private bool ShouldShowHealthBar()
+        {
+            if (owner != null && owner.ActiveEnemyCount > MaxEnemiesWithHealthBars)
+            {
+                return false;
+            }
+
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                return true;
+            }
+
+            if (camera.transform.position.y > MaxHealthBarCameraHeight)
+            {
+                return false;
+            }
+
+            var toEnemy = transform.position - camera.transform.position;
+            toEnemy.y = 0f;
+            return toEnemy.sqrMagnitude <= MaxHealthBarCameraDistance * MaxHealthBarCameraDistance;
         }
 
         private struct BurnStack
