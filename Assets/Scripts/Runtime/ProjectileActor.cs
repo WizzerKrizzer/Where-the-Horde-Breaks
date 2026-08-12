@@ -21,6 +21,7 @@ namespace TowerDefense.Runtime
         private int remainingPierce;
         private bool active;
         private readonly List<EnemyActor> hitEnemies = new();
+        private readonly List<EnemyActor> nearbyEnemies = new();
 
         public void Fire(TowerActor sourceTowerActor, TowerDefinition towerDefinition, EnemyActor targetEnemy, EnemyManager enemyManager, float projectileDamage)
         {
@@ -125,7 +126,10 @@ namespace TowerDefense.Runtime
 
         private EnemyActor FindDirectHit(Vector3 from, Vector3 to)
         {
-            foreach (var enemy in enemies.ActiveEnemies)
+            var center = (from + to) * 0.5f;
+            var segmentLength = Vector3.Distance(from, to);
+            enemies.CollectNearbyEnemies(center, segmentLength * 0.5f + 1.15f, nearbyEnemies, maxResults: 64);
+            foreach (var enemy in nearbyEnemies)
             {
                 if (enemy == null || !enemy.IsAlive || hitEnemies.Contains(enemy) || (enemy.Definition.isFlying && !sourceTower.canHitFlying))
                 {
@@ -210,7 +214,7 @@ namespace TowerDefense.Runtime
             marker.name = "CatapultImpact";
             marker.transform.position = impactPosition + Vector3.up * 0.2f;
             marker.transform.localScale = new Vector3(radius * 2f, 0.04f, radius * 2f);
-            marker.GetComponent<Renderer>().material = BootstrapMaterials.Get(sourceTower != null && sourceTower.appliesFire
+            marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(sourceTower != null && sourceTower.appliesFire
                 ? new Color(1f, 0.32f, 0.05f, 0.42f)
                 : new Color(0.58f, 0.44f, 0.27f, 0.35f));
             RemovePrimitiveCollider(marker);

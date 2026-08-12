@@ -144,7 +144,7 @@ namespace TowerDefense.Runtime
             var projectileColor = definition.appliesFire
                 ? new Color(1f, 0.32f, 0.05f)
                 : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
-            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(projectileColor);
+            go.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(projectileColor);
             var projectile = go.AddComponent<ProjectileActor>();
             projectile.Fire(this, definition, target, enemies, definition.damage * damageMultiplier);
         }

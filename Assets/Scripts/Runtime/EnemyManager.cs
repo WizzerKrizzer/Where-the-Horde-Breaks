@@ -13,6 +13,7 @@ namespace TowerDefense.Runtime
         private readonly Queue<EnemyActor> pool = new();
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
+        private readonly List<EnemyActor> targetCandidates = new();
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
@@ -107,7 +108,7 @@ namespace TowerDefense.Runtime
             }
         }
 
-        public void CollectNearbyEnemies(Vector3 position, float radius, List<EnemyActor> results)
+        public void CollectNearbyEnemies(Vector3 position, float radius, List<EnemyActor> results, int maxResults = MaxNearbyEnemyResults)
         {
             results.Clear();
             if (activeEnemies.Count == 0 || radius <= 0f)
@@ -140,7 +141,7 @@ namespace TowerDefense.Runtime
                         if (offset.x * offset.x + offset.z * offset.z <= radiusSq)
                         {
                             results.Add(enemy);
-                            if (results.Count >= MaxNearbyEnemyResults)
+                            if (maxResults > 0 && results.Count >= maxResults)
                             {
                                 return;
                             }
@@ -316,7 +317,8 @@ namespace TowerDefense.Runtime
             EnemyActor best = null;
             var bestDistance = range * range;
             var bestScore = float.MinValue;
-            foreach (var enemy in activeEnemies)
+            CollectNearbyEnemies(position, range, targetCandidates);
+            foreach (var enemy in targetCandidates)
             {
                 if (!IsValidTowerTarget(enemy, canHitFlying))
                 {
@@ -358,7 +360,8 @@ namespace TowerDefense.Runtime
         {
             EnemyActor best = null;
             var bestDistance = range * range;
-            foreach (var enemy in activeEnemies)
+            CollectNearbyEnemies(position, range, targetCandidates);
+            foreach (var enemy in targetCandidates)
             {
                 if (!enemy.IsAlive || enemy == excludedEnemy || (enemy.Definition.isFlying && !canHitFlying))
                 {
@@ -472,7 +475,8 @@ namespace TowerDefense.Runtime
             }
 
             var radiusSq = radius * radius;
-            foreach (var enemy in activeEnemies)
+            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 96);
+            foreach (var enemy in targetCandidates)
             {
                 if (!enemy.IsAlive || enemy == excludedEnemy || (enemy.transform.position - center).sqrMagnitude > radiusSq)
                 {
@@ -492,7 +496,8 @@ namespace TowerDefense.Runtime
 
             var radiusSq = radius * radius;
             var usedCapacity = 0f;
-            foreach (var enemy in activeEnemies)
+            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 96);
+            foreach (var enemy in targetCandidates)
             {
                 if (!enemy.IsAlive || (enemy.transform.position - center).sqrMagnitude > radiusSq)
                 {
@@ -516,9 +521,10 @@ namespace TowerDefense.Runtime
             hitCount = 0;
             var appliedDamage = 0f;
             damageCandidates.Clear();
-            for (var i = activeEnemies.Count - 1; i >= 0; i--)
+            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 128);
+            for (var i = targetCandidates.Count - 1; i >= 0; i--)
             {
-                var enemy = activeEnemies[i];
+                var enemy = targetCandidates[i];
                 if (!enemy.IsAlive)
                 {
                     continue;
@@ -557,9 +563,10 @@ namespace TowerDefense.Runtime
             var radiusSq = radius * radius;
             hitCount = 0;
             var appliedDamage = 0f;
-            for (var i = activeEnemies.Count - 1; i >= 0; i--)
+            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 160);
+            for (var i = targetCandidates.Count - 1; i >= 0; i--)
             {
-                var enemy = activeEnemies[i];
+                var enemy = targetCandidates[i];
                 if (!enemy.IsAlive)
                 {
                     continue;
