@@ -160,7 +160,8 @@ namespace TowerDefense.Runtime
 
         private void RebuildSpatialBucketsIfNeeded()
         {
-            if (spatialBucketsFrame == Time.frameCount)
+            var rebuildInterval = activeEnemies.Count >= 5000 ? 4 : activeEnemies.Count >= 2500 ? 3 : activeEnemies.Count >= 900 ? 2 : 1;
+            if (spatialBucketsFrame >= 0 && Time.frameCount - spatialBucketsFrame < rebuildInterval)
             {
                 return;
             }

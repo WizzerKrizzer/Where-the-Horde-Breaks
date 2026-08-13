@@ -43,6 +43,8 @@ namespace TowerDefense.Runtime
         private bool isOffscreenForBudget;
         private bool isFarFromCameraForBudget;
         private bool isZoomedOutForBudget;
+        private static int cachedMainCameraFrame = -1;
+        private static Camera cachedMainCamera;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
         private const float SteeringAcceleration = 6.8f;
@@ -874,7 +876,7 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            var camera = Camera.main;
+            var camera = GetMainCameraCached();
             if (camera == null)
             {
                 return true;
@@ -903,8 +905,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            visualBudgetTimer = 0.18f;
             var activeCount = owner.ActiveEnemyCount;
+            visualBudgetTimer = activeCount >= 5000 ? 0.42f : activeCount >= 2500 ? 0.3f : 0.18f;
             if (activeCount < 650)
             {
                 isOffscreenForBudget = false;
@@ -915,7 +917,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var camera = Camera.main;
+            var camera = GetMainCameraCached();
             if (camera == null)
             {
                 isOffscreenForBudget = false;
@@ -968,6 +970,18 @@ namespace TowerDefense.Runtime
 
             bodyMeshFilter.sharedMesh = targetMesh;
             usingLowDetailMesh = lowDetail;
+        }
+
+        private static Camera GetMainCameraCached()
+        {
+            if (cachedMainCameraFrame == Time.frameCount)
+            {
+                return cachedMainCamera;
+            }
+
+            cachedMainCameraFrame = Time.frameCount;
+            cachedMainCamera = Camera.main;
+            return cachedMainCamera;
         }
 
         private struct BurnStack
