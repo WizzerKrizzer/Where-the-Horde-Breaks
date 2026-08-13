@@ -88,10 +88,10 @@ namespace TowerDefense.Runtime
             var burstIndex = 0;
             while (burstIndex < count)
             {
-                var burst = Mathf.Min(count - burstIndex, Random.Range(minBurst, maxBurst + 1));
+                var burst = Mathf.Min(count - burstIndex, UnityEngine.Random.Range(minBurst, maxBurst + 1));
                 for (var i = 0; i < burst; i++)
                 {
-                    spawnTimes[burstIndex + i] = cursor + Random.Range(0f, windowDuration);
+                    spawnTimes[burstIndex + i] = cursor + UnityEngine.Random.Range(0f, windowDuration);
                 }
 
                 Array.Sort(spawnTimes, burstIndex, burst);
@@ -173,9 +173,9 @@ namespace TowerDefense.Runtime
                 var definition = spawnSequence[totalSpawned];
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
-                laneOffsets[totalSpawned] = Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
-                laneDriftPhases[totalSpawned] = Random.Range(0f, 100f);
-                laneDriftSpeeds[totalSpawned] = Random.Range(0.65f, 1.35f);
+                laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
+                laneDriftPhases[totalSpawned] = UnityEngine.Random.Range(0f, 100f);
+                laneDriftSpeeds[totalSpawned] = UnityEngine.Random.Range(0.65f, 1.35f);
                 pathDistances[totalSpawned] = 0f;
                 segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
