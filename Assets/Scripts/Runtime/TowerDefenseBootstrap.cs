@@ -29,8 +29,10 @@ namespace TowerDefense.Runtime
             ApplyLevelCamera(content.Level);
 
             var enemyManager = new GameObject("EnemyManager").AddComponent<EnemyManager>();
+            var hordeManager = new GameObject("HordeEnemyManager").AddComponent<HordeEnemyManager>();
             var corpseManager = new GameObject("EnemyCorpses").AddComponent<EnemyCorpseManager>();
             enemyManager.SetCorpseManager(corpseManager);
+            enemyManager.SetHordePrototype(hordeManager);
             var towerManager = new GameObject("TowerManager").AddComponent<TowerManager>();
             var activeWeapon = new GameObject("ActiveWeapon").AddComponent<ActiveWeaponController>();
             activeWeapon.Initialize(enemyManager, input, towerManager);
@@ -861,6 +863,7 @@ namespace TowerDefense.Runtime
             levelFour.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelFour.groundSize = new Vector3(230f, 0.1f, 132f);
             levelFour.decorVariant = 4;
+            levelFour.useDataHordePrototype = true;
             levelFour.cameraPosition = new Vector3(0f, 78f, -62f);
             levelFour.cameraFieldOfView = 54f;
             levelFour.cameraMinHeight = 16f;

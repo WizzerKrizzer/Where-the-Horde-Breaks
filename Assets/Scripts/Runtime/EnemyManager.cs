@@ -18,6 +18,7 @@ namespace TowerDefense.Runtime
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
+        private HordeEnemyManager hordePrototype;
         private readonly List<EnemyDistance> damageCandidates = new();
         private const float SpatialCellSize = 3.2f;
         private const int MaxNearbyEnemyResults = 42;
@@ -32,11 +33,13 @@ namespace TowerDefense.Runtime
         private int totalResolved;
 
         public IReadOnlyList<EnemyActor> ActiveEnemies => activeEnemies;
-        public int ActiveEnemyCount => activeEnemies.Count;
-        public int TotalSpawned => totalSpawned;
-        public int TotalResolved => totalResolved;
-        public bool HasWave => wave != null;
-        public bool IsWaveComplete => wave != null && totalSpawned >= spawnSequence.Count && activeEnemies.Count == 0;
+        public int ActiveEnemyCount => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.ActiveCount : activeEnemies.Count;
+        public int TotalSpawned => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.TotalSpawned : totalSpawned;
+        public int TotalResolved => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.TotalResolved : totalResolved;
+        public bool HasWave => wave != null || (hordePrototype != null && hordePrototype.IsRunning);
+        public bool IsWaveComplete => hordePrototype != null && hordePrototype.IsRunning
+            ? hordePrototype.IsComplete
+            : wave != null && totalSpawned >= spawnSequence.Count && activeEnemies.Count == 0;
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyActor> EnemyKilled;
         public event Action<EnemyActor> EnemyEscaped;
@@ -46,15 +49,31 @@ namespace TowerDefense.Runtime
             corpseManager = manager;
         }
 
+        public void SetHordePrototype(HordeEnemyManager manager)
+        {
+            hordePrototype = manager;
+        }
+
         public void SetLevelRoute(PathRoute route)
         {
             path = route;
         }
 
-        public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
+        public void BeginWave(WaveDefinition waveDefinition, PathRoute route, bool useDataHordePrototype = false)
         {
             ClearAll(clearCombatTargets: false);
             corpseManager?.ClearAllVisuals();
+            hordePrototype?.StopWave();
+            if (useDataHordePrototype)
+            {
+                wave = null;
+                path = route;
+                totalSpawned = 0;
+                totalResolved = 0;
+                hordePrototype?.BeginWave(waveDefinition, route);
+                return;
+            }
+
             wave = waveDefinition;
             path = route;
             elapsed = 0f;
@@ -75,6 +94,7 @@ namespace TowerDefense.Runtime
         public void StopWave()
         {
             wave = null;
+            hordePrototype?.StopWave();
             ClearAll(clearCombatTargets: true);
             corpseManager?.ClearAllVisuals();
         }

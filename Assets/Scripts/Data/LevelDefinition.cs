@@ -14,6 +14,7 @@ namespace TowerDefense.Data
         public Vector3 groundCenter = new(0f, -0.08f, 1.5f);
         public Vector3 groundSize = new(82f, 0.1f, 50f);
         public int decorVariant;
+        public bool useDataHordePrototype;
         public Vector3 cameraPosition = new(0f, 24f, -20f);
         public float cameraFieldOfView = 45f;
         public float cameraMinHeight = 8f;

@@ -824,7 +824,7 @@ namespace TowerDefense.Runtime
             activeWeapon.ResetRunStats();
             running = true;
             activeWeapon.CanFire = true;
-            enemies.BeginWave(level.wave, path);
+            enemies.BeginWave(level.wave, path, level.useDataHordePrototype);
         }
 
         public void ResetToPlanning()
