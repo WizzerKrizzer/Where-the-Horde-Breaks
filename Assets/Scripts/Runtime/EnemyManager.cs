@@ -690,13 +690,13 @@ namespace TowerDefense.Runtime
                 new Vector3(0.37f, 0.72f, -0.37f),
                 new Vector3(0f, 0.18f, 0f),
             };
-            sharedLowEnemyMesh.triangles = new[]
+            sharedLowEnemyMesh.triangles = MakeDoubleSidedTriangles(new[]
             {
                 0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5,
                 0, 5, 6, 0, 6, 7, 0, 7, 8, 0, 8, 1,
                 9, 2, 1, 9, 3, 2, 9, 4, 3, 9, 5, 4,
                 9, 6, 5, 9, 7, 6, 9, 8, 7, 9, 1, 8
-            };
+            });
             sharedLowEnemyMesh.RecalculateNormals();
             sharedLowEnemyMesh.RecalculateBounds();
             return sharedLowEnemyMesh;
@@ -709,47 +709,41 @@ namespace TowerDefense.Runtime
                 return sharedDetailedEnemyMesh;
             }
 
-            const int segments = 14;
-            var vertices = new List<Vector3>();
-            vertices.Add(new Vector3(0f, 1.34f, 0f));
-            for (var i = 0; i < segments; i++)
+            var template = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var templateMesh = template.GetComponent<MeshFilter>().sharedMesh;
+            var vertices = templateMesh.vertices;
+            for (var i = 0; i < vertices.Length; i++)
             {
-                var angle = i * Mathf.PI * 2f / segments;
-                vertices.Add(new Vector3(Mathf.Cos(angle) * 0.52f, 0.78f, Mathf.Sin(angle) * 0.52f));
-            }
-
-            for (var i = 0; i < segments; i++)
-            {
-                var angle = i * Mathf.PI * 2f / segments;
-                vertices.Add(new Vector3(Mathf.Cos(angle) * 0.42f, 0.22f, Mathf.Sin(angle) * 0.42f));
-            }
-
-            vertices.Add(new Vector3(0f, 0.12f, 0f));
-
-            var bottomCenter = vertices.Count - 1;
-            var triangles = new List<int>();
-            for (var i = 0; i < segments; i++)
-            {
-                var next = i == segments - 1 ? 0 : i + 1;
-                var topA = 1 + i;
-                var topB = 1 + next;
-                var lowerA = 1 + segments + i;
-                var lowerB = 1 + segments + next;
-                triangles.AddRange(new[] { 0, topA, topB });
-                triangles.AddRange(new[] { topA, lowerA, lowerB });
-                triangles.AddRange(new[] { topA, lowerB, topB });
-                triangles.AddRange(new[] { bottomCenter, lowerB, lowerA });
+                vertices[i] = new Vector3(vertices[i].x * 1.05f, vertices[i].y * 1.18f + 0.82f, vertices[i].z * 1.05f);
             }
 
             sharedDetailedEnemyMesh = new Mesh
             {
                 name = "DetailedEnemy",
-                vertices = vertices.ToArray(),
-                triangles = triangles.ToArray()
+                vertices = vertices,
+                triangles = templateMesh.triangles
             };
+            UnityEngine.Object.Destroy(template);
             sharedDetailedEnemyMesh.RecalculateNormals();
             sharedDetailedEnemyMesh.RecalculateBounds();
             return sharedDetailedEnemyMesh;
+        }
+
+        private static int[] MakeDoubleSidedTriangles(int[] triangles)
+        {
+            var doubleSided = new int[triangles.Length * 2];
+            for (var i = 0; i < triangles.Length; i += 3)
+            {
+                doubleSided[i] = triangles[i];
+                doubleSided[i + 1] = triangles[i + 1];
+                doubleSided[i + 2] = triangles[i + 2];
+                var reverseIndex = triangles.Length + i;
+                doubleSided[reverseIndex] = triangles[i];
+                doubleSided[reverseIndex + 1] = triangles[i + 2];
+                doubleSided[reverseIndex + 2] = triangles[i + 1];
+            }
+
+            return doubleSided;
         }
 
         private static void RemovePrimitiveColliders(GameObject gameObject)
