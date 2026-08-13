@@ -678,16 +678,16 @@ namespace TowerDefense.Runtime
             };
             sharedEnemyMesh.vertices = new[]
             {
-                new Vector3(0f, 1f, 0f),
-                new Vector3(0.46f, 0.45f, 0f),
-                new Vector3(0.32f, 0.45f, 0.32f),
-                new Vector3(0f, 0.45f, 0.46f),
-                new Vector3(-0.32f, 0.45f, 0.32f),
-                new Vector3(-0.46f, 0.45f, 0f),
-                new Vector3(-0.32f, 0.45f, -0.32f),
-                new Vector3(0f, 0.45f, -0.46f),
-                new Vector3(0.32f, 0.45f, -0.32f),
-                new Vector3(0f, -0.05f, 0f),
+                new Vector3(0f, 1.32f, 0f),
+                new Vector3(0.52f, 0.72f, 0f),
+                new Vector3(0.37f, 0.72f, 0.37f),
+                new Vector3(0f, 0.72f, 0.52f),
+                new Vector3(-0.37f, 0.72f, 0.37f),
+                new Vector3(-0.52f, 0.72f, 0f),
+                new Vector3(-0.37f, 0.72f, -0.37f),
+                new Vector3(0f, 0.72f, -0.52f),
+                new Vector3(0.37f, 0.72f, -0.37f),
+                new Vector3(0f, 0.18f, 0f),
             };
             sharedEnemyMesh.triangles = new[]
             {
