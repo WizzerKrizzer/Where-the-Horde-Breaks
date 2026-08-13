@@ -19,6 +19,9 @@ namespace TowerDefense.UI
         private ActiveWeaponController activeWeapon;
         private Text statusText;
         private Text fpsText;
+        private float fpsRefreshTimer;
+        private float fpsAccumulatedTime;
+        private int fpsAccumulatedFrames;
         private Text towerText;
         private GameObject activeWeaponSlot;
         private Image activeWeaponIcon;
@@ -186,13 +189,24 @@ namespace TowerDefense.UI
             }
 
             var delta = Time.unscaledDeltaTime;
-            var fps = delta > 0.0001f ? 1f / delta : 0f;
+            fpsRefreshTimer += delta;
+            fpsAccumulatedTime += delta;
+            fpsAccumulatedFrames++;
+            if (fpsRefreshTimer < 1f && fpsAccumulatedFrames > 1)
+            {
+                return;
+            }
+
+            var fps = fpsAccumulatedTime > 0.0001f ? fpsAccumulatedFrames / fpsAccumulatedTime : 0f;
             fpsText.text = $"FPS: {fps:0}";
             fpsText.color = fps >= 55f
                 ? new Color(0.55f, 1f, 0.6f, 0.95f)
                 : fps >= 30f
                     ? new Color(1f, 0.85f, 0.35f, 0.95f)
                     : new Color(1f, 0.35f, 0.3f, 0.95f);
+            fpsRefreshTimer = 0f;
+            fpsAccumulatedTime = 0f;
+            fpsAccumulatedFrames = 0;
         }
 
         private void HandleHudShortcuts()
