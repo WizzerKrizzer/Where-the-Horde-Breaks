@@ -40,6 +40,9 @@ namespace TowerDefense.Runtime
         private float visualBudgetTimer;
         private int visualBudgetBucket;
         private bool usingLowDetailMesh;
+        private bool isOffscreenForBudget;
+        private bool isFarFromCameraForBudget;
+        private bool isZoomedOutForBudget;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
         private const float SteeringAcceleration = 6.8f;
@@ -97,6 +100,9 @@ namespace TowerDefense.Runtime
 
             visualBudgetBucket = Mathf.Abs(GetInstanceID()) % 12;
             visualBudgetTimer = UnityEngine.Random.Range(0f, 0.25f);
+            isOffscreenForBudget = false;
+            isFarFromCameraForBudget = false;
+            isZoomedOutForBudget = false;
             SetLowDetailMesh(false);
             healthBarTimer = 0f;
             if (healthRoot != null)
@@ -294,7 +300,20 @@ namespace TowerDefense.Runtime
         private bool ShouldRunSimulationThisFrame()
         {
             var activeCount = owner != null ? owner.ActiveEnemyCount : 0;
-            var frameStride = activeCount >= 3500 ? 16 : activeCount >= 2000 ? 12 : activeCount >= 1000 ? 8 : activeCount >= 650 ? 6 : activeCount >= 300 ? 4 : activeCount >= 180 ? 2 : 1;
+            var frameStride = activeCount >= 8000 ? 32 : activeCount >= 5000 ? 24 : activeCount >= 3500 ? 16 : activeCount >= 2000 ? 12 : activeCount >= 1000 ? 8 : activeCount >= 650 ? 6 : activeCount >= 300 ? 4 : activeCount >= 180 ? 2 : 1;
+            if (activeCount >= 1000)
+            {
+                if (isOffscreenForBudget)
+                {
+                    frameStride *= activeCount >= 4000 ? 4 : 3;
+                }
+                else if (isZoomedOutForBudget && isFarFromCameraForBudget)
+                {
+                    frameStride *= 2;
+                }
+            }
+
+            frameStride = Mathf.Clamp(frameStride, 1, 64);
             if (frameStride <= 1)
             {
                 return true;
@@ -888,6 +907,9 @@ namespace TowerDefense.Runtime
             var activeCount = owner.ActiveEnemyCount;
             if (activeCount < 650)
             {
+                isOffscreenForBudget = false;
+                isFarFromCameraForBudget = false;
+                isZoomedOutForBudget = false;
                 bodyRenderer.enabled = true;
                 SetLowDetailMesh(false);
                 return;
@@ -896,20 +918,27 @@ namespace TowerDefense.Runtime
             var camera = Camera.main;
             if (camera == null)
             {
+                isOffscreenForBudget = false;
+                isFarFromCameraForBudget = false;
+                isZoomedOutForBudget = false;
                 bodyRenderer.enabled = true;
                 return;
             }
 
             var viewport = camera.WorldToViewportPoint(transform.position);
-            if (viewport.z < 0f || viewport.x < -0.12f || viewport.x > 1.12f || viewport.y < -0.12f || viewport.y > 1.12f)
+            isOffscreenForBudget = viewport.z < 0f || viewport.x < -0.12f || viewport.x > 1.12f || viewport.y < -0.12f || viewport.y > 1.12f;
+            isZoomedOutForBudget = camera.transform.position.y >= 72f;
+            if (isOffscreenForBudget)
             {
+                isFarFromCameraForBudget = true;
                 bodyRenderer.enabled = false;
                 return;
             }
 
             var toEnemy = transform.position - camera.transform.position;
             toEnemy.y = 0f;
-            var closeToCamera = toEnemy.sqrMagnitude <= 28f * 28f;
+            isFarFromCameraForBudget = toEnemy.sqrMagnitude > 28f * 28f;
+            var closeToCamera = !isFarFromCameraForBudget;
             if (closeToCamera || camera.transform.position.y < 58f)
             {
                 bodyRenderer.enabled = true;
