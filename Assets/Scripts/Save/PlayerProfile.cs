@@ -15,6 +15,7 @@ namespace TowerDefense.Save
         public List<string> purchasedUpgradeIds = new();
         public List<LevelTowerLayout> towerLayouts = new();
         public List<LevelProgressRecord> levelProgress = new();
+        public string selectedLevelId = "level_01";
 
         public int GetCurrency(CurrencyType currency)
         {

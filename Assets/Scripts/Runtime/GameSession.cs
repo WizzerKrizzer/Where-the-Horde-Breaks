@@ -162,7 +162,12 @@ namespace TowerDefense.Runtime
                 return profile.clearedLevelIds.Contains("level_01");
             }
 
-            return definition.id == "level_03" && profile.clearedLevelIds.Contains("level_02");
+            if (definition.id == "level_03")
+            {
+                return profile.clearedLevelIds.Contains("level_02");
+            }
+
+            return definition.id == "level_04" && profile.clearedLevelIds.Contains("level_03");
         }
 
         public bool SelectLevel(string levelId)
@@ -182,6 +187,7 @@ namespace TowerDefense.Runtime
             enemies?.StopWave();
             towers?.RemoveAll();
             level = nextLevel;
+            profile.selectedLevelId = level.id;
             path = loadLevelMap != null ? loadLevelMap(level) : path;
             towers.Initialize(enemies, path, GetUnlockedTowers());
             ApplyProgressionStats();
@@ -283,6 +289,14 @@ namespace TowerDefense.Runtime
 
             profile = loadedProfile;
             progression = new ProgressionService(skillTree, profile);
+            var savedLevel = FindLevel(profile.selectedLevelId);
+            if (savedLevel != null && savedLevel != level)
+            {
+                level = savedLevel;
+                path = loadLevelMap != null ? loadLevelMap(level) : path;
+                towers.Initialize(enemies, path, GetUnlockedTowers());
+            }
+
             profileStore.Save(profile);
             ResetToPlanning();
             return true;
@@ -405,18 +419,23 @@ namespace TowerDefense.Runtime
             PlayerInputRouter inputRouter)
         {
             allLevels = levelDefinitions;
-            level = levelDefinition;
             this.skillTree = skillTree;
             profileStore = new ProfileStore();
             profile = profileStore.LoadOrCreate();
+            loadLevelMap = levelMapLoader;
+            level = FindLevel(profile.selectedLevelId) ?? levelDefinition;
+            if (level != null)
+            {
+                profile.selectedLevelId = level.id;
+            }
+
             progression = new ProgressionService(skillTree, profile);
             enemies = enemyManager;
             towers = towerManager;
             activeWeapon = activeWeaponController;
             popups = popupManager;
             input = inputRouter;
-            this.path = path;
-            loadLevelMap = levelMapLoader;
+            this.path = level != levelDefinition && loadLevelMap != null ? loadLevelMap(level) : path;
             allTowerDefinitions = availableTowers;
             CaptureBaseTowerStats();
             baseActiveWeaponDamage = activeWeapon.Damage;
