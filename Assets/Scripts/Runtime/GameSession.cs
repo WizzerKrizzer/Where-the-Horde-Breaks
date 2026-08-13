@@ -189,6 +189,7 @@ namespace TowerDefense.Runtime
             level = nextLevel;
             profile.selectedLevelId = level.id;
             path = loadLevelMap != null ? loadLevelMap(level) : path;
+            enemies?.SetLevelRoute(path);
             towers.Initialize(enemies, path, GetUnlockedTowers());
             ApplyProgressionStats();
             enemiesKilled = 0;
@@ -294,6 +295,7 @@ namespace TowerDefense.Runtime
             {
                 level = savedLevel;
                 path = loadLevelMap != null ? loadLevelMap(level) : path;
+                enemies?.SetLevelRoute(path);
                 towers.Initialize(enemies, path, GetUnlockedTowers());
             }
 
@@ -436,6 +438,7 @@ namespace TowerDefense.Runtime
             popups = popupManager;
             input = inputRouter;
             this.path = level != levelDefinition && loadLevelMap != null ? loadLevelMap(level) : path;
+            enemies?.SetLevelRoute(this.path);
             allTowerDefinitions = availableTowers;
             CaptureBaseTowerStats();
             baseActiveWeaponDamage = activeWeapon.Damage;

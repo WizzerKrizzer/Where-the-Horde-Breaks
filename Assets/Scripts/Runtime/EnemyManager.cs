@@ -47,6 +47,11 @@ namespace TowerDefense.Runtime
             corpseManager = manager;
         }
 
+        public void SetLevelRoute(PathRoute route)
+        {
+            path = route;
+        }
+
         public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
         {
             ClearAll(clearCombatTargets: false);
@@ -72,6 +77,7 @@ namespace TowerDefense.Runtime
         {
             wave = null;
             ClearAll(clearCombatTargets: true);
+            corpseManager?.ClearAllVisuals();
         }
 
         public void SpawnDebug(EnemyDefinition enemyDefinition, PathRoute route)
