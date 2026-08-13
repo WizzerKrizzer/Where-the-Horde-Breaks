@@ -759,7 +759,7 @@ namespace TowerDefense.Runtime
             var root = new GameObject("HealthBar");
             healthRoot = root;
             root.transform.SetParent(transform, false);
-            root.transform.localPosition = new Vector3(0f, 1.35f, 0f);
+            root.transform.localPosition = new Vector3(0f, 1.78f, 0f);
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
 
@@ -767,15 +767,15 @@ namespace TowerDefense.Runtime
             background.name = "HealthBarBackground";
             background.transform.SetParent(root.transform, false);
             background.transform.localPosition = Vector3.zero;
-            background.transform.localScale = new Vector3(1.15f, 0.08f, 0.12f);
+            background.transform.localScale = new Vector3(1.05f, 0.06f, 0.1f);
             background.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.03f, 0.03f, 0.035f, 1f));
             RemovePrimitiveColliders(background);
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fill.name = "HealthBarFill";
             fill.transform.SetParent(root.transform, false);
-            fill.transform.localPosition = new Vector3(-0.575f, 0.012f, 0f);
-            fill.transform.localScale = new Vector3(1.15f, 0.09f, 0.14f);
+            fill.transform.localPosition = new Vector3(-0.525f, 0.01f, 0f);
+            fill.transform.localScale = new Vector3(1.05f, 0.07f, 0.12f);
             fill.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.22f, 1f, 0.25f, 1f));
             RemovePrimitiveColliders(fill);
             healthFill = fill.transform;
@@ -807,8 +807,8 @@ namespace TowerDefense.Runtime
             }
 
             var normalizedHealth = Mathf.Clamp01(health / currentMaxHealth);
-            healthFill.localScale = new Vector3(1.15f * normalizedHealth, 0.09f, 0.14f);
-            healthFill.localPosition = new Vector3(-0.575f + 0.575f * normalizedHealth, 0.012f, 0f);
+            healthFill.localScale = new Vector3(1.05f * normalizedHealth, 0.07f, 0.12f);
+            healthFill.localPosition = new Vector3(-0.525f + 0.525f * normalizedHealth, 0.01f, 0f);
         }
 
         private void ShowHealthBarBriefly()
