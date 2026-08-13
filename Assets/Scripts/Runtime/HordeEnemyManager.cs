@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TowerDefense.Data;
 using TowerDefense.Simulation;
@@ -10,7 +11,6 @@ namespace TowerDefense.Runtime
     {
         private const int InstanceBatchSize = 1023;
         private const float RoadHalfWidth = 2.45f;
-        private const float LaneSpacing = 0.38f;
         private const float VisualRadius = 0.28f;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
@@ -19,6 +19,8 @@ namespace TowerDefense.Runtime
         private Vector3[] previousPositions;
         private float[] pathDistances;
         private float[] laneOffsets;
+        private float[] laneDriftPhases;
+        private float[] laneDriftSpeeds;
         private float[] speeds;
         private float[] spawnTimes;
         private int[] segmentIndices;
@@ -69,6 +71,8 @@ namespace TowerDefense.Runtime
             previousPositions = new Vector3[count];
             pathDistances = new float[count];
             laneOffsets = new float[count];
+            laneDriftPhases = new float[count];
+            laneDriftSpeeds = new float[count];
             speeds = new float[count];
             spawnTimes = new float[count];
             segmentIndices = new int[count];
@@ -83,9 +87,10 @@ namespace TowerDefense.Runtime
                 var burst = Mathf.Min(count - burstIndex, Random.Range(minBurst, maxBurst + 1));
                 for (var i = 0; i < burst; i++)
                 {
-                    spawnTimes[burstIndex + i] = cursor + windowDuration * i / burst;
+                    spawnTimes[burstIndex + i] = cursor + Random.Range(0f, windowDuration);
                 }
 
+                Array.Sort(spawnTimes, burstIndex, burst);
                 burstIndex += burst;
                 cursor += windowDuration;
             }
@@ -115,6 +120,8 @@ namespace TowerDefense.Runtime
             previousPositions = null;
             pathDistances = null;
             laneOffsets = null;
+            laneDriftPhases = null;
+            laneDriftSpeeds = null;
             speeds = null;
             spawnTimes = null;
             segmentIndices = null;
@@ -158,8 +165,9 @@ namespace TowerDefense.Runtime
             while (totalSpawned < spawnSequence.Count && elapsed >= spawnTimes[totalSpawned])
             {
                 var definition = spawnSequence[totalSpawned];
-                var laneIndex = totalSpawned % 13 - 6;
-                laneOffsets[totalSpawned] = Mathf.Clamp(laneIndex * LaneSpacing + Random.Range(-0.08f, 0.08f), -RoadHalfWidth + 0.25f, RoadHalfWidth - 0.25f);
+                laneOffsets[totalSpawned] = Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
+                laneDriftPhases[totalSpawned] = Random.Range(0f, 100f);
+                laneDriftSpeeds[totalSpawned] = Random.Range(0.65f, 1.35f);
                 pathDistances[totalSpawned] = 0f;
                 segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
@@ -207,7 +215,9 @@ namespace TowerDefense.Runtime
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
             var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, distance - segmentStartDistances[segment]);
             var side = segmentSides[segment];
-            var weave = Mathf.Sin(distance * 1.65f + index * 0.73f) * 0.16f;
+            var longWave = Mathf.Sin(distance * 0.72f + laneDriftPhases[index]) * 0.28f;
+            var smallWave = Mathf.Sin(distance * 2.4f * laneDriftSpeeds[index] + index * 0.37f) * 0.1f;
+            var weave = longWave + smallWave;
             return center + side * Mathf.Clamp(laneOffsets[index] + weave, -RoadHalfWidth + 0.2f, RoadHalfWidth - 0.2f);
         }
 
