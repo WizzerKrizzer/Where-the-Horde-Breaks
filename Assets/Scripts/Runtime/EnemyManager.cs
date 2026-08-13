@@ -14,7 +14,8 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
         private readonly List<EnemyActor> targetCandidates = new();
-        private static Mesh sharedEnemyMesh;
+        private static Mesh sharedLowEnemyMesh;
+        private static Mesh sharedDetailedEnemyMesh;
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
@@ -657,7 +658,7 @@ namespace TowerDefense.Runtime
             go.name = $"Enemy_{enemyDefinition.id}";
             go.transform.SetParent(transform);
             var meshFilter = go.AddComponent<MeshFilter>();
-            meshFilter.sharedMesh = GetSharedEnemyMesh();
+            meshFilter.sharedMesh = GetDetailedEnemyMesh();
             var renderer = go.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -665,18 +666,18 @@ namespace TowerDefense.Runtime
             return go.AddComponent<EnemyActor>();
         }
 
-        private static Mesh GetSharedEnemyMesh()
+        public static Mesh GetLowEnemyMesh()
         {
-            if (sharedEnemyMesh != null)
+            if (sharedLowEnemyMesh != null)
             {
-                return sharedEnemyMesh;
+                return sharedLowEnemyMesh;
             }
 
-            sharedEnemyMesh = new Mesh
+            sharedLowEnemyMesh = new Mesh
             {
                 name = "LowPolyEnemy"
             };
-            sharedEnemyMesh.vertices = new[]
+            sharedLowEnemyMesh.vertices = new[]
             {
                 new Vector3(0f, 1.32f, 0f),
                 new Vector3(0.52f, 0.72f, 0f),
@@ -689,16 +690,66 @@ namespace TowerDefense.Runtime
                 new Vector3(0.37f, 0.72f, -0.37f),
                 new Vector3(0f, 0.18f, 0f),
             };
-            sharedEnemyMesh.triangles = new[]
+            sharedLowEnemyMesh.triangles = new[]
             {
                 0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5,
                 0, 5, 6, 0, 6, 7, 0, 7, 8, 0, 8, 1,
                 9, 2, 1, 9, 3, 2, 9, 4, 3, 9, 5, 4,
                 9, 6, 5, 9, 7, 6, 9, 8, 7, 9, 1, 8
             };
-            sharedEnemyMesh.RecalculateNormals();
-            sharedEnemyMesh.RecalculateBounds();
-            return sharedEnemyMesh;
+            sharedLowEnemyMesh.RecalculateNormals();
+            sharedLowEnemyMesh.RecalculateBounds();
+            return sharedLowEnemyMesh;
+        }
+
+        public static Mesh GetDetailedEnemyMesh()
+        {
+            if (sharedDetailedEnemyMesh != null)
+            {
+                return sharedDetailedEnemyMesh;
+            }
+
+            const int segments = 14;
+            var vertices = new List<Vector3>();
+            vertices.Add(new Vector3(0f, 1.34f, 0f));
+            for (var i = 0; i < segments; i++)
+            {
+                var angle = i * Mathf.PI * 2f / segments;
+                vertices.Add(new Vector3(Mathf.Cos(angle) * 0.52f, 0.78f, Mathf.Sin(angle) * 0.52f));
+            }
+
+            for (var i = 0; i < segments; i++)
+            {
+                var angle = i * Mathf.PI * 2f / segments;
+                vertices.Add(new Vector3(Mathf.Cos(angle) * 0.42f, 0.22f, Mathf.Sin(angle) * 0.42f));
+            }
+
+            vertices.Add(new Vector3(0f, 0.12f, 0f));
+
+            var bottomCenter = vertices.Count - 1;
+            var triangles = new List<int>();
+            for (var i = 0; i < segments; i++)
+            {
+                var next = i == segments - 1 ? 0 : i + 1;
+                var topA = 1 + i;
+                var topB = 1 + next;
+                var lowerA = 1 + segments + i;
+                var lowerB = 1 + segments + next;
+                triangles.AddRange(new[] { 0, topA, topB });
+                triangles.AddRange(new[] { topA, lowerA, lowerB });
+                triangles.AddRange(new[] { topA, lowerB, topB });
+                triangles.AddRange(new[] { bottomCenter, lowerB, lowerA });
+            }
+
+            sharedDetailedEnemyMesh = new Mesh
+            {
+                name = "DetailedEnemy",
+                vertices = vertices.ToArray(),
+                triangles = triangles.ToArray()
+            };
+            sharedDetailedEnemyMesh.RecalculateNormals();
+            sharedDetailedEnemyMesh.RecalculateBounds();
+            return sharedDetailedEnemyMesh;
         }
 
         private static void RemovePrimitiveColliders(GameObject gameObject)

@@ -33,11 +33,13 @@ namespace TowerDefense.Runtime
         private bool active;
         private ICombatTarget currentCombatTarget;
         private Renderer bodyRenderer;
+        private MeshFilter bodyMeshFilter;
         private GameObject healthRoot;
         private Transform healthFill;
         private float healthBarTimer;
         private float visualBudgetTimer;
         private int visualBudgetBucket;
+        private bool usingLowDetailMesh;
         private const float RoadHalfWidth = 2.45f;
         private const float PathLookAhead = 3.35f;
         private const float SteeringAcceleration = 6.8f;
@@ -84,6 +86,7 @@ namespace TowerDefense.Runtime
             currentCombatTarget = null;
             transform.localScale = Vector3.one * enemyDefinition.visualScale;
             bodyRenderer = GetComponent<Renderer>();
+            bodyMeshFilter = GetComponent<MeshFilter>();
             if (bodyRenderer != null)
             {
                 bodyRenderer.sharedMaterial = BootstrapMaterials.Get(enemyDefinition.color);
@@ -94,6 +97,7 @@ namespace TowerDefense.Runtime
 
             visualBudgetBucket = Mathf.Abs(GetInstanceID()) % 12;
             visualBudgetTimer = UnityEngine.Random.Range(0f, 0.25f);
+            SetLowDetailMesh(false);
             healthBarTimer = 0f;
             if (healthRoot != null)
             {
@@ -885,6 +889,7 @@ namespace TowerDefense.Runtime
             if (activeCount < 650)
             {
                 bodyRenderer.enabled = true;
+                SetLowDetailMesh(false);
                 return;
             }
 
@@ -908,11 +913,32 @@ namespace TowerDefense.Runtime
             if (closeToCamera || camera.transform.position.y < 58f)
             {
                 bodyRenderer.enabled = true;
+                SetLowDetailMesh(false);
                 return;
             }
 
             var visualStride = activeCount >= 2500 ? 4 : activeCount >= 1400 ? 3 : 2;
             bodyRenderer.enabled = visualBudgetBucket % visualStride == 0;
+            SetLowDetailMesh(activeCount >= 1000 || camera.transform.position.y >= 72f);
+        }
+
+        private void SetLowDetailMesh(bool lowDetail)
+        {
+            if (bodyMeshFilter == null)
+            {
+                return;
+            }
+
+            var targetMesh = lowDetail
+                ? EnemyManager.GetLowEnemyMesh()
+                : EnemyManager.GetDetailedEnemyMesh();
+            if (usingLowDetailMesh == lowDetail && bodyMeshFilter.sharedMesh == targetMesh)
+            {
+                return;
+            }
+
+            bodyMeshFilter.sharedMesh = targetMesh;
+            usingLowDetailMesh = lowDetail;
         }
 
         private struct BurnStack
