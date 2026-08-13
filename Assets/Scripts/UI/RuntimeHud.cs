@@ -19,7 +19,7 @@ namespace TowerDefense.UI
         private ActiveWeaponController activeWeapon;
         private Text statusText;
         private Text fpsText;
-        private float fpsRefreshTimer;
+        private float nextFpsRefreshTime;
         private float fpsAccumulatedTime;
         private int fpsAccumulatedFrames;
         private Text towerText;
@@ -121,6 +121,7 @@ namespace TowerDefense.UI
             statusText.GetComponent<RectTransform>().sizeDelta = new Vector2(420f, 96f);
             fpsText = CreateText("FpsCounter", parent, new Vector2(12f, -106f), TextAnchor.UpperLeft, 11);
             fpsText.GetComponent<RectTransform>().sizeDelta = new Vector2(120f, 22f);
+            fpsText.text = "FPS: --";
             towerText = CreateText("TowerSelection", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
             CreateActiveWeaponSlot(parent);
@@ -189,10 +190,9 @@ namespace TowerDefense.UI
             }
 
             var delta = Time.unscaledDeltaTime;
-            fpsRefreshTimer += delta;
             fpsAccumulatedTime += delta;
             fpsAccumulatedFrames++;
-            if (fpsRefreshTimer < 1f && fpsAccumulatedFrames > 1)
+            if (Time.realtimeSinceStartup < nextFpsRefreshTime)
             {
                 return;
             }
@@ -204,7 +204,7 @@ namespace TowerDefense.UI
                 : fps >= 30f
                     ? new Color(1f, 0.85f, 0.35f, 0.95f)
                     : new Color(1f, 0.35f, 0.3f, 0.95f);
-            fpsRefreshTimer = 0f;
+            nextFpsRefreshTime = Time.realtimeSinceStartup + 1f;
             fpsAccumulatedTime = 0f;
             fpsAccumulatedFrames = 0;
         }

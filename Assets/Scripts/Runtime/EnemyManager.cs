@@ -14,7 +14,6 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
         private readonly List<EnemyActor> targetCandidates = new();
-        private static Mesh sharedLowEnemyMesh;
         private static Mesh sharedDetailedEnemyMesh;
         private WaveDefinition wave;
         private PathRoute path;
@@ -674,38 +673,7 @@ namespace TowerDefense.Runtime
 
         public static Mesh GetLowEnemyMesh()
         {
-            if (sharedLowEnemyMesh != null)
-            {
-                return sharedLowEnemyMesh;
-            }
-
-            sharedLowEnemyMesh = new Mesh
-            {
-                name = "LowPolyEnemy"
-            };
-            sharedLowEnemyMesh.vertices = new[]
-            {
-                new Vector3(0f, 1.32f, 0f),
-                new Vector3(0.52f, 0.72f, 0f),
-                new Vector3(0.37f, 0.72f, 0.37f),
-                new Vector3(0f, 0.72f, 0.52f),
-                new Vector3(-0.37f, 0.72f, 0.37f),
-                new Vector3(-0.52f, 0.72f, 0f),
-                new Vector3(-0.37f, 0.72f, -0.37f),
-                new Vector3(0f, 0.72f, -0.52f),
-                new Vector3(0.37f, 0.72f, -0.37f),
-                new Vector3(0f, 0.18f, 0f),
-            };
-            sharedLowEnemyMesh.triangles = MakeDoubleSidedTriangles(new[]
-            {
-                0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5,
-                0, 5, 6, 0, 6, 7, 0, 7, 8, 0, 8, 1,
-                9, 2, 1, 9, 3, 2, 9, 4, 3, 9, 5, 4,
-                9, 6, 5, 9, 7, 6, 9, 8, 7, 9, 1, 8
-            });
-            sharedLowEnemyMesh.RecalculateNormals();
-            sharedLowEnemyMesh.RecalculateBounds();
-            return sharedLowEnemyMesh;
+            return GetDetailedEnemyMesh();
         }
 
         public static Mesh GetDetailedEnemyMesh()
@@ -733,23 +701,6 @@ namespace TowerDefense.Runtime
             sharedDetailedEnemyMesh.RecalculateNormals();
             sharedDetailedEnemyMesh.RecalculateBounds();
             return sharedDetailedEnemyMesh;
-        }
-
-        private static int[] MakeDoubleSidedTriangles(int[] triangles)
-        {
-            var doubleSided = new int[triangles.Length * 2];
-            for (var i = 0; i < triangles.Length; i += 3)
-            {
-                doubleSided[i] = triangles[i];
-                doubleSided[i + 1] = triangles[i + 1];
-                doubleSided[i + 2] = triangles[i + 2];
-                var reverseIndex = triangles.Length + i;
-                doubleSided[reverseIndex] = triangles[i];
-                doubleSided[reverseIndex + 1] = triangles[i + 2];
-                doubleSided[reverseIndex + 2] = triangles[i + 1];
-            }
-
-            return doubleSided;
         }
 
         private static void RemovePrimitiveColliders(GameObject gameObject)
