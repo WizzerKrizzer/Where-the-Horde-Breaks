@@ -309,6 +309,11 @@ namespace TowerDefense.Runtime
         public bool TryGetLeadEnemyAimPoint(float radius, out Vector3 aimPoint)
         {
             aimPoint = Vector3.zero;
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return hordePrototype.TryGetLeadAimPoint(radius, out aimPoint);
+            }
+
             if (path == null || activeEnemies.Count == 0)
             {
                 return false;
@@ -342,6 +347,11 @@ namespace TowerDefense.Runtime
 
         public EnemyActor GetEnemyByTargetingMode(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode)
         {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return null;
+            }
+
             EnemyActor best = null;
             var bestDistance = range * range;
             var bestScore = float.MinValue;
@@ -517,6 +527,11 @@ namespace TowerDefense.Runtime
 
         public void ApplySlowAura(Vector3 center, float radius, float slowPercent, float capacity)
         {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return;
+            }
+
             if (slowPercent <= 0f || capacity <= 0f)
             {
                 return;
@@ -545,6 +560,11 @@ namespace TowerDefense.Runtime
 
         public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
         {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets, out hitCount);
+            }
+
             var radiusSq = radius * radius;
             hitCount = 0;
             var appliedDamage = 0f;
@@ -588,6 +608,11 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 0)
         {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets: 160, out hitCount);
+            }
+
             var radiusSq = radius * radius;
             hitCount = 0;
             var appliedDamage = 0f;
@@ -612,6 +637,22 @@ namespace TowerDefense.Runtime
             }
 
             return appliedDamage;
+        }
+
+        public bool TryGetHordeTargetPosition(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, out Vector3 targetPosition)
+        {
+            targetPosition = Vector3.zero;
+            return hordePrototype != null
+                && hordePrototype.IsRunning
+                && hordePrototype.TryGetTargetPosition(position, range, canHitFlying, targetingMode, out targetPosition);
+        }
+
+        public float DamageHordeTarget(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, float damage, out Vector3 targetPosition)
+        {
+            targetPosition = Vector3.zero;
+            return hordePrototype != null && hordePrototype.IsRunning
+                ? hordePrototype.DamageTarget(position, range, canHitFlying, targetingMode, damage, out targetPosition)
+                : 0f;
         }
 
         public void ClearAll(bool clearCombatTargets = true)

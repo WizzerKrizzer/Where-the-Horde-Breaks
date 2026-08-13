@@ -23,7 +23,9 @@ namespace TowerDefense.Runtime
         private float[] laneDriftSpeeds;
         private float[] speeds;
         private float[] spawnTimes;
+        private float[] health;
         private int[] segmentIndices;
+        private EnemyDefinition[] definitions;
         private bool[] alive;
         private Vector3[] segmentStarts;
         private Vector3[] segmentDirections;
@@ -75,7 +77,9 @@ namespace TowerDefense.Runtime
             laneDriftSpeeds = new float[count];
             speeds = new float[count];
             spawnTimes = new float[count];
+            health = new float[count];
             segmentIndices = new int[count];
+            definitions = new EnemyDefinition[count];
             alive = new bool[count];
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
@@ -124,7 +128,9 @@ namespace TowerDefense.Runtime
             laneDriftSpeeds = null;
             speeds = null;
             spawnTimes = null;
+            health = null;
             segmentIndices = null;
+            definitions = null;
             alive = null;
             segmentStarts = null;
             segmentDirections = null;
@@ -165,6 +171,8 @@ namespace TowerDefense.Runtime
             while (totalSpawned < spawnSequence.Count && elapsed >= spawnTimes[totalSpawned])
             {
                 var definition = spawnSequence[totalSpawned];
+                definitions[totalSpawned] = definition;
+                health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
                 laneOffsets[totalSpawned] = Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
                 laneDriftPhases[totalSpawned] = Random.Range(0f, 100f);
                 laneDriftSpeeds[totalSpawned] = Random.Range(0.65f, 1.35f);
@@ -209,6 +217,150 @@ namespace TowerDefense.Runtime
             }
         }
 
+        public bool TryGetLeadAimPoint(float radius, out Vector3 aimPoint)
+        {
+            aimPoint = Vector3.zero;
+            var index = FindBestTarget(Vector3.zero, float.PositiveInfinity, true, TowerTargetingMode.First);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            var lookBackDistance = Mathf.Max(0.2f, radius * 0.82f);
+            var distance = Mathf.Max(0f, pathDistances[index] - lookBackDistance);
+            aimPoint = SampleRoute(distance, segmentIndices[index]);
+            return true;
+        }
+
+        public bool TryGetTargetPosition(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, out Vector3 targetPosition)
+        {
+            targetPosition = Vector3.zero;
+            var index = FindBestTarget(position, range, canHitFlying, targetingMode);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            targetPosition = positions[index];
+            return true;
+        }
+
+        public float DamageTarget(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, float damage, out Vector3 targetPosition)
+        {
+            targetPosition = Vector3.zero;
+            var index = FindBestTarget(position, range, canHitFlying, targetingMode);
+            if (index < 0)
+            {
+                return 0f;
+            }
+
+            targetPosition = positions[index];
+            return ApplyDamage(index, damage);
+        }
+
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
+        {
+            hitCount = 0;
+            if (damage <= 0f || radius <= 0f || activeCount <= 0)
+            {
+                return 0f;
+            }
+
+            var radiusSq = radius * radius;
+            var appliedDamage = 0f;
+            var targetLimit = Mathf.Max(0, maxTargets);
+            for (var i = 0; i < totalSpawned; i++)
+            {
+                if (!alive[i])
+                {
+                    continue;
+                }
+
+                var offset = positions[i] - center;
+                if (offset.x * offset.x + offset.z * offset.z > radiusSq)
+                {
+                    continue;
+                }
+
+                appliedDamage += ApplyDamage(i, damage);
+                hitCount++;
+                if (targetLimit > 0 && hitCount >= targetLimit)
+                {
+                    break;
+                }
+            }
+
+            return appliedDamage;
+        }
+
+        private int FindBestTarget(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode)
+        {
+            if (activeCount <= 0)
+            {
+                return -1;
+            }
+
+            var rangeSq = range * range;
+            var bestIndex = -1;
+            var bestDistanceSq = float.PositiveInfinity;
+            var bestScore = float.MinValue;
+            for (var i = 0; i < totalSpawned; i++)
+            {
+                if (!alive[i] || definitions[i] == null || (definitions[i].isFlying && !canHitFlying))
+                {
+                    continue;
+                }
+
+                var distanceSq = (positions[i] - position).sqrMagnitude;
+                if (distanceSq > rangeSq)
+                {
+                    continue;
+                }
+
+                var score = -distanceSq;
+                switch (targetingMode)
+                {
+                    case TowerTargetingMode.First:
+                        score = pathDistances[i];
+                        break;
+                    case TowerTargetingMode.Last:
+                        score = -pathDistances[i];
+                        break;
+                    case TowerTargetingMode.HighestHealth:
+                        score = health[i];
+                        break;
+                }
+
+                if (bestIndex < 0 || score > bestScore || (Mathf.Approximately(score, bestScore) && distanceSq < bestDistanceSq))
+                {
+                    bestIndex = i;
+                    bestScore = score;
+                    bestDistanceSq = distanceSq;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private float ApplyDamage(int index, float damage)
+        {
+            if (index < 0 || index >= totalSpawned || !alive[index] || damage <= 0f)
+            {
+                return 0f;
+            }
+
+            var appliedDamage = Mathf.Min(health[index], damage);
+            health[index] -= damage;
+            if (health[index] <= 0f)
+            {
+                alive[index] = false;
+                activeCount--;
+                totalResolved++;
+            }
+
+            return appliedDamage;
+        }
+
         private Vector3 SamplePosition(int index)
         {
             var distance = pathDistances[index];
@@ -219,6 +371,22 @@ namespace TowerDefense.Runtime
             var smallWave = Mathf.Sin(distance * 2.4f * laneDriftSpeeds[index] + index * 0.37f) * 0.1f;
             var weave = longWave + smallWave;
             return center + side * Mathf.Clamp(laneOffsets[index] + weave, -RoadHalfWidth + 0.2f, RoadHalfWidth - 0.2f);
+        }
+
+        private Vector3 SampleRoute(float distance, int preferredSegment)
+        {
+            var segment = Mathf.Clamp(preferredSegment, 0, segmentStarts.Length - 1);
+            while (segment < segmentEndDistances.Length - 1 && distance > segmentEndDistances[segment])
+            {
+                segment++;
+            }
+
+            while (segment > 0 && distance < segmentStartDistances[segment])
+            {
+                segment--;
+            }
+
+            return segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, distance - segmentStartDistances[segment]);
         }
 
         private void AdvanceSegmentIndex(int enemyIndex)

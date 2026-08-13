@@ -120,6 +120,17 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (TryFireAtHordeTarget())
+            {
+                if (definition.doubleShotChance > 0f && Random.value < definition.doubleShotChance)
+                {
+                    TryFireAtHordeTarget();
+                }
+
+                cooldown = definition.fireInterval / fireRateMultiplier;
+                return;
+            }
+
             var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
             if (target == null)
             {
@@ -141,6 +152,47 @@ namespace TowerDefense.Runtime
                 ? new Color(1f, 0.32f, 0.05f)
                 : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
             ProjectileActor.Spawn(this, definition, target, enemies, definition.damage * damageMultiplier, projectileColor);
+        }
+
+        private bool TryFireAtHordeTarget()
+        {
+            if (enemies == null || definition == null)
+            {
+                return false;
+            }
+
+            if (!enemies.TryGetHordeTargetPosition(transform.position, definition.range, definition.canHitFlying, targetingMode, out var targetPosition))
+            {
+                return false;
+            }
+
+            var damage = definition.damage * damageMultiplier;
+            var appliedDamage = definition.projectilePattern == ProjectilePattern.ArcSplash
+                ? enemies.DamageInRadius(targetPosition, Mathf.Max(0.8f, definition.splashRadius), damage, maxTargets: 160, out _)
+                : enemies.DamageHordeTarget(transform.position, definition.range, definition.canHitFlying, targetingMode, damage, out targetPosition);
+            RecordDamage(appliedDamage);
+            SpawnHordeShotVisual(targetPosition);
+            return appliedDamage > 0f;
+        }
+
+        private void SpawnHordeShotVisual(Vector3 targetPosition)
+        {
+            var marker = GameObject.CreatePrimitive(definition.projectilePattern == ProjectilePattern.ArcSplash ? PrimitiveType.Sphere : PrimitiveType.Cube);
+            marker.name = $"HordeShot_{definition.id}";
+            marker.transform.position = targetPosition + Vector3.up * 0.35f;
+            marker.transform.localScale = Vector3.one * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.45f : 0.18f);
+            marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow);
+            var components = marker.GetComponents<Component>();
+            for (var i = components.Length - 1; i >= 0; i--)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
+
+            Destroy(marker, 0.12f);
         }
 
         private void UpdateBarracks()
