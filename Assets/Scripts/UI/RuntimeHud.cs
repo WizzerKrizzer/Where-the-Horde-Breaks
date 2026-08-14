@@ -233,7 +233,7 @@ namespace TowerDefense.UI
             });
 
             runDamageBodyText = CreateText("RunDamageBody", runDamagePanel.transform, Vector2.zero, TextAnchor.UpperLeft, 10);
-            ConfigureCenteredRect(runDamageBodyText.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(214f, 116f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            ConfigureCenteredRect(runDamageBodyText.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(214f, 140f), new Vector2(0f, 1f), new Vector2(0f, 1f));
             runDamageBodyText.raycastTarget = false;
         }
 
@@ -244,7 +244,17 @@ namespace TowerDefense.UI
                 return;
             }
 
-            runDamagePanelRect.sizeDelta = runDamagePanelExpanded ? new Vector2(238f, 166f) : new Vector2(238f, 34f);
+            runDamagePanelRect.sizeDelta = runDamagePanelExpanded ? new Vector2(238f, 188f) : new Vector2(238f, 34f);
+            if (runDamagePanel.TryGetComponent<Image>(out var panelImage))
+            {
+                panelImage.color = runDamagePanelExpanded
+                    ? new Color(0.035f, 0.045f, 0.05f, 0.76f)
+                    : new Color(0.035f, 0.045f, 0.05f, 0f);
+            }
+
+            runDamageToggleButton.GetComponent<RectTransform>().anchoredPosition = runDamagePanelExpanded
+                ? new Vector2(119f, 170f)
+                : new Vector2(119f, 17f);
             var label = runDamageToggleButton.GetComponentInChildren<Text>();
             if (label != null)
             {
@@ -264,7 +274,10 @@ namespace TowerDefense.UI
                 totalTowerDamage += towers.GetDamageDealt(tower);
             }
 
+            var activeDamage = activeWeapon != null ? activeWeapon.TotalDamageDealt : 0f;
+            var totalDamage = totalTowerDamage + activeDamage;
             var text = new StringBuilder();
+            text.AppendLine("PASSIVE");
             if (unlockedTowers.Count == 0)
             {
                 text.AppendLine("No turrets unlocked");
@@ -283,11 +296,15 @@ namespace TowerDefense.UI
                         continue;
                     }
 
-                    var percent = damage / totalTowerDamage * 100f;
+                    var percent = totalDamage <= 0f ? 0f : damage / totalDamage * 100f;
                     text.AppendLine($"{tower.displayName}: {damage:0}  {percent:0}%");
                 }
             }
 
+            text.AppendLine();
+            text.AppendLine("ACTIVE");
+            var activePercent = totalDamage <= 0f ? 0f : activeDamage / totalDamage * 100f;
+            text.AppendLine($"Volley of Arrows: {activeDamage:0}  {activePercent:0}%");
             runDamageBodyText.text = text.ToString();
         }
 
