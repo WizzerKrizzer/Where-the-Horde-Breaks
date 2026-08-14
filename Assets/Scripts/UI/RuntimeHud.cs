@@ -247,9 +247,8 @@ namespace TowerDefense.UI
             runDamagePanelRect.sizeDelta = runDamagePanelExpanded ? new Vector2(238f, 188f) : new Vector2(238f, 34f);
             if (runDamagePanel.TryGetComponent<Image>(out var panelImage))
             {
-                panelImage.color = runDamagePanelExpanded
-                    ? new Color(0.035f, 0.045f, 0.05f, 0.76f)
-                    : new Color(0.035f, 0.045f, 0.05f, 0f);
+                panelImage.enabled = runDamagePanelExpanded;
+                panelImage.color = new Color(0.035f, 0.045f, 0.05f, 0.76f);
             }
 
             runDamageToggleButton.GetComponent<RectTransform>().anchoredPosition = runDamagePanelExpanded
