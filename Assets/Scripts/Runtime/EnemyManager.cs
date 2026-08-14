@@ -52,6 +52,7 @@ namespace TowerDefense.Runtime
         public void SetHordePrototype(HordeEnemyManager manager)
         {
             hordePrototype = manager;
+            hordePrototype?.SetCombatTargets(combatTargets);
         }
 
         public void SetLevelRoute(PathRoute route)
@@ -458,12 +459,14 @@ namespace TowerDefense.Runtime
             if (target != null && !combatTargets.Contains(target))
             {
                 combatTargets.Add(target);
+                hordePrototype?.SetCombatTargets(combatTargets);
             }
         }
 
         public void UnregisterCombatTarget(ICombatTarget target)
         {
             combatTargets.Remove(target);
+            hordePrototype?.SetCombatTargets(combatTargets);
         }
 
         public Vector3 GetNearestPathPosition(Vector3 position)

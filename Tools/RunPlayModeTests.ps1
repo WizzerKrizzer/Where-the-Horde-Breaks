@@ -11,17 +11,26 @@ if (-not (Test-Path -LiteralPath $UnityPath)) {
     throw "Unity.exe was not found at: $UnityPath"
 }
 
-& $UnityPath `
+if (Test-Path -LiteralPath $resultsPath) {
+    Remove-Item -LiteralPath $resultsPath -Force
+}
+
+$unityOutput = & $UnityPath `
     -batchmode `
     -automated `
     -projectPath $projectPath `
     -runTests `
     -testPlatform PlayMode `
     -testResults $resultsPath `
-    -logFile $logPath
+    -logFile $logPath 2>&1
+$unityOutput | Write-Host
 
 $exitCode = $LASTEXITCODE
 $batchAborted = $false
+if ($unityOutput -match "Aborting batchmode due to fatal error") {
+    $batchAborted = $true
+}
+
 if (Test-Path -LiteralPath $logPath) {
     $logText = Get-Content -LiteralPath $logPath -Raw
     if ($logText -match "Aborting batchmode due to fatal error") {

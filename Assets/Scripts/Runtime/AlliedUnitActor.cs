@@ -75,6 +75,12 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (!IsRangedArcher && enemies.TryGetHordeTargetPosition(transform.position, definition.alliedUnitAggroRange, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, out hordeTarget))
+            {
+                UpdateMeleeHordeCombat(hordeTarget);
+                return;
+            }
+
             var target = enemies.GetNearestEnemy(transform.position, Mathf.Max(definition.alliedUnitAggroRange, definition.alliedUnitRange), definition.alliedUnitCanHitFlying);
             if (target == null)
             {
@@ -101,6 +107,25 @@ namespace TowerDefense.Runtime
             }
 
             var appliedDamage = target.ApplyDamage(definition.alliedUnitDamage);
+            owner?.RecordDamage(appliedDamage);
+            attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
+        }
+
+        private void UpdateMeleeHordeCombat(Vector3 targetPosition)
+        {
+            var attackRange = Mathf.Max(definition.alliedUnitRange, CombatRadius + 0.48f);
+            if (!IsWithinXzRange(targetPosition, attackRange))
+            {
+                MoveToward(targetPosition + formationOffset * 0.45f);
+                return;
+            }
+
+            if (attackCooldown > 0f)
+            {
+                return;
+            }
+
+            var appliedDamage = enemies.DamageHordeTarget(transform.position, attackRange + 0.35f, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, definition.alliedUnitDamage, out _);
             owner?.RecordDamage(appliedDamage);
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }

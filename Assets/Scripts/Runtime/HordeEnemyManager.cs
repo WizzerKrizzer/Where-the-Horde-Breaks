@@ -20,6 +20,7 @@ namespace TowerDefense.Runtime
         private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
         private readonly Dictionary<Vector2Int, List<int>> spatialBuckets = new();
         private readonly List<int> nearbyIndices = new(192);
+        private readonly Dictionary<ICombatTarget, float> frameTargetBlockedMass = new();
         private Vector3[] positions;
         private Vector3[] previousPositions;
         private float[] pathDistances;
@@ -29,6 +30,7 @@ namespace TowerDefense.Runtime
         private float[] speeds;
         private float[] slowMultipliers;
         private float[] slowTimers;
+        private float[] attackTimers;
         private float[] spawnTimes;
         private float[] health;
         private Vector3[] knockbackOffsets;
@@ -36,6 +38,7 @@ namespace TowerDefense.Runtime
         private int[] segmentIndices;
         private EnemyDefinition[] definitions;
         private bool[] alive;
+        private IReadOnlyList<ICombatTarget> combatTargets;
         private Vector3[] segmentStarts;
         private Vector3[] segmentDirections;
         private Vector3[] segmentSides;
@@ -59,6 +62,11 @@ namespace TowerDefense.Runtime
         public int TotalResolved => totalResolved;
         public bool IsRunning => running;
         public bool IsComplete => running && totalSpawned >= spawnSequence.Count && activeCount == 0;
+
+        public void SetCombatTargets(IReadOnlyList<ICombatTarget> targets)
+        {
+            combatTargets = targets;
+        }
 
         public void BeginWave(WaveDefinition waveDefinition, PathRoute route)
         {
@@ -89,6 +97,7 @@ namespace TowerDefense.Runtime
             speeds = new float[count];
             slowMultipliers = new float[count];
             slowTimers = new float[count];
+            attackTimers = new float[count];
             spawnTimes = new float[count];
             health = new float[count];
             knockbackOffsets = new Vector3[count];
@@ -151,6 +160,7 @@ namespace TowerDefense.Runtime
             speeds = null;
             slowMultipliers = null;
             slowTimers = null;
+            attackTimers = null;
             spawnTimes = null;
             health = null;
             knockbackOffsets = null;
@@ -165,6 +175,7 @@ namespace TowerDefense.Runtime
             segmentEndDistances = null;
             spatialBuckets.Clear();
             nearbyIndices.Clear();
+            frameTargetBlockedMass.Clear();
             elapsed = 0f;
             totalSpawned = 0;
             activeCount = 0;
@@ -209,6 +220,7 @@ namespace TowerDefense.Runtime
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
                 slowMultipliers[totalSpawned] = 1f;
                 slowTimers[totalSpawned] = 0f;
+                attackTimers[totalSpawned] = 0f;
                 knockbackOffsets[totalSpawned] = Vector3.zero;
                 knockbackVelocities[totalSpawned] = Vector3.zero;
                 var position = SamplePosition(totalSpawned);
@@ -227,6 +239,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            frameTargetBlockedMass.Clear();
             for (var i = 0; i < totalSpawned; i++)
             {
                 if (!alive[i])
@@ -244,7 +257,14 @@ namespace TowerDefense.Runtime
                     }
                 }
 
-                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * deltaTime;
+                var target = FindBlockingTarget(i);
+                if (target != null)
+                {
+                    AttackCombatTarget(i, target, deltaTime);
+                }
+
+                var combatMultiplier = target == null ? 1f : 0.08f;
+                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * deltaTime;
                 if (pathDistances[i] >= path.TotalLength)
                 {
                     alive[i] = false;
@@ -568,6 +588,67 @@ namespace TowerDefense.Runtime
             {
                 knockbackOffsets[index] = knockbackOffsets[index].normalized * 3f;
             }
+        }
+
+        private ICombatTarget FindBlockingTarget(int index)
+        {
+            if (combatTargets == null || combatTargets.Count == 0 || definitions[index] == null)
+            {
+                return null;
+            }
+
+            var enemyMass = Mathf.Max(0.1f, definitions[index].mass);
+            var enemyPosition = positions[index];
+            ICombatTarget bestTarget = null;
+            var bestDistanceSq = float.PositiveInfinity;
+            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            {
+                var target = combatTargets[i];
+                if (target == null || !target.IsAlive || target.BlockCapacity <= 0f)
+                {
+                    continue;
+                }
+
+                frameTargetBlockedMass.TryGetValue(target, out var blockedMass);
+                if (blockedMass + enemyMass > target.BlockCapacity)
+                {
+                    continue;
+                }
+
+                var range = Mathf.Max(0.35f, target.CombatRadius + VisualRadius * 1.2f);
+                var offset = target.Position - enemyPosition;
+                var distanceSq = offset.x * offset.x + offset.z * offset.z;
+                if (distanceSq > range * range || distanceSq >= bestDistanceSq)
+                {
+                    continue;
+                }
+
+                bestTarget = target;
+                bestDistanceSq = distanceSq;
+            }
+
+            if (bestTarget != null)
+            {
+                frameTargetBlockedMass.TryGetValue(bestTarget, out var blockedMass);
+                frameTargetBlockedMass[bestTarget] = blockedMass + Mathf.Max(0.1f, definitions[index].mass);
+            }
+
+            return bestTarget;
+        }
+
+        private void AttackCombatTarget(int index, ICombatTarget target, float deltaTime)
+        {
+            attackTimers[index] -= deltaTime;
+            if (attackTimers[index] > 0f || definitions[index] == null)
+            {
+                return;
+            }
+
+            var multiplier = target.TargetKind == CombatTargetKind.Barrier
+                ? definitions[index].wallDamageMultiplier
+                : definitions[index].alliedDamageMultiplier;
+            target.TakeDamage(definitions[index].attackDamage * Mathf.Max(0f, multiplier), null);
+            attackTimers[index] = Mathf.Max(0.15f, definitions[index].attackInterval);
         }
 
         private void RebuildSpatialBuckets()

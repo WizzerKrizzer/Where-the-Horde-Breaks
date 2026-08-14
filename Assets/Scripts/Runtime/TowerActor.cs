@@ -177,22 +177,12 @@ namespace TowerDefense.Runtime
 
         private void SpawnHordeShotVisual(Vector3 targetPosition)
         {
-            var marker = GameObject.CreatePrimitive(definition.projectilePattern == ProjectilePattern.ArcSplash ? PrimitiveType.Sphere : PrimitiveType.Cube);
-            marker.name = $"HordeShot_{definition.id}";
-            marker.transform.position = targetPosition + Vector3.up * 0.35f;
-            marker.transform.localScale = Vector3.one * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.45f : 0.18f);
-            marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow);
-            var components = marker.GetComponents<Component>();
-            for (var i = components.Length - 1; i >= 0; i--)
-            {
-                var component = components[i];
-                if (component != null && component.GetType().Name.Contains("Collider"))
-                {
-                    Destroy(component);
-                }
-            }
-
-            Destroy(marker, 0.12f);
+            var projectileColor = definition.appliesFire
+                ? new Color(1f, 0.32f, 0.05f)
+                : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
+            var start = transform.position + Vector3.up * 0.82f;
+            var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
+            HordeProjectileVisual.Spawn(start, end, projectileColor, definition.projectilePattern == ProjectilePattern.ArcSplash);
         }
 
         private void UpdateBarracks()
