@@ -21,6 +21,17 @@ if (-not (Test-Path -LiteralPath $UnityPath)) {
     -quit
 
 $exitCode = $LASTEXITCODE
+if (Test-Path -LiteralPath $logPath) {
+    $logText = Get-Content -LiteralPath $logPath -Raw
+    if ($logText -match "Aborting batchmode due to fatal error") {
+        $exitCode = 1
+    }
+}
+
+if (-not (Test-Path -LiteralPath $resultsPath)) {
+    $exitCode = 1
+}
+
 Write-Host "PlayMode test results: $resultsPath"
 Write-Host "Unity log: $logPath"
 exit $exitCode
