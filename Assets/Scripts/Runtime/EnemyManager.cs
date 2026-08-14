@@ -340,8 +340,9 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            var lookBack = Mathf.Max(0.2f, radius * 0.82f);
-            aimPoint = path.Sample(Mathf.Max(0f, lead.PathDistance - lookBack));
+            var lookBack = Mathf.Max(0.2f, radius * 0.55f);
+            var speedLead = Mathf.Clamp(lead.Definition != null ? lead.Definition.speed * 0.22f : 0f, 0f, radius * 0.28f);
+            aimPoint = path.Sample(Mathf.Max(0f, lead.PathDistance + speedLead - lookBack));
             return true;
         }
 

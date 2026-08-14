@@ -226,8 +226,9 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            var lookBackDistance = Mathf.Max(0.2f, radius * 0.82f);
-            var distance = Mathf.Max(0f, pathDistances[index] - lookBackDistance);
+            var lookBackDistance = Mathf.Max(0.2f, radius * 0.55f);
+            var speedLead = Mathf.Clamp(speeds[index] * 0.22f, 0f, radius * 0.28f);
+            var distance = Mathf.Max(0f, pathDistances[index] + speedLead - lookBackDistance);
             aimPoint = SampleRoute(distance, segmentIndices[index]);
             return true;
         }
