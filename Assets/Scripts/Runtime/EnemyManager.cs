@@ -530,6 +530,7 @@ namespace TowerDefense.Runtime
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
+                hordePrototype.ApplySlowAura(center, radius, slowPercent, capacity);
                 return;
             }
 
@@ -611,7 +612,7 @@ namespace TowerDefense.Runtime
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
-                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets: 160, out hitCount);
+                return hordePrototype.DamageAndKnockbackInRadius(center, radius, damage, knockbackDistance, maxTargets: 160, out hitCount);
             }
 
             var radiusSq = radius * radius;

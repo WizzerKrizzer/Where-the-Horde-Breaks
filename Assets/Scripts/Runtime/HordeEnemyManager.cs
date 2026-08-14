@@ -12,9 +12,14 @@ namespace TowerDefense.Runtime
         private const int InstanceBatchSize = 1023;
         private const float RoadHalfWidth = 2.45f;
         private const float VisualRadius = 0.28f;
+        private const float SpatialCellSize = 1.2f;
+        private const float PressureRadius = 0.62f;
+        private const int MaxPressureNeighbors = 8;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
+        private readonly Dictionary<Vector2Int, List<int>> spatialBuckets = new();
+        private readonly List<int> nearbyIndices = new(192);
         private Vector3[] positions;
         private Vector3[] previousPositions;
         private float[] pathDistances;
@@ -22,8 +27,12 @@ namespace TowerDefense.Runtime
         private float[] laneDriftPhases;
         private float[] laneDriftSpeeds;
         private float[] speeds;
+        private float[] slowMultipliers;
+        private float[] slowTimers;
         private float[] spawnTimes;
         private float[] health;
+        private Vector3[] knockbackOffsets;
+        private Vector3[] knockbackVelocities;
         private int[] segmentIndices;
         private EnemyDefinition[] definitions;
         private bool[] alive;
@@ -76,8 +85,12 @@ namespace TowerDefense.Runtime
             laneDriftPhases = new float[count];
             laneDriftSpeeds = new float[count];
             speeds = new float[count];
+            slowMultipliers = new float[count];
+            slowTimers = new float[count];
             spawnTimes = new float[count];
             health = new float[count];
+            knockbackOffsets = new Vector3[count];
+            knockbackVelocities = new Vector3[count];
             segmentIndices = new int[count];
             definitions = new EnemyDefinition[count];
             alive = new bool[count];
@@ -127,8 +140,12 @@ namespace TowerDefense.Runtime
             laneDriftPhases = null;
             laneDriftSpeeds = null;
             speeds = null;
+            slowMultipliers = null;
+            slowTimers = null;
             spawnTimes = null;
             health = null;
+            knockbackOffsets = null;
+            knockbackVelocities = null;
             segmentIndices = null;
             definitions = null;
             alive = null;
@@ -137,6 +154,8 @@ namespace TowerDefense.Runtime
             segmentSides = null;
             segmentStartDistances = null;
             segmentEndDistances = null;
+            spatialBuckets.Clear();
+            nearbyIndices.Clear();
             elapsed = 0f;
             totalSpawned = 0;
             activeCount = 0;
@@ -179,6 +198,10 @@ namespace TowerDefense.Runtime
                 pathDistances[totalSpawned] = 0f;
                 segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
+                slowMultipliers[totalSpawned] = 1f;
+                slowTimers[totalSpawned] = 0f;
+                knockbackOffsets[totalSpawned] = Vector3.zero;
+                knockbackVelocities[totalSpawned] = Vector3.zero;
                 var position = SamplePosition(totalSpawned);
                 positions[totalSpawned] = position;
                 previousPositions[totalSpawned] = position;
@@ -203,7 +226,16 @@ namespace TowerDefense.Runtime
                 }
 
                 previousPositions[i] = positions[i];
-                pathDistances[i] += speeds[i] * deltaTime;
+                if (slowTimers[i] > 0f)
+                {
+                    slowTimers[i] -= deltaTime;
+                    if (slowTimers[i] <= 0f)
+                    {
+                        slowMultipliers[i] = 1f;
+                    }
+                }
+
+                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * deltaTime;
                 if (pathDistances[i] >= path.TotalLength)
                 {
                     alive[i] = false;
@@ -213,8 +245,12 @@ namespace TowerDefense.Runtime
                 }
 
                 AdvanceSegmentIndex(i);
+                ApplyCrowdPressure(i, deltaTime);
+                UpdateKnockback(i, deltaTime);
                 positions[i] = SamplePosition(i);
             }
+
+            RebuildSpatialBuckets();
         }
 
         public bool TryGetLeadAimPoint(float radius, out Vector3 aimPoint)
@@ -270,8 +306,10 @@ namespace TowerDefense.Runtime
             var radiusSq = radius * radius;
             var appliedDamage = 0f;
             var targetLimit = Mathf.Max(0, maxTargets);
-            for (var i = 0; i < totalSpawned; i++)
+            CollectNearbyIndices(center, radius, nearbyIndices, targetLimit > 0 ? targetLimit * 3 : 0);
+            for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
             {
+                var i = nearbyIndices[candidate];
                 if (!alive[i])
                 {
                     continue;
@@ -284,6 +322,92 @@ namespace TowerDefense.Runtime
                 }
 
                 appliedDamage += ApplyDamage(i, damage);
+                hitCount++;
+                if (targetLimit > 0 && hitCount >= targetLimit)
+                {
+                    break;
+                }
+            }
+
+            return appliedDamage;
+        }
+
+        public void ApplySlowAura(Vector3 center, float radius, float slowPercent, float capacity)
+        {
+            if (slowPercent <= 0f || capacity <= 0f || activeCount <= 0)
+            {
+                return;
+            }
+
+            var radiusSq = radius * radius;
+            var usedCapacity = 0f;
+            var multiplier = Mathf.Clamp01(1f - slowPercent);
+            CollectNearbyIndices(center, radius, nearbyIndices, 160);
+            for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
+            {
+                var i = nearbyIndices[candidate];
+                if (!alive[i])
+                {
+                    continue;
+                }
+
+                var offset = positions[i] - center;
+                if (offset.x * offset.x + offset.z * offset.z > radiusSq)
+                {
+                    continue;
+                }
+
+                var cost = Mathf.Max(0.1f, definitions[i] != null ? definitions[i].mass : 1f);
+                if (usedCapacity + cost > capacity)
+                {
+                    continue;
+                }
+
+                slowMultipliers[i] = Mathf.Min(slowMultipliers[i], multiplier);
+                slowTimers[i] = Mathf.Max(slowTimers[i], 0.18f);
+                usedCapacity += cost;
+            }
+        }
+
+        public float DamageAndKnockbackInRadius(Vector3 center, float radius, float damage, float knockbackDistance, int maxTargets, out int hitCount)
+        {
+            hitCount = 0;
+            if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
+            {
+                return 0f;
+            }
+
+            var radiusSq = radius * radius;
+            var appliedDamage = 0f;
+            var targetLimit = Mathf.Max(0, maxTargets);
+            CollectNearbyIndices(center, radius, nearbyIndices, targetLimit > 0 ? targetLimit * 3 : 0);
+            for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
+            {
+                var i = nearbyIndices[candidate];
+                if (!alive[i])
+                {
+                    continue;
+                }
+
+                var offset = positions[i] - center;
+                var distanceSq = offset.x * offset.x + offset.z * offset.z;
+                if (distanceSq > radiusSq)
+                {
+                    continue;
+                }
+
+                if (knockbackDistance > 0f)
+                {
+                    var direction = distanceSq > 0.0001f ? offset.normalized : segmentSides[Mathf.Clamp(segmentIndices[i], 0, segmentSides.Length - 1)];
+                    var falloff = 1f - Mathf.Clamp01(Mathf.Sqrt(distanceSq) / radius);
+                    knockbackVelocities[i] += direction * knockbackDistance * Mathf.Lerp(1.2f, 4f, falloff);
+                }
+
+                if (damage > 0f)
+                {
+                    appliedDamage += ApplyDamage(i, damage);
+                }
+
                 hitCount++;
                 if (targetLimit > 0 && hitCount >= targetLimit)
                 {
@@ -371,7 +495,145 @@ namespace TowerDefense.Runtime
             var longWave = Mathf.Sin(distance * 0.72f + laneDriftPhases[index]) * 0.28f;
             var smallWave = Mathf.Sin(distance * 2.4f * laneDriftSpeeds[index] + index * 0.37f) * 0.1f;
             var weave = longWave + smallWave;
-            return center + side * Mathf.Clamp(laneOffsets[index] + weave, -RoadHalfWidth + 0.2f, RoadHalfWidth - 0.2f);
+            return center + side * Mathf.Clamp(laneOffsets[index] + weave, -RoadHalfWidth + 0.2f, RoadHalfWidth - 0.2f) + knockbackOffsets[index];
+        }
+
+        private void ApplyCrowdPressure(int index, float deltaTime)
+        {
+            if (activeCount <= 1)
+            {
+                return;
+            }
+
+            var position = positions[index];
+            CollectNearbyIndices(position, PressureRadius, nearbyIndices, MaxPressureNeighbors + 1);
+            if (nearbyIndices.Count <= 1)
+            {
+                return;
+            }
+
+            var side = segmentSides[Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1)];
+            var lateralPush = 0f;
+            var checks = 0;
+            var radiusSq = PressureRadius * PressureRadius;
+            for (var candidate = 0; candidate < nearbyIndices.Count && checks < MaxPressureNeighbors; candidate++)
+            {
+                var other = nearbyIndices[candidate];
+                if (other == index || !alive[other])
+                {
+                    continue;
+                }
+
+                var offset = position - positions[other];
+                var distanceSq = offset.x * offset.x + offset.z * offset.z;
+                if (distanceSq <= 0.0001f || distanceSq > radiusSq)
+                {
+                    continue;
+                }
+
+                var distance = Mathf.Sqrt(distanceSq);
+                lateralPush += Vector3.Dot(offset / distance, side) * (1f - distance / PressureRadius);
+                checks++;
+            }
+
+            if (checks <= 0)
+            {
+                return;
+            }
+
+            laneOffsets[index] = Mathf.Clamp(laneOffsets[index] + lateralPush * deltaTime * 1.1f, -RoadHalfWidth + 0.28f, RoadHalfWidth - 0.28f);
+        }
+
+        private void UpdateKnockback(int index, float deltaTime)
+        {
+            var velocity = knockbackVelocities[index];
+            if (velocity.sqrMagnitude <= 0.0001f && knockbackOffsets[index].sqrMagnitude <= 0.0001f)
+            {
+                return;
+            }
+
+            knockbackOffsets[index] += velocity * deltaTime;
+            knockbackVelocities[index] = Vector3.MoveTowards(velocity, Vector3.zero, deltaTime * 7f);
+            knockbackOffsets[index] = Vector3.MoveTowards(knockbackOffsets[index], Vector3.zero, deltaTime * 1.9f);
+            if (knockbackOffsets[index].sqrMagnitude > 4f)
+            {
+                knockbackOffsets[index] = knockbackOffsets[index].normalized * 2f;
+            }
+        }
+
+        private void RebuildSpatialBuckets()
+        {
+            foreach (var bucket in spatialBuckets.Values)
+            {
+                bucket.Clear();
+            }
+
+            if (positions == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < totalSpawned; i++)
+            {
+                if (!alive[i])
+                {
+                    continue;
+                }
+
+                var key = GetSpatialKey(positions[i]);
+                if (!spatialBuckets.TryGetValue(key, out var bucket))
+                {
+                    bucket = new List<int>(16);
+                    spatialBuckets.Add(key, bucket);
+                }
+
+                bucket.Add(i);
+            }
+        }
+
+        private void CollectNearbyIndices(Vector3 center, float radius, List<int> results, int maxResults)
+        {
+            results.Clear();
+            if (spatialBuckets.Count == 0)
+            {
+                var fallbackLimit = maxResults > 0 ? maxResults : totalSpawned;
+                for (var i = 0; i < totalSpawned && results.Count < fallbackLimit; i++)
+                {
+                    if (alive[i])
+                    {
+                        results.Add(i);
+                    }
+                }
+
+                return;
+            }
+
+            var min = GetSpatialKey(center - new Vector3(radius, 0f, radius));
+            var max = GetSpatialKey(center + new Vector3(radius, 0f, radius));
+            for (var x = min.x; x <= max.x; x++)
+            {
+                for (var y = min.y; y <= max.y; y++)
+                {
+                    if (!spatialBuckets.TryGetValue(new Vector2Int(x, y), out var bucket))
+                    {
+                        continue;
+                    }
+
+                    for (var i = 0; i < bucket.Count; i++)
+                    {
+                        results.Add(bucket[i]);
+                        if (maxResults > 0 && results.Count >= maxResults)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static Vector2Int GetSpatialKey(Vector3 position)
+        {
+            return new Vector2Int(Mathf.FloorToInt(position.x / SpatialCellSize), Mathf.FloorToInt(position.z / SpatialCellSize));
         }
 
         private Vector3 SampleRoute(float distance, int preferredSegment)
