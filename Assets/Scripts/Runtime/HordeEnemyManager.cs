@@ -45,6 +45,8 @@ namespace TowerDefense.Runtime
         private PathRoute path;
         private Mesh mesh;
         private Material material;
+        private Material slowedMaterial;
+        private Material knockedMaterial;
         private MaterialPropertyBlock properties;
         private float elapsed;
         private int totalSpawned;
@@ -115,6 +117,10 @@ namespace TowerDefense.Runtime
             mesh = EnemyManager.GetDetailedEnemyMesh();
             material = BootstrapMaterials.Get(new Color(0.1f, 0.9f, 0.18f, 1f));
             material.enableInstancing = true;
+            slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
+            slowedMaterial.enableInstancing = true;
+            knockedMaterial = BootstrapMaterials.Get(new Color(1f, 0.78f, 0.18f, 1f));
+            knockedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
             elapsed = 0f;
             totalSpawned = 0;
@@ -133,6 +139,9 @@ namespace TowerDefense.Runtime
             running = false;
             wave = null;
             spawnSequence.Clear();
+            material = null;
+            slowedMaterial = null;
+            knockedMaterial = null;
             positions = null;
             previousPositions = null;
             pathDistances = null;
@@ -364,7 +373,7 @@ namespace TowerDefense.Runtime
                 }
 
                 slowMultipliers[i] = Mathf.Min(slowMultipliers[i], multiplier);
-                slowTimers[i] = Mathf.Max(slowTimers[i], 0.18f);
+                slowTimers[i] = Mathf.Max(slowTimers[i], 0.35f);
                 usedCapacity += cost;
             }
         }
@@ -400,7 +409,7 @@ namespace TowerDefense.Runtime
                 {
                     var direction = distanceSq > 0.0001f ? offset.normalized : segmentSides[Mathf.Clamp(segmentIndices[i], 0, segmentSides.Length - 1)];
                     var falloff = 1f - Mathf.Clamp01(Mathf.Sqrt(distanceSq) / radius);
-                    knockbackVelocities[i] += direction * knockbackDistance * Mathf.Lerp(1.2f, 4f, falloff);
+                    knockbackVelocities[i] += direction * knockbackDistance * Mathf.Lerp(2.5f, 8f, falloff);
                 }
 
                 if (damage > 0f)
@@ -553,11 +562,11 @@ namespace TowerDefense.Runtime
             }
 
             knockbackOffsets[index] += velocity * deltaTime;
-            knockbackVelocities[index] = Vector3.MoveTowards(velocity, Vector3.zero, deltaTime * 7f);
-            knockbackOffsets[index] = Vector3.MoveTowards(knockbackOffsets[index], Vector3.zero, deltaTime * 1.9f);
-            if (knockbackOffsets[index].sqrMagnitude > 4f)
+            knockbackVelocities[index] = Vector3.MoveTowards(velocity, Vector3.zero, deltaTime * 4.5f);
+            knockbackOffsets[index] = Vector3.MoveTowards(knockbackOffsets[index], Vector3.zero, deltaTime * 1.25f);
+            if (knockbackOffsets[index].sqrMagnitude > 9f)
             {
-                knockbackOffsets[index] = knockbackOffsets[index].normalized * 2f;
+                knockbackOffsets[index] = knockbackOffsets[index].normalized * 3f;
             }
         }
 
@@ -699,11 +708,42 @@ namespace TowerDefense.Runtime
         private void DrawInstances()
         {
             var camera = Camera.main;
+            DrawInstancesForMaterial(camera, material, HordeDrawMode.Normal);
+            if (slowedMaterial != null)
+            {
+                DrawInstancesForMaterial(camera, slowedMaterial, HordeDrawMode.Slowed);
+            }
+
+            if (knockedMaterial != null)
+            {
+                DrawInstancesForMaterial(camera, knockedMaterial, HordeDrawMode.Knocked);
+            }
+        }
+
+        private void DrawInstancesForMaterial(Camera camera, Material drawMaterial, HordeDrawMode mode)
+        {
             var batchCount = 0;
             var scale = Vector3.one * VisualRadius;
             for (var i = 0; i < totalSpawned; i++)
             {
                 if (!alive[i])
+                {
+                    continue;
+                }
+
+                var isSlowed = slowTimers != null && slowTimers[i] > 0f && slowMultipliers[i] < 0.995f;
+                var isKnocked = knockbackOffsets != null && knockbackOffsets[i].sqrMagnitude > 0.03f;
+                if (mode == HordeDrawMode.Normal && (isSlowed || isKnocked))
+                {
+                    continue;
+                }
+
+                if (mode == HordeDrawMode.Slowed && (!isSlowed || isKnocked))
+                {
+                    continue;
+                }
+
+                if (mode == HordeDrawMode.Knocked && !isKnocked)
                 {
                     continue;
                 }
@@ -716,14 +756,14 @@ namespace TowerDefense.Runtime
                 matrixBatch[batchCount++] = Matrix4x4.TRS(positions[i], Quaternion.identity, scale);
                 if (batchCount >= InstanceBatchSize)
                 {
-                    FlushBatch(batchCount);
+                    FlushBatch(drawMaterial, batchCount);
                     batchCount = 0;
                 }
             }
 
             if (batchCount > 0)
             {
-                FlushBatch(batchCount);
+                FlushBatch(drawMaterial, batchCount);
             }
         }
 
@@ -733,9 +773,9 @@ namespace TowerDefense.Runtime
             return viewport.z > 0f && viewport.x > -0.08f && viewport.x < 1.08f && viewport.y > -0.08f && viewport.y < 1.08f;
         }
 
-        private void FlushBatch(int count)
+        private void FlushBatch(Material drawMaterial, int count)
         {
-            Graphics.DrawMeshInstanced(mesh, 0, material, matrixBatch, count, properties, ShadowCastingMode.Off, false, gameObject.layer);
+            Graphics.DrawMeshInstanced(mesh, 0, drawMaterial, matrixBatch, count, properties, ShadowCastingMode.Off, false, gameObject.layer);
         }
 
         private void BuildSpawnSequence()
@@ -761,6 +801,13 @@ namespace TowerDefense.Runtime
                     spawnSequence.Add(entry.enemy);
                 }
             }
+        }
+
+        private enum HordeDrawMode
+        {
+            Normal,
+            Slowed,
+            Knocked
         }
     }
 }

@@ -21,14 +21,18 @@ if (-not (Test-Path -LiteralPath $UnityPath)) {
     -logFile $logPath
 
 $exitCode = $LASTEXITCODE
+$batchAborted = $false
 if (Test-Path -LiteralPath $logPath) {
     $logText = Get-Content -LiteralPath $logPath -Raw
     if ($logText -match "Aborting batchmode due to fatal error") {
-        $exitCode = 1
+        $batchAborted = $true
     }
 }
 
-if (-not (Test-Path -LiteralPath $resultsPath)) {
+if ($batchAborted) {
+    $exitCode = 1
+}
+elseif (-not (Test-Path -LiteralPath $resultsPath)) {
     $exitCode = 1
 }
 else {

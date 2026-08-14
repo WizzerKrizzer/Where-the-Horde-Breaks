@@ -168,7 +168,7 @@ namespace TowerDefense.Runtime
 
             var damage = definition.damage * damageMultiplier;
             var appliedDamage = definition.projectilePattern == ProjectilePattern.ArcSplash
-                ? enemies.DamageInRadius(targetPosition, Mathf.Max(0.8f, definition.splashRadius), damage, maxTargets: 160, out _)
+                ? enemies.DamageAndKnockbackInRadius(targetPosition, Mathf.Max(0.8f, definition.splashRadius), damage, definition.knockbackDistance, out _)
                 : enemies.DamageHordeTarget(transform.position, definition.range, definition.canHitFlying, targetingMode, damage, out targetPosition);
             RecordDamage(appliedDamage);
             SpawnHordeShotVisual(targetPosition);
