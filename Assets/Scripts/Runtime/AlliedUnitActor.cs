@@ -182,7 +182,6 @@ namespace TowerDefense.Runtime
             var appliedDamage = Mathf.Max(0f, damage - definition.alliedUnitDefense);
             health -= appliedDamage;
             UpdateHealthBar();
-            DamagePopup.Show(transform.position, appliedDamage, new Color(1f, 0.25f, 0.18f, 1f));
             if (health > 0f)
             {
                 return;
