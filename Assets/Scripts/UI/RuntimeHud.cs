@@ -23,6 +23,11 @@ namespace TowerDefense.UI
         private float fpsAccumulatedTime;
         private int fpsAccumulatedFrames;
         private Text towerText;
+        private GameObject runDamagePanel;
+        private RectTransform runDamagePanelRect;
+        private Button runDamageToggleButton;
+        private Text runDamageBodyText;
+        private bool runDamagePanelExpanded = true;
         private GameObject activeWeaponSlot;
         private Image activeWeaponIcon;
         private Image activeWeaponCooldownFill;
@@ -124,6 +129,7 @@ namespace TowerDefense.UI
             fpsText.text = "FPS: --";
             towerText = CreateText("TowerSelection", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
+            CreateRunDamagePanel(parent);
             CreateActiveWeaponSlot(parent);
             CreateSelectedTowerPanel(parent);
             CreateStartBattleButton(parent);
@@ -170,6 +176,7 @@ namespace TowerDefense.UI
             statusText.text = text.ToString();
             UpdateFpsCounter();
             UpdateTowerText();
+            UpdateRunDamagePanel();
             UpdateSelectedTowerPanel();
             UpdateActiveWeaponSlot();
             UpdateDevSpeedButtons();
@@ -207,6 +214,81 @@ namespace TowerDefense.UI
             nextFpsRefreshTime = Time.realtimeSinceStartup + 1f;
             fpsAccumulatedTime = 0f;
             fpsAccumulatedFrames = 0;
+        }
+
+        private void CreateRunDamagePanel(Transform parent)
+        {
+            runDamagePanel = CreatePanel("RunDamagePanel", parent, new Vector2(12f, 42f), new Vector2(238f, 166f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            if (runDamagePanel.TryGetComponent<Image>(out var image))
+            {
+                image.raycastTarget = false;
+            }
+
+            runDamagePanelRect = runDamagePanel.GetComponent<RectTransform>();
+            runDamageToggleButton = CreateAnchoredButton("RunDamageToggle", runDamagePanel.transform, "DAMAGE [-]", new Vector2(119f, 148f), new Vector2(218f, 24f), new Vector2(0f, 0f), 11);
+            runDamageToggleButton.onClick.AddListener(() =>
+            {
+                runDamagePanelExpanded = !runDamagePanelExpanded;
+                UpdateRunDamagePanel();
+            });
+
+            runDamageBodyText = CreateText("RunDamageBody", runDamagePanel.transform, Vector2.zero, TextAnchor.UpperLeft, 10);
+            ConfigureCenteredRect(runDamageBodyText.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(214f, 116f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            runDamageBodyText.raycastTarget = false;
+        }
+
+        private void UpdateRunDamagePanel()
+        {
+            if (runDamagePanel == null || runDamagePanelRect == null || runDamageBodyText == null || runDamageToggleButton == null || towers == null)
+            {
+                return;
+            }
+
+            runDamagePanelRect.sizeDelta = runDamagePanelExpanded ? new Vector2(238f, 166f) : new Vector2(238f, 34f);
+            var label = runDamageToggleButton.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = runDamagePanelExpanded ? "DAMAGE [-]" : "DAMAGE [+]";
+            }
+
+            runDamageBodyText.gameObject.SetActive(runDamagePanelExpanded);
+            if (!runDamagePanelExpanded)
+            {
+                return;
+            }
+
+            var unlockedTowers = towers.AvailableTowers;
+            var totalTowerDamage = 0f;
+            foreach (var tower in unlockedTowers)
+            {
+                totalTowerDamage += towers.GetDamageDealt(tower);
+            }
+
+            var text = new StringBuilder();
+            if (unlockedTowers.Count == 0)
+            {
+                text.AppendLine("No turrets unlocked");
+            }
+            else if (totalTowerDamage <= 0f)
+            {
+                text.AppendLine("No turret damage yet");
+            }
+            else
+            {
+                foreach (var tower in unlockedTowers)
+                {
+                    var damage = towers.GetDamageDealt(tower);
+                    if (damage <= 0f)
+                    {
+                        continue;
+                    }
+
+                    var percent = damage / totalTowerDamage * 100f;
+                    text.AppendLine($"{tower.displayName}: {damage:0}  {percent:0}%");
+                }
+            }
+
+            runDamageBodyText.text = text.ToString();
         }
 
         private void HandleHudShortcuts()
