@@ -49,7 +49,6 @@ namespace TowerDefense.Runtime
         private Mesh mesh;
         private Material material;
         private Material slowedMaterial;
-        private Material knockedMaterial;
         private MaterialPropertyBlock properties;
         private float elapsed;
         private int totalSpawned;
@@ -128,8 +127,6 @@ namespace TowerDefense.Runtime
             material.enableInstancing = true;
             slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
             slowedMaterial.enableInstancing = true;
-            knockedMaterial = BootstrapMaterials.Get(new Color(1f, 0.78f, 0.18f, 1f));
-            knockedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
             elapsed = 0f;
             totalSpawned = 0;
@@ -150,7 +147,6 @@ namespace TowerDefense.Runtime
             spawnSequence.Clear();
             material = null;
             slowedMaterial = null;
-            knockedMaterial = null;
             positions = null;
             previousPositions = null;
             pathDistances = null;
@@ -524,7 +520,35 @@ namespace TowerDefense.Runtime
             var longWave = Mathf.Sin(distance * 0.72f + laneDriftPhases[index]) * 0.28f;
             var smallWave = Mathf.Sin(distance * 2.4f * laneDriftSpeeds[index] + index * 0.37f) * 0.1f;
             var weave = longWave + smallWave;
-            return center + side * Mathf.Clamp(laneOffsets[index] + weave, -RoadHalfWidth + 0.2f, RoadHalfWidth - 0.2f) + knockbackOffsets[index];
+            var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
+            var minLane = -effectiveHalfWidth + 0.2f;
+            var maxLane = effectiveHalfWidth - 0.2f;
+            var lane = Mathf.Clamp(laneOffsets[index] + weave, minLane, maxLane);
+            return center + side * lane + GetClampedKnockbackOffset(index, segment, lane, minLane, maxLane);
+        }
+
+        private float GetEffectiveRoadHalfWidth(int index, int segment)
+        {
+            var intoSegment = Mathf.Max(0f, pathDistances[index] - segmentStartDistances[segment]);
+            var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - pathDistances[index]);
+            var cornerDistance = Mathf.Min(intoSegment, toSegmentEnd);
+            var cornerBlend = Mathf.Clamp01(cornerDistance / 2.1f);
+            return Mathf.Lerp(RoadHalfWidth * 0.68f, RoadHalfWidth, cornerBlend);
+        }
+
+        private Vector3 GetClampedKnockbackOffset(int index, int segment, float lane, float minLane, float maxLane)
+        {
+            var offset = knockbackOffsets[index];
+            if (offset.sqrMagnitude <= 0.0001f)
+            {
+                return Vector3.zero;
+            }
+
+            var side = segmentSides[segment];
+            var forward = segmentDirections[segment];
+            var lateral = Mathf.Clamp(Vector3.Dot(offset, side), minLane - lane, maxLane - lane);
+            var longitudinal = Mathf.Clamp(Vector3.Dot(offset, forward), -0.9f, 0.9f);
+            return side * lateral + forward * longitudinal;
         }
 
         private void ApplyCrowdPressure(int index, float deltaTime)
@@ -584,9 +608,9 @@ namespace TowerDefense.Runtime
             knockbackOffsets[index] += velocity * deltaTime;
             knockbackVelocities[index] = Vector3.MoveTowards(velocity, Vector3.zero, deltaTime * 4.5f);
             knockbackOffsets[index] = Vector3.MoveTowards(knockbackOffsets[index], Vector3.zero, deltaTime * 1.25f);
-            if (knockbackOffsets[index].sqrMagnitude > 9f)
+            if (knockbackOffsets[index].sqrMagnitude > 3.24f)
             {
-                knockbackOffsets[index] = knockbackOffsets[index].normalized * 3f;
+                knockbackOffsets[index] = knockbackOffsets[index].normalized * 1.8f;
             }
         }
 
@@ -795,10 +819,6 @@ namespace TowerDefense.Runtime
                 DrawInstancesForMaterial(camera, slowedMaterial, HordeDrawMode.Slowed);
             }
 
-            if (knockedMaterial != null)
-            {
-                DrawInstancesForMaterial(camera, knockedMaterial, HordeDrawMode.Knocked);
-            }
         }
 
         private void DrawInstancesForMaterial(Camera camera, Material drawMaterial, HordeDrawMode mode)
@@ -813,18 +833,12 @@ namespace TowerDefense.Runtime
                 }
 
                 var isSlowed = slowTimers != null && slowTimers[i] > 0f && slowMultipliers[i] < 0.995f;
-                var isKnocked = knockbackOffsets != null && knockbackOffsets[i].sqrMagnitude > 0.03f;
-                if (mode == HordeDrawMode.Normal && (isSlowed || isKnocked))
+                if (mode == HordeDrawMode.Normal && isSlowed)
                 {
                     continue;
                 }
 
-                if (mode == HordeDrawMode.Slowed && (!isSlowed || isKnocked))
-                {
-                    continue;
-                }
-
-                if (mode == HordeDrawMode.Knocked && !isKnocked)
+                if (mode == HordeDrawMode.Slowed && !isSlowed)
                 {
                     continue;
                 }
@@ -887,8 +901,7 @@ namespace TowerDefense.Runtime
         private enum HordeDrawMode
         {
             Normal,
-            Slowed,
-            Knocked
+            Slowed
         }
     }
 }

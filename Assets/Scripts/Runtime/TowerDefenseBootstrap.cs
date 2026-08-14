@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
 
         private void Awake()
         {
+            ConfigureRuntimePerformanceDefaults();
             var content = SampleContent.Create();
             var camera = CreateCamera();
             mainCamera = camera;
@@ -57,6 +58,12 @@ namespace TowerDefense.Runtime
             placementFeedback.Initialize(session, input, towerManager);
 
             RuntimeHud.Create(session, input, towerManager, enemyManager, activeWeapon);
+        }
+
+        private static void ConfigureRuntimePerformanceDefaults()
+        {
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = 240;
         }
 
         private PathRoute LoadLevelMap(LevelDefinition level)

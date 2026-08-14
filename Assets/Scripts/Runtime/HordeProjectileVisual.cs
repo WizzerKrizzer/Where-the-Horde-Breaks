@@ -9,6 +9,7 @@ namespace TowerDefense.Runtime
         private float duration;
         private float elapsed;
         private bool arc;
+        private Color impactColor;
 
         public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile)
         {
@@ -28,14 +29,15 @@ namespace TowerDefense.Runtime
             }
 
             var visual = go.AddComponent<HordeProjectileVisual>();
-            visual.Initialize(from, to, arcProjectile);
+            visual.Initialize(from, to, color, arcProjectile);
         }
 
-        private void Initialize(Vector3 from, Vector3 to, bool arcProjectile)
+        private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile)
         {
             start = from;
             end = to;
             arc = arcProjectile;
+            impactColor = color;
             duration = arc ? 0.42f : 0.16f;
             elapsed = 0f;
             transform.position = start;
@@ -64,8 +66,32 @@ namespace TowerDefense.Runtime
 
             if (t >= 1f)
             {
+                SpawnImpactMarker(end, impactColor, arc);
                 Destroy(gameObject);
             }
+        }
+
+        private static void SpawnImpactMarker(Vector3 position, Color color, bool arcProjectile)
+        {
+            var marker = GameObject.CreatePrimitive(arcProjectile ? PrimitiveType.Cylinder : PrimitiveType.Sphere);
+            marker.name = arcProjectile ? "HordeBoulderImpactMarker" : "HordeProjectileImpactMarker";
+            marker.transform.position = position + Vector3.up * 0.035f;
+            marker.transform.localScale = arcProjectile ? new Vector3(0.95f, 0.025f, 0.95f) : Vector3.one * 0.16f;
+            var impactColor = arcProjectile
+                ? new Color(1f, 0.22f, 0.08f, 0.86f)
+                : new Color(color.r, color.g, color.b, 0.75f);
+            marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(impactColor);
+            var components = marker.GetComponents<Component>();
+            for (var i = components.Length - 1; i >= 0; i--)
+            {
+                var component = components[i];
+                if (component != null && component.GetType().Name.Contains("Collider"))
+                {
+                    Destroy(component);
+                }
+            }
+
+            Destroy(marker, arcProjectile ? 0.55f : 0.1f);
         }
     }
 }
