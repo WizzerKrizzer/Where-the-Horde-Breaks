@@ -13,12 +13,12 @@ if (-not (Test-Path -LiteralPath $UnityPath)) {
 
 & $UnityPath `
     -batchmode `
+    -automated `
     -projectPath $projectPath `
     -runTests `
     -testPlatform PlayMode `
     -testResults $resultsPath `
-    -logFile $logPath `
-    -quit
+    -logFile $logPath
 
 $exitCode = $LASTEXITCODE
 if (Test-Path -LiteralPath $logPath) {
@@ -30,6 +30,16 @@ if (Test-Path -LiteralPath $logPath) {
 
 if (-not (Test-Path -LiteralPath $resultsPath)) {
     $exitCode = 1
+}
+else {
+    [xml]$results = Get-Content -LiteralPath $resultsPath -Raw
+    $testRunResult = $results.SelectSingleNode("/test-run").GetAttribute("result")
+    if ($testRunResult -match "^Passed") {
+        $exitCode = 0
+    }
+    else {
+        $exitCode = 1
+    }
 }
 
 Write-Host "PlayMode test results: $resultsPath"

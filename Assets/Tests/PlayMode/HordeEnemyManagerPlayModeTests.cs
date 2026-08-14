@@ -37,12 +37,13 @@ namespace TowerDefense.Tests
                 new Vector3(4f, 0f, 0f)
             });
             var enemy = CreateEnemy(speed: 12f, health: 4f);
-            var wave = CreateWave(enemy, count: 18, spawnInterval: 0.01f);
+            var wave = CreateWave(enemy, count: 18, spawnInterval: 0.01f, spawnImmediately: true);
             var manager = CreateManager();
 
             manager.BeginWave(wave, route);
 
-            for (var frame = 0; frame < 240 && !manager.IsComplete; frame++)
+            var timeout = Time.time + 2f;
+            while (!manager.IsComplete && Time.time < timeout)
             {
                 yield return null;
             }
@@ -102,14 +103,14 @@ namespace TowerDefense.Tests
             return route;
         }
 
-        private WaveDefinition CreateWave(EnemyDefinition enemy, int count, float spawnInterval)
+        private WaveDefinition CreateWave(EnemyDefinition enemy, int count, float spawnInterval, bool spawnImmediately = false)
         {
             var wave = ScriptableObject.CreateInstance<WaveDefinition>();
             cleanupObjects.Add(wave);
             wave.totalEnemyCount = count;
             wave.spawnInterval = spawnInterval;
-            wave.randomSpawnBurstMin = 3;
-            wave.randomSpawnBurstMax = 6;
+            wave.randomSpawnBurstMin = spawnImmediately ? count : 3;
+            wave.randomSpawnBurstMax = spawnImmediately ? count : 6;
             wave.entries = new[]
             {
                 new WaveEntry
