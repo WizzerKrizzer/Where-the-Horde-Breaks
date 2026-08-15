@@ -27,6 +27,9 @@ namespace TowerDefense.Runtime
         private float[] laneOffsets;
         private float[] laneDriftPhases;
         private float[] laneDriftSpeeds;
+        private float[] laneDriftAmplitudes;
+        private float[] forwardVisualOffsets;
+        private float[] visualScales;
         private float[] speeds;
         private float[] slowMultipliers;
         private float[] slowTimers;
@@ -93,6 +96,9 @@ namespace TowerDefense.Runtime
             laneOffsets = new float[count];
             laneDriftPhases = new float[count];
             laneDriftSpeeds = new float[count];
+            laneDriftAmplitudes = new float[count];
+            forwardVisualOffsets = new float[count];
+            visualScales = new float[count];
             speeds = new float[count];
             slowMultipliers = new float[count];
             slowTimers = new float[count];
@@ -153,6 +159,9 @@ namespace TowerDefense.Runtime
             laneOffsets = null;
             laneDriftPhases = null;
             laneDriftSpeeds = null;
+            laneDriftAmplitudes = null;
+            forwardVisualOffsets = null;
+            visualScales = null;
             speeds = null;
             slowMultipliers = null;
             slowTimers = null;
@@ -209,11 +218,15 @@ namespace TowerDefense.Runtime
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
                 laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
-                laneDriftPhases[totalSpawned] = UnityEngine.Random.Range(0f, 100f);
-                laneDriftSpeeds[totalSpawned] = UnityEngine.Random.Range(0.65f, 1.35f);
+                var rhythm = UnityEngine.Random.Range(0, 10);
+                laneDriftPhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f) + rhythm * 0.63f;
+                laneDriftSpeeds[totalSpawned] = Mathf.Lerp(0.55f, 1.55f, rhythm / 9f) * UnityEngine.Random.Range(0.92f, 1.08f);
+                laneDriftAmplitudes[totalSpawned] = UnityEngine.Random.Range(0.14f, 0.42f);
+                forwardVisualOffsets[totalSpawned] = UnityEngine.Random.Range(-0.38f, 0.38f);
                 pathDistances[totalSpawned] = 0f;
                 segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
+                visualScales[totalSpawned] = (definition != null ? definition.visualScale : 0.45f) * UnityEngine.Random.Range(0.88f, 1.12f);
                 slowMultipliers[totalSpawned] = 1f;
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
@@ -515,10 +528,12 @@ namespace TowerDefense.Runtime
         {
             var distance = pathDistances[index];
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
-            var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, distance - segmentStartDistances[segment]);
+            var visualDistance = Mathf.Clamp(distance + forwardVisualOffsets[index], segmentStartDistances[segment], segmentEndDistances[segment]);
+            var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, visualDistance - segmentStartDistances[segment]);
             var side = segmentSides[segment];
-            var longWave = Mathf.Sin(distance * 0.72f + laneDriftPhases[index]) * 0.28f;
-            var smallWave = Mathf.Sin(distance * 2.4f * laneDriftSpeeds[index] + index * 0.37f) * 0.1f;
+            var rhythmTime = elapsed * laneDriftSpeeds[index];
+            var longWave = Mathf.Sin(distance * 0.62f + rhythmTime + laneDriftPhases[index]) * laneDriftAmplitudes[index];
+            var smallWave = Mathf.Sin(distance * 2.15f + rhythmTime * 1.73f + index * 0.41f) * 0.08f;
             var weave = longWave + smallWave;
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
             var minLane = -effectiveHalfWidth + 0.2f;
@@ -824,7 +839,6 @@ namespace TowerDefense.Runtime
         private void DrawInstancesForMaterial(Camera camera, Material drawMaterial, HordeDrawMode mode)
         {
             var batchCount = 0;
-            var scale = Vector3.one * VisualRadius;
             for (var i = 0; i < totalSpawned; i++)
             {
                 if (!alive[i])
@@ -848,6 +862,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
+                var scale = Vector3.one * GetVisualRadius(i);
                 matrixBatch[batchCount++] = Matrix4x4.TRS(positions[i], Quaternion.identity, scale);
                 if (batchCount >= InstanceBatchSize)
                 {
@@ -871,6 +886,16 @@ namespace TowerDefense.Runtime
         private void FlushBatch(Material drawMaterial, int count)
         {
             Graphics.DrawMeshInstanced(mesh, 0, drawMaterial, matrixBatch, count, properties, ShadowCastingMode.Off, false, gameObject.layer);
+        }
+
+        private float GetVisualRadius(int index)
+        {
+            if (visualScales == null || index < 0 || index >= visualScales.Length)
+            {
+                return VisualRadius;
+            }
+
+            return Mathf.Clamp(visualScales[index] * 0.62f, VisualRadius * 0.72f, VisualRadius * 1.55f);
         }
 
         private void BuildSpawnSequence()
