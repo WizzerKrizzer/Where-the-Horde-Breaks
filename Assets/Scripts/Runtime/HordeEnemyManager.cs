@@ -14,6 +14,7 @@ namespace TowerDefense.Runtime
         private const float VisualRadius = 0.28f;
         private const float SpatialCellSize = 1.2f;
         private const float PressureRadius = 0.62f;
+        private const int OffscreenDetailStride = 8;
         private const int MaxPressureNeighbors = 8;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
@@ -249,6 +250,7 @@ namespace TowerDefense.Runtime
             }
 
             var camera = Camera.main;
+            var frame = Time.frameCount;
             frameTargetBlockedMass.Clear();
             for (var i = 0; i < totalSpawned; i++)
             {
@@ -267,7 +269,10 @@ namespace TowerDefense.Runtime
                     }
                 }
 
-                var target = FindBlockingTarget(i);
+                var visible = camera == null || IsVisible(camera, positions[i], 0.18f);
+                var nearCombat = !visible && IsNearCombatTarget(positions[i]);
+                var detailedTick = visible || nearCombat || (i + frame) % OffscreenDetailStride == 0;
+                var target = detailedTick ? FindBlockingTarget(i) : null;
                 if (target != null)
                 {
                     AttackCombatTarget(i, target, deltaTime);
@@ -284,12 +289,12 @@ namespace TowerDefense.Runtime
                 }
 
                 AdvanceSegmentIndex(i);
-                if (camera == null || IsVisible(camera, positions[i], 0.18f) || (i + Time.frameCount) % 6 == 0)
+                if (detailedTick)
                 {
                     ApplyCrowdPressure(i, deltaTime);
+                    UpdateKnockback(i, deltaTime);
                 }
 
-                UpdateKnockback(i, deltaTime);
                 positions[i] = SamplePosition(i);
             }
 
@@ -678,6 +683,33 @@ namespace TowerDefense.Runtime
             }
 
             return bestTarget;
+        }
+
+        private bool IsNearCombatTarget(Vector3 position)
+        {
+            if (combatTargets == null || combatTargets.Count == 0)
+            {
+                return false;
+            }
+
+            const float margin = 2.4f;
+            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            {
+                var target = combatTargets[i];
+                if (target == null || !target.IsAlive)
+                {
+                    continue;
+                }
+
+                var range = Mathf.Max(0.75f, target.CombatRadius + margin);
+                var offset = target.Position - position;
+                if (offset.x * offset.x + offset.z * offset.z <= range * range)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void AttackCombatTarget(int index, ICombatTarget target, float deltaTime)
