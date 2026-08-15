@@ -285,7 +285,6 @@ namespace TowerDefense.Runtime
             var frame = Time.frameCount;
             var cameraFocus = camera != null ? GetCameraGroundFocus(camera) : Vector3.zero;
             var highFidelityRadius = camera != null ? GetHighFidelityRadius(camera) : float.PositiveInfinity;
-            var cheapTickRadius = camera != null ? highFidelityRadius * 1.65f : float.PositiveInfinity;
             lastFullFidelityCount = 0;
             lastCheapFidelityCount = 0;
             lastNearCombatCount = 0;
@@ -311,7 +310,6 @@ namespace TowerDefense.Runtime
                 var nearFocus = IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadius);
                 var staggeredTick = (i + frame) % OffscreenDetailStride == 0;
                 var detailedTick = nearCombat || nearFocus || staggeredTick;
-                var updateVisualPosition = detailedTick || IsNearCameraFocus(positions[i], cameraFocus, cheapTickRadius);
                 if (detailedTick)
                 {
                     lastFullFidelityCount++;
@@ -338,11 +336,6 @@ namespace TowerDefense.Runtime
                     alive[i] = false;
                     activeCount--;
                     totalResolved++;
-                    continue;
-                }
-
-                if (!updateVisualPosition)
-                {
                     continue;
                 }
 
