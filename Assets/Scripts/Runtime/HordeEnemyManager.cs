@@ -16,6 +16,7 @@ namespace TowerDefense.Runtime
         private const float SpatialCellSize = 1.2f;
         private const float PressureRadius = 0.62f;
         private const int OffscreenDetailStride = 8;
+        private const int DetailedPerfSampleStride = 15;
         private const int MaxPressureNeighbors = 8;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
@@ -63,6 +64,14 @@ namespace TowerDefense.Runtime
         private float lastSimMs;
         private float lastBucketMs;
         private float lastDrawMs;
+        private float lastStatusMs;
+        private float lastTierMs;
+        private float lastCombatMs;
+        private float lastMovementMs;
+        private float lastSegmentMs;
+        private float lastCrowdMs;
+        private float lastKnockbackMs;
+        private float lastSampleMs;
         private int lastVisibleDrawn;
         private int lastFullFidelityCount;
         private int lastCheapFidelityCount;
@@ -79,6 +88,14 @@ namespace TowerDefense.Runtime
             lastSimMs,
             lastBucketMs,
             lastDrawMs,
+            lastStatusMs,
+            lastTierMs,
+            lastCombatMs,
+            lastMovementMs,
+            lastSegmentMs,
+            lastCrowdMs,
+            lastKnockbackMs,
+            lastSampleMs,
             lastVisibleDrawn,
             lastFullFidelityCount,
             lastCheapFidelityCount,
@@ -278,11 +295,18 @@ namespace TowerDefense.Runtime
                 lastFullFidelityCount = 0;
                 lastCheapFidelityCount = 0;
                 lastNearCombatCount = 0;
+                ClearDetailedPerformance();
                 return;
             }
 
             var camera = Camera.main;
             var frame = Time.frameCount;
+            var sampleDetailedPerformance = frame % DetailedPerfSampleStride == 0;
+            if (sampleDetailedPerformance)
+            {
+                ClearDetailedPerformance();
+            }
+
             var cameraFocus = camera != null ? GetCameraGroundFocus(camera) : Vector3.zero;
             var highFidelityRadius = camera != null ? GetHighFidelityRadius(camera) : float.PositiveInfinity;
             lastFullFidelityCount = 0;
@@ -296,6 +320,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
+                var sectionStart = sampleDetailedPerformance ? Stopwatch.GetTimestamp() : 0L;
                 previousPositions[i] = positions[i];
                 if (slowTimers[i] > 0f)
                 {
@@ -304,6 +329,11 @@ namespace TowerDefense.Runtime
                     {
                         slowMultipliers[i] = 1f;
                     }
+                }
+                if (sampleDetailedPerformance)
+                {
+                    lastStatusMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
                 }
 
                 var nearCombat = IsNearCombatTarget(positions[i]);
@@ -322,15 +352,31 @@ namespace TowerDefense.Runtime
                 {
                     lastCheapFidelityCount++;
                 }
+                if (sampleDetailedPerformance)
+                {
+                    lastTierMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
+                }
 
                 var target = detailedTick ? FindBlockingTarget(i) : null;
                 if (target != null)
                 {
                     AttackCombatTarget(i, target, deltaTime);
                 }
+                if (sampleDetailedPerformance)
+                {
+                    lastCombatMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
+                }
 
                 var combatMultiplier = target == null ? 1f : 0.08f;
                 pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * deltaTime;
+                if (sampleDetailedPerformance)
+                {
+                    lastMovementMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
+                }
+
                 if (pathDistances[i] >= path.TotalLength)
                 {
                     alive[i] = false;
@@ -340,13 +386,40 @@ namespace TowerDefense.Runtime
                 }
 
                 AdvanceSegmentIndex(i);
+                if (sampleDetailedPerformance)
+                {
+                    lastSegmentMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
+                }
+
                 if (detailedTick)
                 {
                     ApplyCrowdPressure(i, deltaTime);
+                    if (sampleDetailedPerformance)
+                    {
+                        lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                        sectionStart = Stopwatch.GetTimestamp();
+                    }
+
                     UpdateKnockback(i, deltaTime);
+                }
+                if (sampleDetailedPerformance)
+                {
+                    if (!detailedTick)
+                    {
+                        lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                        sectionStart = Stopwatch.GetTimestamp();
+                    }
+
+                    lastKnockbackMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
                 }
 
                 positions[i] = SamplePosition(i);
+                if (sampleDetailedPerformance)
+                {
+                    lastSampleMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                }
             }
 
             var bucketStart = Stopwatch.GetTimestamp();
@@ -1013,6 +1086,18 @@ namespace TowerDefense.Runtime
             return ticks * 1000f / Stopwatch.Frequency;
         }
 
+        private void ClearDetailedPerformance()
+        {
+            lastStatusMs = 0f;
+            lastTierMs = 0f;
+            lastCombatMs = 0f;
+            lastMovementMs = 0f;
+            lastSegmentMs = 0f;
+            lastCrowdMs = 0f;
+            lastKnockbackMs = 0f;
+            lastSampleMs = 0f;
+        }
+
         private void BuildSpawnSequence()
         {
             spawnSequence.Clear();
@@ -1050,17 +1135,49 @@ namespace TowerDefense.Runtime
             public readonly float SimMs;
             public readonly float BucketMs;
             public readonly float DrawMs;
+            public readonly float StatusMs;
+            public readonly float TierMs;
+            public readonly float CombatMs;
+            public readonly float MovementMs;
+            public readonly float SegmentMs;
+            public readonly float CrowdMs;
+            public readonly float KnockbackMs;
+            public readonly float SampleMs;
             public readonly int VisibleDrawn;
             public readonly int FullFidelity;
             public readonly int CheapFidelity;
             public readonly int NearCombat;
 
-            public HordePerformanceSnapshot(float spawnMs, float simMs, float bucketMs, float drawMs, int visibleDrawn, int fullFidelity, int cheapFidelity, int nearCombat)
+            public HordePerformanceSnapshot(
+                float spawnMs,
+                float simMs,
+                float bucketMs,
+                float drawMs,
+                float statusMs,
+                float tierMs,
+                float combatMs,
+                float movementMs,
+                float segmentMs,
+                float crowdMs,
+                float knockbackMs,
+                float sampleMs,
+                int visibleDrawn,
+                int fullFidelity,
+                int cheapFidelity,
+                int nearCombat)
             {
                 SpawnMs = spawnMs;
                 SimMs = simMs;
                 BucketMs = bucketMs;
                 DrawMs = drawMs;
+                StatusMs = statusMs;
+                TierMs = tierMs;
+                CombatMs = combatMs;
+                MovementMs = movementMs;
+                SegmentMs = segmentMs;
+                CrowdMs = crowdMs;
+                KnockbackMs = knockbackMs;
+                SampleMs = sampleMs;
                 VisibleDrawn = visibleDrawn;
                 FullFidelity = fullFidelity;
                 CheapFidelity = cheapFidelity;
