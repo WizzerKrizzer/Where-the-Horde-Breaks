@@ -36,6 +36,7 @@ namespace TowerDefense.Runtime
         private float[] slowMultipliers;
         private float[] slowTimers;
         private float[] attackTimers;
+        private float[] cheapAccumulatedDelta;
         private float[] spawnTimes;
         private float[] health;
         private Vector3[] knockbackOffsets;
@@ -122,6 +123,7 @@ namespace TowerDefense.Runtime
             slowMultipliers = new float[count];
             slowTimers = new float[count];
             attackTimers = new float[count];
+            cheapAccumulatedDelta = new float[count];
             spawnTimes = new float[count];
             health = new float[count];
             knockbackOffsets = new Vector3[count];
@@ -185,6 +187,7 @@ namespace TowerDefense.Runtime
             slowMultipliers = null;
             slowTimers = null;
             attackTimers = null;
+            cheapAccumulatedDelta = null;
             spawnTimes = null;
             health = null;
             knockbackOffsets = null;
@@ -259,6 +262,7 @@ namespace TowerDefense.Runtime
                 slowMultipliers[totalSpawned] = 1f;
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
+                cheapAccumulatedDelta[totalSpawned] = 0f;
                 knockbackOffsets[totalSpawned] = Vector3.zero;
                 knockbackVelocities[totalSpawned] = Vector3.zero;
                 var position = SamplePosition(totalSpawned);
@@ -298,21 +302,11 @@ namespace TowerDefense.Runtime
                 }
 
                 previousPositions[i] = positions[i];
-                if (slowTimers[i] > 0f)
-                {
-                    slowTimers[i] -= deltaTime;
-                    if (slowTimers[i] <= 0f)
-                    {
-                        slowMultipliers[i] = 1f;
-                    }
-                }
-
-                var nearCombat = IsNearCombatTarget(positions[i]);
                 var nearFocus = IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadius);
+                var nearCombat = !nearFocus && IsNearCombatTarget(positions[i]);
                 var staggeredTick = (i + frame) % OffscreenDetailStride == 0;
-                var detailedTick = nearCombat || nearFocus || staggeredTick;
-                var updateVisualPosition = detailedTick || IsNearCameraFocus(positions[i], cameraFocus, cheapTickRadius);
-                if (detailedTick)
+                var fullTick = nearCombat || nearFocus;
+                if (fullTick)
                 {
                     lastFullFidelityCount++;
                     if (nearCombat)
@@ -325,14 +319,31 @@ namespace TowerDefense.Runtime
                     lastCheapFidelityCount++;
                 }
 
-                var target = detailedTick ? FindBlockingTarget(i) : null;
+                if (!fullTick && !staggeredTick)
+                {
+                    cheapAccumulatedDelta[i] += deltaTime;
+                    continue;
+                }
+
+                var stepDeltaTime = fullTick ? deltaTime : cheapAccumulatedDelta[i] + deltaTime;
+                cheapAccumulatedDelta[i] = 0f;
+                if (slowTimers[i] > 0f)
+                {
+                    slowTimers[i] -= stepDeltaTime;
+                    if (slowTimers[i] <= 0f)
+                    {
+                        slowMultipliers[i] = 1f;
+                    }
+                }
+
+                var target = fullTick ? FindBlockingTarget(i) : null;
                 if (target != null)
                 {
-                    AttackCombatTarget(i, target, deltaTime);
+                    AttackCombatTarget(i, target, stepDeltaTime);
                 }
 
                 var combatMultiplier = target == null ? 1f : 0.08f;
-                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * deltaTime;
+                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * stepDeltaTime;
                 if (pathDistances[i] >= path.TotalLength)
                 {
                     alive[i] = false;
@@ -341,16 +352,16 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (!updateVisualPosition)
+                if (!fullTick && !IsNearCameraFocus(positions[i], cameraFocus, cheapTickRadius))
                 {
                     continue;
                 }
 
                 AdvanceSegmentIndex(i);
-                if (detailedTick)
+                if (fullTick)
                 {
-                    ApplyCrowdPressure(i, deltaTime);
-                    UpdateKnockback(i, deltaTime);
+                    ApplyCrowdPressure(i, stepDeltaTime);
+                    UpdateKnockback(i, stepDeltaTime);
                 }
 
                 positions[i] = SamplePosition(i);
