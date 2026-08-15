@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using TowerDefense.Data;
 using TowerDefense.Simulation;
 using UnityEngine;
@@ -58,6 +59,14 @@ namespace TowerDefense.Runtime
         private int totalSpawned;
         private int activeCount;
         private int totalResolved;
+        private float lastSpawnMs;
+        private float lastSimMs;
+        private float lastBucketMs;
+        private float lastDrawMs;
+        private int lastVisibleDrawn;
+        private int lastFullFidelityCount;
+        private int lastCheapFidelityCount;
+        private int lastNearCombatCount;
         private bool running;
 
         public int TotalSpawned => totalSpawned;
@@ -65,6 +74,15 @@ namespace TowerDefense.Runtime
         public int TotalResolved => totalResolved;
         public bool IsRunning => running;
         public bool IsComplete => running && totalSpawned >= spawnSequence.Count && activeCount == 0;
+        public HordePerformanceSnapshot Performance => new(
+            lastSpawnMs,
+            lastSimMs,
+            lastBucketMs,
+            lastDrawMs,
+            lastVisibleDrawn,
+            lastFullFidelityCount,
+            lastCheapFidelityCount,
+            lastNearCombatCount);
 
         public void SetCombatTargets(IReadOnlyList<ICombatTarget> targets)
         {
@@ -197,8 +215,16 @@ namespace TowerDefense.Runtime
 
             var deltaTime = Time.deltaTime;
             elapsed += deltaTime;
+            var spawnStart = Stopwatch.GetTimestamp();
             SpawnDueEnemies();
+            lastSpawnMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - spawnStart);
+            var simStart = Stopwatch.GetTimestamp();
             Simulate(deltaTime);
+            lastSimMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - simStart) - lastBucketMs;
+            if (lastSimMs < 0f)
+            {
+                lastSimMs = 0f;
+            }
         }
 
         private void LateUpdate()
@@ -208,7 +234,9 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            var drawStart = Stopwatch.GetTimestamp();
             DrawInstances();
+            lastDrawMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - drawStart);
         }
 
         private void SpawnDueEnemies()
@@ -246,11 +274,18 @@ namespace TowerDefense.Runtime
         {
             if (activeCount <= 0)
             {
+                lastBucketMs = 0f;
+                lastFullFidelityCount = 0;
+                lastCheapFidelityCount = 0;
+                lastNearCombatCount = 0;
                 return;
             }
 
             var camera = Camera.main;
             var frame = Time.frameCount;
+            lastFullFidelityCount = 0;
+            lastCheapFidelityCount = 0;
+            lastNearCombatCount = 0;
             frameTargetBlockedMass.Clear();
             for (var i = 0; i < totalSpawned; i++)
             {
@@ -272,6 +307,19 @@ namespace TowerDefense.Runtime
                 var visible = camera == null || IsVisible(camera, positions[i], 0.18f);
                 var nearCombat = !visible && IsNearCombatTarget(positions[i]);
                 var detailedTick = visible || nearCombat || (i + frame) % OffscreenDetailStride == 0;
+                if (detailedTick)
+                {
+                    lastFullFidelityCount++;
+                    if (nearCombat)
+                    {
+                        lastNearCombatCount++;
+                    }
+                }
+                else
+                {
+                    lastCheapFidelityCount++;
+                }
+
                 var target = detailedTick ? FindBlockingTarget(i) : null;
                 if (target != null)
                 {
@@ -298,7 +346,9 @@ namespace TowerDefense.Runtime
                 positions[i] = SamplePosition(i);
             }
 
+            var bucketStart = Stopwatch.GetTimestamp();
             RebuildSpatialBuckets();
+            lastBucketMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - bucketStart);
         }
 
         public bool TryGetLeadAimPoint(float radius, out Vector3 aimPoint)
@@ -865,6 +915,7 @@ namespace TowerDefense.Runtime
         private void DrawInstances()
         {
             var camera = Camera.main;
+            lastVisibleDrawn = 0;
             DrawInstancesForMaterial(camera, material, HordeDrawMode.Normal);
             if (slowedMaterial != null)
             {
@@ -901,6 +952,7 @@ namespace TowerDefense.Runtime
 
                 var scale = Vector3.one * GetVisualRadius(i);
                 matrixBatch[batchCount++] = Matrix4x4.TRS(positions[i], Quaternion.identity, scale);
+                lastVisibleDrawn++;
                 if (batchCount >= InstanceBatchSize)
                 {
                     FlushBatch(drawMaterial, batchCount);
@@ -935,6 +987,11 @@ namespace TowerDefense.Runtime
             return Mathf.Clamp(visualScales[index] * 0.62f, VisualRadius * 0.72f, VisualRadius * 1.55f);
         }
 
+        private static float TicksToMilliseconds(long ticks)
+        {
+            return ticks * 1000f / Stopwatch.Frequency;
+        }
+
         private void BuildSpawnSequence()
         {
             spawnSequence.Clear();
@@ -964,6 +1021,30 @@ namespace TowerDefense.Runtime
         {
             Normal,
             Slowed
+        }
+
+        public readonly struct HordePerformanceSnapshot
+        {
+            public readonly float SpawnMs;
+            public readonly float SimMs;
+            public readonly float BucketMs;
+            public readonly float DrawMs;
+            public readonly int VisibleDrawn;
+            public readonly int FullFidelity;
+            public readonly int CheapFidelity;
+            public readonly int NearCombat;
+
+            public HordePerformanceSnapshot(float spawnMs, float simMs, float bucketMs, float drawMs, int visibleDrawn, int fullFidelity, int cheapFidelity, int nearCombat)
+            {
+                SpawnMs = spawnMs;
+                SimMs = simMs;
+                BucketMs = bucketMs;
+                DrawMs = drawMs;
+                VisibleDrawn = visibleDrawn;
+                FullFidelity = fullFidelity;
+                CheapFidelity = cheapFidelity;
+                NearCombat = nearCombat;
+            }
         }
     }
 }

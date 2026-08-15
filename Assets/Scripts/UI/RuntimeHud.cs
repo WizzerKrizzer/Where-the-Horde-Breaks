@@ -19,7 +19,9 @@ namespace TowerDefense.UI
         private ActiveWeaponController activeWeapon;
         private Text statusText;
         private Text fpsText;
+        private Text perfText;
         private float nextFpsRefreshTime;
+        private float nextPerfRefreshTime;
         private float fpsAccumulatedTime;
         private int fpsAccumulatedFrames;
         private Text towerText;
@@ -127,7 +129,11 @@ namespace TowerDefense.UI
             fpsText = CreateText("FpsCounter", parent, new Vector2(12f, -106f), TextAnchor.UpperLeft, 11);
             fpsText.GetComponent<RectTransform>().sizeDelta = new Vector2(120f, 22f);
             fpsText.text = "FPS: --";
-            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 13);
+            perfText = CreateText("HordePerformance", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 10);
+            perfText.GetComponent<RectTransform>().sizeDelta = new Vector2(310f, 92f);
+            perfText.text = string.Empty;
+            perfText.color = new Color(0.8f, 0.92f, 1f, 0.86f);
+            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -222f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
             CreateRunDamagePanel(parent);
             CreateActiveWeaponSlot(parent);
@@ -175,6 +181,7 @@ namespace TowerDefense.UI
 
             statusText.text = text.ToString();
             UpdateFpsCounter();
+            UpdatePerformanceCounter();
             UpdateTowerText();
             UpdateRunDamagePanel();
             UpdateSelectedTowerPanel();
@@ -214,6 +221,38 @@ namespace TowerDefense.UI
             nextFpsRefreshTime = Time.realtimeSinceStartup + 1f;
             fpsAccumulatedTime = 0f;
             fpsAccumulatedFrames = 0;
+        }
+
+        private void UpdatePerformanceCounter()
+        {
+            if (perfText == null || enemies == null)
+            {
+                return;
+            }
+
+            if (enemies.ActiveEnemyCount <= 0)
+            {
+                perfText.text = string.Empty;
+                return;
+            }
+
+            if (Time.realtimeSinceStartup < nextPerfRefreshTime)
+            {
+                return;
+            }
+
+            var perf = enemies.HordePerformance;
+            if (perf.VisibleDrawn <= 0 && perf.FullFidelity <= 0 && perf.CheapFidelity <= 0)
+            {
+                perfText.text = string.Empty;
+                nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
+                return;
+            }
+
+            perfText.text =
+                $"Horde ms  spawn {perf.SpawnMs:0.00}  sim {perf.SimMs:0.00}  buckets {perf.BucketMs:0.00}  draw {perf.DrawMs:0.00}\n" +
+                $"Horde count  drawn {perf.VisibleDrawn}  full {perf.FullFidelity}  cheap {perf.CheapFidelity}  near {perf.NearCombat}";
+            nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
         }
 
         private void CreateRunDamagePanel(Transform parent)

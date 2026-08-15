@@ -36,6 +36,9 @@ namespace TowerDefense.Runtime
         public int ActiveEnemyCount => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.ActiveCount : activeEnemies.Count;
         public int TotalSpawned => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.TotalSpawned : totalSpawned;
         public int TotalResolved => hordePrototype != null && hordePrototype.IsRunning ? hordePrototype.TotalResolved : totalResolved;
+        public HordeEnemyManager.HordePerformanceSnapshot HordePerformance => hordePrototype != null
+            ? hordePrototype.Performance
+            : default;
         public bool HasWave => wave != null || (hordePrototype != null && hordePrototype.IsRunning);
         public bool IsWaveComplete => hordePrototype != null && hordePrototype.IsRunning
             ? hordePrototype.IsComplete
