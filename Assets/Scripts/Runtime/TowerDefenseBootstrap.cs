@@ -1776,16 +1776,7 @@ namespace TowerDefense.Runtime
             EnemyDefinition zombie)
         {
             var entries = new List<WaveEntry>();
-            AddWaveEntries(entries, runner, 2550, 42);
-            AddWaveEntries(entries, zombie, 1150, 24);
-            AddWaveEntries(entries, runner, 1700, 44);
-            AddWaveEntries(entries, brute, 950, 16);
-            AddWaveEntries(entries, shaman, 250, 5);
-            AddWaveEntries(entries, harpy, 900, 20);
-            AddWaveEntries(entries, runner, 1300, 46);
-            AddWaveEntries(entries, zombie, 800, 22);
-            AddWaveEntries(entries, vampire, 180, 4);
-            AddWaveEntries(entries, brute, 220, 12);
+            AddWaveEntries(entries, runner, 10000, 50);
             return entries.ToArray();
         }
 

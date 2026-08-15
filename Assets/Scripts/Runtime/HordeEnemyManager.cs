@@ -248,6 +248,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            var camera = Camera.main;
             frameTargetBlockedMass.Clear();
             for (var i = 0; i < totalSpawned; i++)
             {
@@ -283,7 +284,11 @@ namespace TowerDefense.Runtime
                 }
 
                 AdvanceSegmentIndex(i);
-                ApplyCrowdPressure(i, deltaTime);
+                if (camera == null || IsVisible(camera, positions[i], 0.18f) || (i + Time.frameCount) % 6 == 0)
+                {
+                    ApplyCrowdPressure(i, deltaTime);
+                }
+
                 UpdateKnockback(i, deltaTime);
                 positions[i] = SamplePosition(i);
             }
@@ -857,7 +862,7 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                if (camera != null && !IsVisible(camera, positions[i]))
+                if (camera != null && !IsVisible(camera, positions[i], 0.08f))
                 {
                     continue;
                 }
@@ -877,10 +882,10 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private static bool IsVisible(Camera camera, Vector3 position)
+        private static bool IsVisible(Camera camera, Vector3 position, float margin)
         {
             var viewport = camera.WorldToViewportPoint(position);
-            return viewport.z > 0f && viewport.x > -0.08f && viewport.x < 1.08f && viewport.y > -0.08f && viewport.y < 1.08f;
+            return viewport.z > 0f && viewport.x > -margin && viewport.x < 1f + margin && viewport.y > -margin && viewport.y < 1f + margin;
         }
 
         private void FlushBatch(Material drawMaterial, int count)
