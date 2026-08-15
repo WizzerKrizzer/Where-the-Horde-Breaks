@@ -283,6 +283,9 @@ namespace TowerDefense.Runtime
 
             var camera = Camera.main;
             var frame = Time.frameCount;
+            var cameraFocus = camera != null ? GetCameraGroundFocus(camera) : Vector3.zero;
+            var highFidelityRadius = camera != null ? GetHighFidelityRadius(camera) : float.PositiveInfinity;
+            var zoomedIn = camera == null || camera.transform.position.y <= 38f;
             lastFullFidelityCount = 0;
             lastCheapFidelityCount = 0;
             lastNearCombatCount = 0;
@@ -305,8 +308,9 @@ namespace TowerDefense.Runtime
                 }
 
                 var visible = camera == null || IsVisible(camera, positions[i], 0.18f);
-                var nearCombat = !visible && IsNearCombatTarget(positions[i]);
-                var detailedTick = visible || nearCombat || (i + frame) % OffscreenDetailStride == 0;
+                var nearCombat = IsNearCombatTarget(positions[i]);
+                var highFidelityVisible = visible && (zoomedIn || IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadius));
+                var detailedTick = nearCombat || highFidelityVisible || (i + frame) % OffscreenDetailStride == 0;
                 if (detailedTick)
                 {
                     lastFullFidelityCount++;
@@ -970,6 +974,24 @@ namespace TowerDefense.Runtime
         {
             var viewport = camera.WorldToViewportPoint(position);
             return viewport.z > 0f && viewport.x > -margin && viewport.x < 1f + margin && viewport.y > -margin && viewport.y < 1f + margin;
+        }
+
+        private static Vector3 GetCameraGroundFocus(Camera camera)
+        {
+            var ray = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            return plane.Raycast(ray, out var enter) ? ray.GetPoint(enter) : camera.transform.position;
+        }
+
+        private static float GetHighFidelityRadius(Camera camera)
+        {
+            return Mathf.Clamp(camera.transform.position.y * 0.42f, 12f, 42f);
+        }
+
+        private static bool IsNearCameraFocus(Vector3 position, Vector3 focus, float radius)
+        {
+            var offset = position - focus;
+            return offset.x * offset.x + offset.z * offset.z <= radius * radius;
         }
 
         private void FlushBatch(Material drawMaterial, int count)
