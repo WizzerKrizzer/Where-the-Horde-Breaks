@@ -183,9 +183,9 @@ namespace TowerDefense.Runtime
             }
 
             mesh = EnemyManager.GetDetailedEnemyMesh();
-            material = BootstrapMaterials.GetUnlit(new Color(0.1f, 0.9f, 0.18f, 1f));
+            material = BootstrapMaterials.Get(new Color(0.1f, 0.9f, 0.18f, 1f));
             material.enableInstancing = true;
-            slowedMaterial = BootstrapMaterials.GetUnlit(new Color(0.2f, 0.62f, 1f, 1f));
+            slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
             slowedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
             elapsed = 0f;
