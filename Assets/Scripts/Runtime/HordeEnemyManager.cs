@@ -15,14 +15,14 @@ namespace TowerDefense.Runtime
         private const float VisualRadius = 0.34f;
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
-        private const float PressureRadius = 0.76f;
+        private const float PressureRadius = 0.48f;
         private const float CornerSideBlendDistance = 5.2f;
         private const float LaneDamping = 4.2f;
         private const float LaneWallBounce = 7.5f;
         private const float CorridorWallPadding = 0.18f;
         private const int OffscreenDetailStride = 8;
         private const int DetailedPerfSampleStride = 15;
-        private const int MaxPressureNeighbors = 14;
+        private const int MaxPressureNeighbors = 8;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
@@ -954,7 +954,6 @@ namespace TowerDefense.Runtime
 
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1);
             SampleCorridorFrame(segment, pathDistances[index], out _, out _, out var side);
-            var separation = Vector3.zero;
             var lateralPush = 0f;
             var forwardPressure = 0f;
             var checks = 0;
@@ -977,7 +976,6 @@ namespace TowerDefense.Runtime
                 var distance = Mathf.Sqrt(distanceSq);
                 var direction = offset / distance;
                 var pressure = 1f - distance / PressureRadius;
-                separation += direction * pressure;
                 lateralPush += Vector3.Dot(direction, side) * pressure;
                 forwardPressure += pressure;
                 checks++;
@@ -990,21 +988,11 @@ namespace TowerDefense.Runtime
 
             if (velocities != null)
             {
-                velocities[index] += separation * deltaTime * 3.6f;
-                velocities[index] += side * lateralPush * deltaTime * 1.25f;
+                velocities[index] += side * lateralPush * deltaTime * 0.85f;
             }
 
-            var positionCorrection = separation * deltaTime * 0.18f;
-            if (positionCorrection.sqrMagnitude > 0.0001f)
-            {
-                var correctedPosition = positions[index] + positionCorrection;
-                FindNearestCorridorFrame(index, correctedPosition, out var nearest, out _, out var correctionSide, out _, out _);
-                KeepInsideCorridor(ref correctedPosition, ref velocities[index], nearest, correctionSide);
-                positions[index] = correctedPosition;
-            }
-
-            laneVelocities[index] += lateralPush * deltaTime * 0.55f;
-            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.62f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
+            laneVelocities[index] += lateralPush * deltaTime * 0.35f;
+            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.74f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
         }
 
         private void ApplyLaneInertia(int index, float deltaTime)
