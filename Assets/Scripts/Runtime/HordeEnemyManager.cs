@@ -11,7 +11,7 @@ namespace TowerDefense.Runtime
     public sealed class HordeEnemyManager : MonoBehaviour
     {
         private const int InstanceBatchSize = 1023;
-        private const float RoadHalfWidth = 2.45f;
+        private const float RoadHalfWidth = 2.65f;
         private const float VisualRadius = 0.34f;
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
@@ -282,7 +282,7 @@ namespace TowerDefense.Runtime
                 var definition = spawnSequence[totalSpawned];
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
-                laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
+                laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.08f, RoadHalfWidth - 0.08f);
                 laneVelocities[totalSpawned] = UnityEngine.Random.Range(-0.18f, 0.18f);
                 crowdSpeedFactors[totalSpawned] = 1f;
                 forwardVisualOffsets[totalSpawned] = UnityEngine.Random.Range(-0.38f, 0.38f);
@@ -750,8 +750,8 @@ namespace TowerDefense.Runtime
             var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, visualDistance - segmentStartDistances[segment]);
             var side = segmentSides[segment];
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
-            var minLane = -effectiveHalfWidth + 0.2f;
-            var maxLane = effectiveHalfWidth - 0.2f;
+            var minLane = -effectiveHalfWidth + 0.08f;
+            var maxLane = effectiveHalfWidth - 0.08f;
             var lane = Mathf.Clamp(laneOffsets[index], minLane, maxLane);
             return center + side * lane + GetClampedKnockbackOffset(index, segment, lane, minLane, maxLane);
         }
@@ -761,6 +761,11 @@ namespace TowerDefense.Runtime
             var intoSegment = Mathf.Max(0f, pathDistances[index] - segmentStartDistances[segment]);
             var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - pathDistances[index]);
             var cornerDistance = Mathf.Min(intoSegment, toSegmentEnd);
+            if ((segment == 0 && intoSegment < 4.5f) || (segment == segmentStarts.Length - 1 && toSegmentEnd < 4.5f))
+            {
+                return RoadHalfWidth;
+            }
+
             var cornerBlend = Mathf.Clamp01(cornerDistance / 2.1f);
             return Mathf.Lerp(RoadHalfWidth * 0.68f, RoadHalfWidth, cornerBlend);
         }
@@ -840,18 +845,18 @@ namespace TowerDefense.Runtime
 
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
-            var minLane = -effectiveHalfWidth + 0.24f;
-            var maxLane = effectiveHalfWidth - 0.24f;
+            var minLane = -effectiveHalfWidth + 0.1f;
+            var maxLane = effectiveHalfWidth - 0.1f;
             var lane = laneOffsets[index];
             var velocity = laneVelocities[index];
 
-            if (lane < minLane + 0.36f)
+            if (lane < minLane + 0.22f)
             {
-                velocity += (minLane + 0.36f - lane) * LaneWallBounce * deltaTime;
+                velocity += (minLane + 0.22f - lane) * LaneWallBounce * deltaTime;
             }
-            else if (lane > maxLane - 0.36f)
+            else if (lane > maxLane - 0.22f)
             {
-                velocity -= (lane - (maxLane - 0.36f)) * LaneWallBounce * deltaTime;
+                velocity -= (lane - (maxLane - 0.22f)) * LaneWallBounce * deltaTime;
             }
 
             velocity = Mathf.MoveTowards(velocity, 0f, LaneDamping * deltaTime);
