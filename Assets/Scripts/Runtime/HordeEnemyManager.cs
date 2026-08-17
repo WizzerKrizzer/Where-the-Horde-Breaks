@@ -16,7 +16,7 @@ namespace TowerDefense.Runtime
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
         private const float PressureRadius = 0.48f;
-        private const float CornerSideBlendDistance = 2.4f;
+        private const float CornerSideBlendDistance = 5.2f;
         private const float LaneDamping = 4.2f;
         private const float LaneWallBounce = 7.5f;
         private const int OffscreenDetailStride = 8;
@@ -767,28 +767,30 @@ namespace TowerDefense.Runtime
             var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - distance);
             if (segment > 0 && intoSegment < CornerSideBlendDistance)
             {
-                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment - 1] - segmentStartDistances[segment - 1]) * 0.45f, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.45f);
+                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment - 1] - segmentStartDistances[segment - 1]) * 0.42f, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.42f);
                 var t = Mathf.Clamp01(intoSegment / Mathf.Max(0.001f, radius));
                 var corner = segmentStarts[segment];
                 var p0 = corner - segmentDirections[segment - 1] * radius;
-                var p1 = corner;
-                var p2 = corner + segmentDirections[segment] * radius;
-                center = SampleQuadratic(p0, p1, p2, t);
-                forward = SampleQuadraticTangent(p0, p1, p2, t);
+                var p3 = corner + segmentDirections[segment] * radius;
+                var p1 = p0 + segmentDirections[segment - 1] * radius * 0.58f;
+                var p2 = p3 - segmentDirections[segment] * radius * 0.58f;
+                center = SampleCubic(p0, p1, p2, p3, t);
+                forward = SampleCubicTangent(p0, p1, p2, p3, t);
                 side = Vector3.Cross(Vector3.up, forward).normalized;
                 return;
             }
 
             if (segment < segmentSides.Length - 1 && toSegmentEnd < CornerSideBlendDistance)
             {
-                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.45f, (segmentEndDistances[segment + 1] - segmentStartDistances[segment + 1]) * 0.45f);
+                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.42f, (segmentEndDistances[segment + 1] - segmentStartDistances[segment + 1]) * 0.42f);
                 var t = Mathf.Clamp01(1f - toSegmentEnd / Mathf.Max(0.001f, radius));
                 var corner = segmentStarts[segment + 1];
                 var p0 = corner - segmentDirections[segment] * radius;
-                var p1 = corner;
-                var p2 = corner + segmentDirections[segment + 1] * radius;
-                center = SampleQuadratic(p0, p1, p2, t);
-                forward = SampleQuadraticTangent(p0, p1, p2, t);
+                var p3 = corner + segmentDirections[segment + 1] * radius;
+                var p1 = p0 + segmentDirections[segment] * radius * 0.58f;
+                var p2 = p3 - segmentDirections[segment + 1] * radius * 0.58f;
+                center = SampleCubic(p0, p1, p2, p3, t);
+                forward = SampleCubicTangent(p0, p1, p2, p3, t);
                 side = Vector3.Cross(Vector3.up, forward).normalized;
                 return;
             }
@@ -798,18 +800,25 @@ namespace TowerDefense.Runtime
             center = segmentStarts[segment] + forward * Mathf.Max(0f, distance - segmentStartDistances[segment]);
         }
 
-        private static Vector3 SampleQuadratic(Vector3 p0, Vector3 p1, Vector3 p2, float t)
+        private static Vector3 SampleCubic(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
         {
             var a = Vector3.Lerp(p0, p1, t);
             var b = Vector3.Lerp(p1, p2, t);
-            return Vector3.Lerp(a, b, t);
+            var c = Vector3.Lerp(p2, p3, t);
+            var d = Vector3.Lerp(a, b, t);
+            var e = Vector3.Lerp(b, c, t);
+            return Vector3.Lerp(d, e, t);
         }
 
-        private static Vector3 SampleQuadraticTangent(Vector3 p0, Vector3 p1, Vector3 p2, float t)
+        private static Vector3 SampleCubicTangent(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
         {
-            var tangent = 2f * (1f - t) * (p1 - p0) + 2f * t * (p2 - p1);
+            var oneMinusT = 1f - t;
+            var tangent =
+                3f * oneMinusT * oneMinusT * (p1 - p0) +
+                6f * oneMinusT * t * (p2 - p1) +
+                3f * t * t * (p3 - p2);
             tangent.y = 0f;
-            return tangent.sqrMagnitude > 0.0001f ? tangent.normalized : (p2 - p0).normalized;
+            return tangent.sqrMagnitude > 0.0001f ? tangent.normalized : (p3 - p0).normalized;
         }
 
         private Vector3 GetClampedKnockbackOffset(int index, int segment, float lane, float minLane, float maxLane)
