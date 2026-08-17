@@ -846,20 +846,20 @@ namespace TowerDefense.Runtime
             pathDistances[index] = Mathf.Max(pathDistances[index], progress);
 
             var lookahead = Mathf.Lerp(4.5f, 8.5f, Mathf.Clamp01(activeCount / 5000f));
-            var lateral = Mathf.Clamp(Vector3.Dot(position - nearest, side), -RoadHalfWidth + CorridorWallPadding, RoadHalfWidth - CorridorWallPadding);
-            var seekCenter = SampleRoute(Mathf.Min(path.TotalLength, progress + lookahead), segment);
-            FindNearestCorridorFrame(index, seekCenter, out _, out var seekTangent, out var seekSide, out _, out _);
-            var seekPoint = seekCenter + seekSide * lateral;
-            var desired = seekPoint - position;
+            var aheadDistance = Mathf.Min(path.TotalLength, progress + lookahead);
+            var aheadSegment = segment;
+            while (aheadSegment < segmentEndDistances.Length - 1 && aheadDistance > segmentEndDistances[aheadSegment])
+            {
+                aheadSegment++;
+            }
+
+            SampleCorridorFrame(aheadSegment, aheadDistance, out _, out var seekTangent, out var seekSide);
+            var desired = Vector3.Lerp(tangent, seekTangent, 0.72f);
+            var lateral = Vector3.Dot(position - nearest, side);
+            var centerCorrection = -side * Mathf.Clamp(lateral / RoadHalfWidth, -1f, 1f) * 0.12f;
+            desired += centerCorrection;
             desired.y = 0f;
-            if (desired.sqrMagnitude < 0.01f)
-            {
-                desired = Vector3.Lerp(tangent, seekTangent, 0.35f);
-            }
-            else
-            {
-                desired.Normalize();
-            }
+            desired = desired.sqrMagnitude > 0.0001f ? desired.normalized : tangent;
 
             var targetSpeed = speeds[index] * Mathf.Clamp(slowMultipliers[index], 0.05f, 1f) * movementMultiplier;
             var targetVelocity = desired * targetSpeed;
@@ -990,11 +990,11 @@ namespace TowerDefense.Runtime
 
             if (velocities != null)
             {
-                velocities[index] += separation * deltaTime * 3.6f;
-                velocities[index] += side * lateralPush * deltaTime * 1.25f;
+                velocities[index] += separation * deltaTime * 5.4f;
+                velocities[index] += side * lateralPush * deltaTime * 1.7f;
             }
 
-            var positionCorrection = separation * deltaTime * 0.18f;
+            var positionCorrection = separation * deltaTime * 0.3f;
             if (positionCorrection.sqrMagnitude > 0.0001f)
             {
                 var correctedPosition = positions[index] + positionCorrection;
