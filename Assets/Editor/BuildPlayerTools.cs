@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build.Reporting;
 using UnityEngine;
 
 namespace TowerDefense.Editor
@@ -50,17 +51,28 @@ namespace TowerDefense.Editor
                 ? BuildOptions.Development | BuildOptions.AllowDebugging
                 : BuildOptions.None;
 
-            var report = BuildPipeline.BuildPlayer(
-                new[] { MainScene },
-                outputPath,
-                BuildTarget.StandaloneWindows64,
-                options);
+            var targetGroup = BuildTargetGroup.Standalone;
+            var previousBackend = PlayerSettings.GetScriptingBackend(targetGroup);
+            PlayerSettings.SetScriptingBackend(targetGroup, ScriptingImplementation.Mono2x);
 
-            var summary = report.summary;
-            Debug.Log($"Build {summary.result}: {outputPath} ({summary.totalSize} bytes)");
-            if (summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            try
             {
-                throw new InvalidOperationException($"Build failed with result: {summary.result}");
+                var report = BuildPipeline.BuildPlayer(
+                    new[] { MainScene },
+                    outputPath,
+                    BuildTarget.StandaloneWindows64,
+                    options);
+
+                var summary = report.summary;
+                Debug.Log($"Build {summary.result}: {outputPath} ({summary.totalSize} bytes)");
+                if (summary.result != BuildResult.Succeeded)
+                {
+                    throw new InvalidOperationException($"Build failed with result: {summary.result}");
+                }
+            }
+            finally
+            {
+                PlayerSettings.SetScriptingBackend(targetGroup, previousBackend);
             }
         }
     }
