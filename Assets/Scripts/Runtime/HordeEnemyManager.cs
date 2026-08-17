@@ -33,9 +33,6 @@ namespace TowerDefense.Runtime
         private Vector3[] previousPositions;
         private float[] pathDistances;
         private float[] laneOffsets;
-        private float[] laneDriftPhases;
-        private float[] laneDriftSpeeds;
-        private float[] laneDriftAmplitudes;
         private float[] laneVelocities;
         private float[] crowdSpeedFactors;
         private float[] forwardVisualOffsets;
@@ -142,9 +139,6 @@ namespace TowerDefense.Runtime
             previousPositions = new Vector3[count];
             pathDistances = new float[count];
             laneOffsets = new float[count];
-            laneDriftPhases = new float[count];
-            laneDriftSpeeds = new float[count];
-            laneDriftAmplitudes = new float[count];
             laneVelocities = new float[count];
             crowdSpeedFactors = new float[count];
             forwardVisualOffsets = new float[count];
@@ -211,9 +205,6 @@ namespace TowerDefense.Runtime
             previousPositions = null;
             pathDistances = null;
             laneOffsets = null;
-            laneDriftPhases = null;
-            laneDriftSpeeds = null;
-            laneDriftAmplitudes = null;
             laneVelocities = null;
             crowdSpeedFactors = null;
             forwardVisualOffsets = null;
@@ -290,10 +281,6 @@ namespace TowerDefense.Runtime
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
                 laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.35f, RoadHalfWidth - 0.35f);
-                var rhythm = UnityEngine.Random.Range(0, 10);
-                laneDriftPhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f) + rhythm * 0.63f;
-                laneDriftSpeeds[totalSpawned] = Mathf.Lerp(0.55f, 1.55f, rhythm / 9f) * UnityEngine.Random.Range(0.92f, 1.08f);
-                laneDriftAmplitudes[totalSpawned] = UnityEngine.Random.Range(0.14f, 0.42f);
                 laneVelocities[totalSpawned] = UnityEngine.Random.Range(-0.18f, 0.18f);
                 crowdSpeedFactors[totalSpawned] = 1f;
                 forwardVisualOffsets[totalSpawned] = UnityEngine.Random.Range(-0.38f, 0.38f);
@@ -760,14 +747,10 @@ namespace TowerDefense.Runtime
             var visualDistance = Mathf.Clamp(distance + forwardVisualOffsets[index], segmentStartDistances[segment], segmentEndDistances[segment]);
             var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, visualDistance - segmentStartDistances[segment]);
             var side = segmentSides[segment];
-            var rhythmTime = elapsed * laneDriftSpeeds[index];
-            var longWave = Mathf.Sin(distance * 0.62f + rhythmTime + laneDriftPhases[index]) * laneDriftAmplitudes[index];
-            var smallWave = Mathf.Sin(distance * 2.15f + rhythmTime * 1.73f + index * 0.41f) * 0.08f;
-            var weave = longWave + smallWave;
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
             var minLane = -effectiveHalfWidth + 0.2f;
             var maxLane = effectiveHalfWidth - 0.2f;
-            var lane = Mathf.Clamp(laneOffsets[index] + weave, minLane, maxLane);
+            var lane = Mathf.Clamp(laneOffsets[index], minLane, maxLane);
             return center + side * lane + GetClampedKnockbackOffset(index, segment, lane, minLane, maxLane);
         }
 
