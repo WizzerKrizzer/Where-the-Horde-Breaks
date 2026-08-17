@@ -16,6 +16,7 @@ namespace TowerDefense.Runtime
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
         private const float PressureRadius = 0.48f;
+        private const float CornerSideBlendDistance = 2.4f;
         private const float LaneDamping = 4.2f;
         private const float LaneWallBounce = 7.5f;
         private const int OffscreenDetailStride = 8;
@@ -748,7 +749,7 @@ namespace TowerDefense.Runtime
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
             var visualDistance = Mathf.Clamp(distance + forwardVisualOffsets[index], segmentStartDistances[segment], segmentEndDistances[segment]);
             var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, visualDistance - segmentStartDistances[segment]);
-            var side = segmentSides[segment];
+            var side = GetSmoothedSegmentSide(segment, visualDistance);
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
             var minLane = -effectiveHalfWidth + 0.08f;
             var maxLane = effectiveHalfWidth - 0.08f;
@@ -758,16 +759,26 @@ namespace TowerDefense.Runtime
 
         private float GetEffectiveRoadHalfWidth(int index, int segment)
         {
-            var intoSegment = Mathf.Max(0f, pathDistances[index] - segmentStartDistances[segment]);
-            var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - pathDistances[index]);
-            var cornerDistance = Mathf.Min(intoSegment, toSegmentEnd);
-            if ((segment == 0 && intoSegment < 4.5f) || (segment == segmentStarts.Length - 1 && toSegmentEnd < 4.5f))
+            return RoadHalfWidth;
+        }
+
+        private Vector3 GetSmoothedSegmentSide(int segment, float distance)
+        {
+            var side = segmentSides[segment];
+            var intoSegment = Mathf.Max(0f, distance - segmentStartDistances[segment]);
+            var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - distance);
+            if (segment > 0 && intoSegment < CornerSideBlendDistance)
             {
-                return RoadHalfWidth;
+                var t = Mathf.SmoothStep(0f, 1f, intoSegment / CornerSideBlendDistance);
+                side = Vector3.Slerp(segmentSides[segment - 1], side, t);
+            }
+            else if (segment < segmentSides.Length - 1 && toSegmentEnd < CornerSideBlendDistance)
+            {
+                var t = Mathf.SmoothStep(0f, 1f, 1f - toSegmentEnd / CornerSideBlendDistance);
+                side = Vector3.Slerp(side, segmentSides[segment + 1], t);
             }
 
-            var cornerBlend = Mathf.Clamp01(cornerDistance / 2.1f);
-            return Mathf.Lerp(RoadHalfWidth * 0.68f, RoadHalfWidth, cornerBlend);
+            return side.sqrMagnitude > 0.0001f ? side.normalized : segmentSides[segment];
         }
 
         private Vector3 GetClampedKnockbackOffset(int index, int segment, float lane, float minLane, float maxLane)
@@ -778,7 +789,8 @@ namespace TowerDefense.Runtime
                 return Vector3.zero;
             }
 
-            var side = segmentSides[segment];
+            var distance = pathDistances[index];
+            var side = GetSmoothedSegmentSide(segment, distance);
             var forward = segmentDirections[segment];
             var lateral = Mathf.Clamp(Vector3.Dot(offset, side), minLane - lane, maxLane - lane);
             var longitudinal = Mathf.Clamp(Vector3.Dot(offset, forward), -0.9f, 0.9f);
@@ -799,7 +811,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var side = segmentSides[Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1)];
+            var segment = Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1);
+            var side = GetSmoothedSegmentSide(segment, pathDistances[index]);
             var lateralPush = 0f;
             var forwardPressure = 0f;
             var checks = 0;
