@@ -16,6 +16,8 @@ namespace TowerDefense.Runtime
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
         private const float PressureRadius = 0.62f;
+        private const float LaneDamping = 4.2f;
+        private const float LaneWallBounce = 7.5f;
         private const int OffscreenDetailStride = 8;
         private const int DetailedPerfSampleStride = 15;
         private const int MaxPressureNeighbors = 8;
@@ -34,6 +36,8 @@ namespace TowerDefense.Runtime
         private float[] laneDriftPhases;
         private float[] laneDriftSpeeds;
         private float[] laneDriftAmplitudes;
+        private float[] laneVelocities;
+        private float[] crowdSpeedFactors;
         private float[] forwardVisualOffsets;
         private float[] visualScales;
         private float[] visualPulsePhases;
@@ -141,6 +145,8 @@ namespace TowerDefense.Runtime
             laneDriftPhases = new float[count];
             laneDriftSpeeds = new float[count];
             laneDriftAmplitudes = new float[count];
+            laneVelocities = new float[count];
+            crowdSpeedFactors = new float[count];
             forwardVisualOffsets = new float[count];
             visualScales = new float[count];
             visualPulsePhases = new float[count];
@@ -208,6 +214,8 @@ namespace TowerDefense.Runtime
             laneDriftPhases = null;
             laneDriftSpeeds = null;
             laneDriftAmplitudes = null;
+            laneVelocities = null;
+            crowdSpeedFactors = null;
             forwardVisualOffsets = null;
             visualScales = null;
             visualPulsePhases = null;
@@ -286,6 +294,8 @@ namespace TowerDefense.Runtime
                 laneDriftPhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f) + rhythm * 0.63f;
                 laneDriftSpeeds[totalSpawned] = Mathf.Lerp(0.55f, 1.55f, rhythm / 9f) * UnityEngine.Random.Range(0.92f, 1.08f);
                 laneDriftAmplitudes[totalSpawned] = UnityEngine.Random.Range(0.14f, 0.42f);
+                laneVelocities[totalSpawned] = UnityEngine.Random.Range(-0.18f, 0.18f);
+                crowdSpeedFactors[totalSpawned] = 1f;
                 forwardVisualOffsets[totalSpawned] = UnityEngine.Random.Range(-0.38f, 0.38f);
                 pathDistances[totalSpawned] = 0f;
                 segmentIndices[totalSpawned] = 0;
@@ -418,7 +428,12 @@ namespace TowerDefense.Runtime
                 }
 
                 var combatMultiplier = target == null ? 1f : 0.08f;
-                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * deltaTime;
+                var crowdMultiplier = crowdSpeedFactors != null ? Mathf.Clamp(crowdSpeedFactors[i], 0.58f, 1.08f) : 1f;
+                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * crowdMultiplier * deltaTime;
+                if (crowdSpeedFactors != null)
+                {
+                    crowdSpeedFactors[i] = Mathf.MoveTowards(crowdSpeedFactors[i], 1f, deltaTime * 2.4f);
+                }
                 if (sampleDetailedPerformance)
                 {
                     lastMovementMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
@@ -449,6 +464,7 @@ namespace TowerDefense.Runtime
                         sectionStart = Stopwatch.GetTimestamp();
                     }
                 }
+                ApplyLaneInertia(i, deltaTime);
                 UpdateKnockback(i, deltaTime);
                 if (sampleDetailedPerformance)
                 {
@@ -795,6 +811,7 @@ namespace TowerDefense.Runtime
 
             var side = segmentSides[Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1)];
             var lateralPush = 0f;
+            var forwardPressure = 0f;
             var checks = 0;
             var radiusSq = PressureRadius * PressureRadius;
             for (var candidate = 0; candidate < nearbyIndices.Count && checks < MaxPressureNeighbors; candidate++)
@@ -813,7 +830,10 @@ namespace TowerDefense.Runtime
                 }
 
                 var distance = Mathf.Sqrt(distanceSq);
-                lateralPush += Vector3.Dot(offset / distance, side) * (1f - distance / PressureRadius);
+                var direction = offset / distance;
+                var pressure = 1f - distance / PressureRadius;
+                lateralPush += Vector3.Dot(direction, side) * pressure;
+                forwardPressure += pressure;
                 checks++;
             }
 
@@ -822,7 +842,42 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            laneOffsets[index] = Mathf.Clamp(laneOffsets[index] + lateralPush * deltaTime * 1.1f, -RoadHalfWidth + 0.28f, RoadHalfWidth - 0.28f);
+            laneVelocities[index] += lateralPush * deltaTime * 5.2f;
+            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.68f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
+        }
+
+        private void ApplyLaneInertia(int index, float deltaTime)
+        {
+            if (laneVelocities == null || segmentStarts == null)
+            {
+                return;
+            }
+
+            var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
+            var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
+            var minLane = -effectiveHalfWidth + 0.24f;
+            var maxLane = effectiveHalfWidth - 0.24f;
+            var lane = laneOffsets[index];
+            var velocity = laneVelocities[index];
+
+            if (lane < minLane + 0.36f)
+            {
+                velocity += (minLane + 0.36f - lane) * LaneWallBounce * deltaTime;
+            }
+            else if (lane > maxLane - 0.36f)
+            {
+                velocity -= (lane - (maxLane - 0.36f)) * LaneWallBounce * deltaTime;
+            }
+
+            velocity = Mathf.MoveTowards(velocity, 0f, LaneDamping * deltaTime);
+            lane = Mathf.Clamp(lane + velocity * deltaTime, minLane, maxLane);
+            if ((lane <= minLane && velocity < 0f) || (lane >= maxLane && velocity > 0f))
+            {
+                velocity *= -0.24f;
+            }
+
+            laneOffsets[index] = lane;
+            laneVelocities[index] = Mathf.Clamp(velocity, -2.2f, 2.2f);
         }
 
         private void UpdateKnockback(int index, float deltaTime)
