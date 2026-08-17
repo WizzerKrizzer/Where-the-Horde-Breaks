@@ -856,9 +856,8 @@ namespace TowerDefense.Runtime
             SampleCorridorFrame(aheadSegment, aheadDistance, out _, out var seekTangent, out var seekSide);
             var desired = Vector3.Lerp(tangent, seekTangent, 0.72f);
             var lateral = Vector3.Dot(position - nearest, side);
-            var preferredLane = Mathf.Clamp(laneOffsets[index], -RoadHalfWidth + CorridorWallPadding, RoadHalfWidth - CorridorWallPadding);
-            var laneError = Mathf.Clamp((preferredLane - lateral) / RoadHalfWidth, -1f, 1f);
-            desired += side * laneError * 0.62f;
+            var centerCorrection = -side * Mathf.Clamp(lateral / RoadHalfWidth, -1f, 1f) * 0.12f;
+            desired += centerCorrection;
             desired.y = 0f;
             desired = desired.sqrMagnitude > 0.0001f ? desired.normalized : tangent;
 
@@ -913,8 +912,8 @@ namespace TowerDefense.Runtime
             segment = 0;
             var bestDistanceSq = float.PositiveInfinity;
             var currentSegment = segmentIndices != null && index >= 0 && index < segmentIndices.Length ? segmentIndices[index] : 0;
-            var startSegment = Mathf.Max(0, currentSegment);
-            var endSegment = Mathf.Min(segmentStarts.Length - 1, currentSegment + 1);
+            var startSegment = Mathf.Max(0, currentSegment - 1);
+            var endSegment = Mathf.Min(segmentStarts.Length - 1, currentSegment + 2);
             for (var i = startSegment; i <= endSegment; i++)
             {
                 var from = segmentStarts[i];
