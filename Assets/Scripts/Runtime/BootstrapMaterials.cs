@@ -7,6 +7,7 @@ namespace TowerDefense.Runtime
     public static class BootstrapMaterials
     {
         private static readonly Dictionary<Color, Material> Materials = new();
+        private static readonly Dictionary<Color, Material> UnlitMaterials = new();
         private static readonly string[] OpaqueShaderNames =
         {
             "Standard",
@@ -27,8 +28,19 @@ namespace TowerDefense.Runtime
             "Sprites/Default"
         };
 
+        private static readonly string[] UnlitShaderNames =
+        {
+            "Unlit/Color",
+            "Universal Render Pipeline/Unlit",
+            "Sprites/Default",
+            "Hidden/Internal-Colored",
+            "Standard",
+            "Legacy Shaders/Diffuse"
+        };
+
         private static Shader opaqueShader;
         private static Shader transparentShader;
+        private static Shader unlitShader;
         private static Material builtinFallback;
         private static bool loggedMissingShader;
 
@@ -49,6 +61,25 @@ namespace TowerDefense.Runtime
             }
 
             Materials[color] = material;
+            return material;
+        }
+
+        public static Material GetUnlit(Color color)
+        {
+            if (UnlitMaterials.TryGetValue(color, out var material))
+            {
+                return material;
+            }
+
+            material = CreateUnlitMaterial(color);
+            material.enableInstancing = true;
+            SetMaterialColor(material, color);
+            if (color.a < 0.99f)
+            {
+                ConfigureTransparent(material);
+            }
+
+            UnlitMaterials[color] = material;
             return material;
         }
 
@@ -73,6 +104,17 @@ namespace TowerDefense.Runtime
             }
 
             return new Material(Shader.Find("Hidden/InternalErrorShader"));
+        }
+
+        private static Material CreateUnlitMaterial(Color color)
+        {
+            var shader = ResolveUnlitShader();
+            if (shader != null)
+            {
+                return new Material(shader);
+            }
+
+            return CreateMaterial(color);
         }
 
         private static Shader ResolveShader(bool transparent)
@@ -105,6 +147,28 @@ namespace TowerDefense.Runtime
                     opaqueShader = shader;
                 }
 
+                return shader;
+            }
+
+            return null;
+        }
+
+        private static Shader ResolveUnlitShader()
+        {
+            if (unlitShader != null)
+            {
+                return unlitShader;
+            }
+
+            foreach (var shaderName in UnlitShaderNames)
+            {
+                var shader = Shader.Find(shaderName);
+                if (shader == null)
+                {
+                    continue;
+                }
+
+                unlitShader = shader;
                 return shader;
             }
 

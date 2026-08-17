@@ -253,7 +253,8 @@ namespace TowerDefense.UI
                 $"Horde ms  spawn {perf.SpawnMs:0.00}  sim {perf.SimMs:0.00}  buckets {perf.BucketMs:0.00}  draw {perf.DrawMs:0.00}\n" +
                 $"Loop ms   status {perf.StatusMs:0.00}  tier {perf.TierMs:0.00}  move {perf.MovementMs:0.00}  sample {perf.SampleMs:0.00}\n" +
                 $"Detail ms combat {perf.CombatMs:0.00}  crowd {perf.CrowdMs:0.00}  knock {perf.KnockbackMs:0.00}  segment {perf.SegmentMs:0.00}\n" +
-                $"Horde count  drawn {perf.VisibleDrawn}  full {perf.FullFidelity}  cheap {perf.CheapFidelity}  near {perf.NearCombat}";
+                $"Horde count  drawn {perf.VisibleDrawn}  full {perf.FullFidelity}  cheap {perf.CheapFidelity}  near {perf.NearCombat}\n" +
+                $"Build {(Debug.isDebugBuild ? "Development" : "Release")}  shader {(string.IsNullOrEmpty(perf.ShaderName) ? "none" : perf.ShaderName)}";
             nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
         }
 

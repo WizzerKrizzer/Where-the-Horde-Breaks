@@ -106,7 +106,8 @@ namespace TowerDefense.Runtime
             lastVisibleDrawn,
             lastFullFidelityCount,
             lastCheapFidelityCount,
-            lastNearCombatCount);
+            lastNearCombatCount,
+            material != null && material.shader != null ? material.shader.name : "none");
 
         public void SetCombatTargets(IReadOnlyList<ICombatTarget> targets)
         {
@@ -176,9 +177,9 @@ namespace TowerDefense.Runtime
             }
 
             mesh = EnemyManager.GetDetailedEnemyMesh();
-            material = BootstrapMaterials.Get(new Color(0.1f, 0.9f, 0.18f, 1f));
+            material = BootstrapMaterials.GetUnlit(new Color(0.1f, 0.9f, 0.18f, 1f));
             material.enableInstancing = true;
-            slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
+            slowedMaterial = BootstrapMaterials.GetUnlit(new Color(0.2f, 0.62f, 1f, 1f));
             slowedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
             elapsed = 0f;
@@ -1304,6 +1305,7 @@ namespace TowerDefense.Runtime
             public readonly int FullFidelity;
             public readonly int CheapFidelity;
             public readonly int NearCombat;
+            public readonly string ShaderName;
 
             public HordePerformanceSnapshot(
                 float spawnMs,
@@ -1321,7 +1323,8 @@ namespace TowerDefense.Runtime
                 int visibleDrawn,
                 int fullFidelity,
                 int cheapFidelity,
-                int nearCombat)
+                int nearCombat,
+                string shaderName)
             {
                 SpawnMs = spawnMs;
                 SimMs = simMs;
@@ -1339,6 +1342,7 @@ namespace TowerDefense.Runtime
                 FullFidelity = fullFidelity;
                 CheapFidelity = cheapFidelity;
                 NearCombat = nearCombat;
+                ShaderName = shaderName;
             }
         }
     }
