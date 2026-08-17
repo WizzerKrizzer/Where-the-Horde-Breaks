@@ -855,9 +855,9 @@ namespace TowerDefense.Runtime
             var levelFourWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelFourWave.id = "wave_04_stress_test";
             levelFourWave.totalEnemyCount = 10000;
-            levelFourWave.spawnInterval = 0.28f;
-            levelFourWave.randomSpawnBurstMin = 22;
-            levelFourWave.randomSpawnBurstMax = 48;
+            levelFourWave.spawnInterval = 0.24f;
+            levelFourWave.randomSpawnBurstMin = 48;
+            levelFourWave.randomSpawnBurstMax = 92;
             levelFourWave.useEndpointSeeking = true;
             levelFourWave.entries = BuildLevelFourStressWaveEntries(runner, brute, shaman, vampire, harpy, zombie);
 

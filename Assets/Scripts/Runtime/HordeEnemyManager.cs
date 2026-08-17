@@ -160,6 +160,8 @@ namespace TowerDefense.Runtime
             alive = new bool[count];
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
+            var packedSpawnSpan = Mathf.Max(0.02f, windowDuration * 0.42f);
+            var packedSpawnStep = Mathf.Max(0.02f, windowDuration * 0.58f);
             var minBurst = Mathf.Max(1, wave.randomSpawnBurstMin);
             var maxBurst = Mathf.Max(minBurst, wave.randomSpawnBurstMax);
             var burstIndex = 0;
@@ -168,12 +170,12 @@ namespace TowerDefense.Runtime
                 var burst = Mathf.Min(count - burstIndex, UnityEngine.Random.Range(minBurst, maxBurst + 1));
                 for (var i = 0; i < burst; i++)
                 {
-                    spawnTimes[burstIndex + i] = cursor + UnityEngine.Random.Range(0f, windowDuration);
+                    spawnTimes[burstIndex + i] = cursor + UnityEngine.Random.Range(0f, packedSpawnSpan);
                 }
 
                 Array.Sort(spawnTimes, burstIndex, burst);
                 burstIndex += burst;
-                cursor += windowDuration;
+                cursor += packedSpawnStep;
             }
 
             mesh = EnemyManager.GetDetailedEnemyMesh();
