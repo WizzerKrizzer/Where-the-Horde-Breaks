@@ -44,6 +44,11 @@ namespace TowerDefense.Editor
 
             var folderName = development ? "Development" : "Release";
             var outputDirectory = Path.Combine(projectRoot, BuildRoot, folderName);
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, recursive: true);
+            }
+
             Directory.CreateDirectory(outputDirectory);
 
             var outputPath = Path.Combine(outputDirectory, $"{ProductName}.exe");

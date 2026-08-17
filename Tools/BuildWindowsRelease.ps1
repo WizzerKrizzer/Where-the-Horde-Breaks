@@ -36,4 +36,7 @@ if (Test-Path -LiteralPath $logPath) {
 
 Write-Host "Release build log: $logPath"
 Write-Host "Release build output: $outputPath"
+if ($exitCode -ne 0) {
+    Write-Error "Release build failed. See log: $logPath"
+}
 exit $exitCode
