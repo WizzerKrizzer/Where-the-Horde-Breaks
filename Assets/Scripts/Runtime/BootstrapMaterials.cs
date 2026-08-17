@@ -39,10 +39,8 @@ namespace TowerDefense.Runtime
                 return material;
             }
 
-            material = CreateMaterial(color)
-            {
-                enableInstancing = true
-            };
+            material = CreateMaterial(color);
+            material.enableInstancing = true;
             SetMaterialColor(material, color);
 
             if (color.a < 0.99f)
