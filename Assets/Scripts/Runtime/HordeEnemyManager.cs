@@ -19,7 +19,6 @@ namespace TowerDefense.Runtime
         private const float CornerSideBlendDistance = 5.2f;
         private const float LaneDamping = 4.2f;
         private const float LaneWallBounce = 7.5f;
-        private const float CorridorWallPadding = 0.18f;
         private const int OffscreenDetailStride = 8;
         private const int DetailedPerfSampleStride = 15;
         private const int MaxPressureNeighbors = 8;
@@ -33,7 +32,6 @@ namespace TowerDefense.Runtime
         private readonly Dictionary<ICombatTarget, float> frameTargetBlockedMass = new();
         private Vector3[] positions;
         private Vector3[] previousPositions;
-        private Vector3[] velocities;
         private float[] pathDistances;
         private float[] laneOffsets;
         private float[] laneVelocities;
@@ -140,7 +138,6 @@ namespace TowerDefense.Runtime
 
             positions = new Vector3[count];
             previousPositions = new Vector3[count];
-            velocities = new Vector3[count];
             pathDistances = new float[count];
             laneOffsets = new float[count];
             laneVelocities = new float[count];
@@ -209,7 +206,6 @@ namespace TowerDefense.Runtime
             slowedMaterial = null;
             positions = null;
             previousPositions = null;
-            velocities = null;
             pathDistances = null;
             laneOffsets = null;
             laneVelocities = null;
@@ -305,7 +301,6 @@ namespace TowerDefense.Runtime
                 var position = SamplePosition(totalSpawned);
                 positions[totalSpawned] = position;
                 previousPositions[totalSpawned] = position;
-                velocities[totalSpawned] = segmentDirections.Length > 0 ? segmentDirections[0] * speeds[totalSpawned] : Vector3.forward * speeds[totalSpawned];
                 alive[totalSpawned] = true;
                 totalSpawned++;
                 activeCount++;
@@ -424,7 +419,7 @@ namespace TowerDefense.Runtime
 
                 var combatMultiplier = target == null ? 1f : 0.08f;
                 var crowdMultiplier = crowdSpeedFactors != null ? Mathf.Clamp(crowdSpeedFactors[i], 0.58f, 1.08f) : 1f;
-                MoveThroughCorridor(i, combatMultiplier * crowdMultiplier, deltaTime);
+                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * crowdMultiplier * deltaTime;
                 if (crowdSpeedFactors != null)
                 {
                     crowdSpeedFactors[i] = Mathf.MoveTowards(crowdSpeedFactors[i], 1f, deltaTime * 2.4f);
@@ -435,7 +430,7 @@ namespace TowerDefense.Runtime
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                if (pathDistances[i] >= path.TotalLength - 0.35f)
+                if (pathDistances[i] >= path.TotalLength)
                 {
                     alive[i] = false;
                     activeCount--;
@@ -459,6 +454,7 @@ namespace TowerDefense.Runtime
                         sectionStart = Stopwatch.GetTimestamp();
                     }
                 }
+                ApplyLaneInertia(i, deltaTime);
                 UpdateKnockback(i, deltaTime);
                 if (sampleDetailedPerformance)
                 {
@@ -472,6 +468,7 @@ namespace TowerDefense.Runtime
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
+                positions[i] = SamplePosition(i);
                 if (sampleDetailedPerformance)
                 {
                     lastSampleMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
@@ -838,99 +835,6 @@ namespace TowerDefense.Runtime
             return side * lateral + forward * longitudinal;
         }
 
-        private void MoveThroughCorridor(int index, float movementMultiplier, float deltaTime)
-        {
-            var position = positions[index];
-            FindNearestCorridorFrame(position, out var nearest, out var tangent, out var side, out var progress, out var segment);
-            segmentIndices[index] = segment;
-            pathDistances[index] = Mathf.Max(pathDistances[index], progress);
-
-            var lookahead = Mathf.Lerp(5.5f, 11f, Mathf.Clamp01(activeCount / 5000f));
-            var seekPoint = SampleRoute(Mathf.Min(path.TotalLength, progress + lookahead), segment);
-            var desired = seekPoint - position;
-            desired.y = 0f;
-            if (desired.sqrMagnitude < 0.01f)
-            {
-                desired = tangent;
-            }
-            else
-            {
-                desired.Normalize();
-            }
-
-            var targetSpeed = speeds[index] * Mathf.Clamp(slowMultipliers[index], 0.05f, 1f) * movementMultiplier;
-            var targetVelocity = desired * targetSpeed;
-            var acceleration = Mathf.Lerp(10f, 18f, Mathf.Clamp01(targetSpeed / 7f));
-            velocities[index] = Vector3.MoveTowards(velocities[index], targetVelocity, acceleration * deltaTime);
-
-            var nextPosition = position + velocities[index] * deltaTime;
-            FindNearestCorridorFrame(nextPosition, out nearest, out _, out side, out progress, out segment);
-            KeepInsideCorridor(ref nextPosition, ref velocities[index], nearest, side);
-            positions[index] = nextPosition;
-            segmentIndices[index] = segment;
-            pathDistances[index] = Mathf.Max(pathDistances[index], progress);
-        }
-
-        private void KeepInsideCorridor(ref Vector3 position, ref Vector3 velocity, Vector3 nearest, Vector3 side)
-        {
-            var offset = position - nearest;
-            offset.y = 0f;
-            var lateral = Vector3.Dot(offset, side);
-            var limit = RoadHalfWidth - CorridorWallPadding;
-            if (Mathf.Abs(lateral) <= limit)
-            {
-                return;
-            }
-
-            var wallSide = Mathf.Sign(lateral);
-            var correctedLateral = wallSide * limit;
-            position += side * (correctedLateral - lateral);
-
-            var outwardVelocity = Vector3.Dot(velocity, side) * wallSide;
-            if (outwardVelocity > 0f)
-            {
-                velocity -= side * wallSide * outwardVelocity * 1.35f;
-            }
-        }
-
-        private void FindNearestCorridorFrame(
-            Vector3 position,
-            out Vector3 nearest,
-            out Vector3 tangent,
-            out Vector3 side,
-            out float progress,
-            out int segment)
-        {
-            nearest = segmentStarts[0];
-            tangent = segmentDirections[0];
-            side = segmentSides[0];
-            progress = 0f;
-            segment = 0;
-            var bestDistanceSq = float.PositiveInfinity;
-            for (var i = 0; i < segmentStarts.Length; i++)
-            {
-                var from = segmentStarts[i];
-                var direction = segmentDirections[i];
-                var length = segmentEndDistances[i] - segmentStartDistances[i];
-                var t = Mathf.Clamp(Vector3.Dot(position - from, direction), 0f, length);
-                var point = from + direction * t;
-                var offset = position - point;
-                offset.y = 0f;
-                var distanceSq = offset.sqrMagnitude;
-                if (distanceSq >= bestDistanceSq)
-                {
-                    continue;
-                }
-
-                bestDistanceSq = distanceSq;
-                nearest = point;
-                tangent = direction;
-                side = segmentSides[i];
-                progress = segmentStartDistances[i] + t;
-                segment = i;
-            }
-        }
-
         private void ApplyCrowdPressure(int index, float deltaTime)
         {
             if (activeCount <= 1)
@@ -979,12 +883,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (velocities != null)
-            {
-                velocities[index] += side * lateralPush * deltaTime * 0.85f;
-            }
-
-            laneVelocities[index] += lateralPush * deltaTime * 0.35f;
+            laneVelocities[index] += lateralPush * deltaTime * 1.65f;
             crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.74f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
         }
 
@@ -1028,15 +927,6 @@ namespace TowerDefense.Runtime
             if (velocity.sqrMagnitude <= 0.0001f && knockbackOffsets[index].sqrMagnitude <= 0.0001f)
             {
                 return;
-            }
-
-            if (velocity.sqrMagnitude > 0.0001f)
-            {
-                var position = positions[index] + velocity * deltaTime;
-                FindNearestCorridorFrame(position, out var nearest, out _, out var side, out _, out _);
-                KeepInsideCorridor(ref position, ref velocity, nearest, side);
-                positions[index] = position;
-                velocities[index] += velocity * deltaTime * 0.35f;
             }
 
             knockbackOffsets[index] += velocity * deltaTime;
