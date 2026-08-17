@@ -14,6 +14,7 @@ namespace TowerDefense.Runtime
         private const float RoadHalfWidth = 2.45f;
         private const float VisualRadius = 0.28f;
         private const float SpatialCellSize = 1.2f;
+        private const float CombatTargetCellSize = 4.5f;
         private const float PressureRadius = 0.62f;
         private const int OffscreenDetailStride = 8;
         private const int DetailedPerfSampleStride = 15;
@@ -22,7 +23,9 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
         private readonly Dictionary<Vector2Int, List<int>> spatialBuckets = new();
+        private readonly Dictionary<Vector2Int, List<ICombatTarget>> combatTargetBuckets = new();
         private readonly List<int> nearbyIndices = new(192);
+        private readonly List<ICombatTarget> nearbyCombatTargets = new(32);
         private readonly Dictionary<ICombatTarget, float> frameTargetBlockedMass = new();
         private Vector3[] positions;
         private Vector3[] previousPositions;
@@ -215,7 +218,9 @@ namespace TowerDefense.Runtime
             segmentStartDistances = null;
             segmentEndDistances = null;
             spatialBuckets.Clear();
+            combatTargetBuckets.Clear();
             nearbyIndices.Clear();
+            nearbyCombatTargets.Clear();
             frameTargetBlockedMass.Clear();
             elapsed = 0f;
             totalSpawned = 0;
@@ -309,10 +314,18 @@ namespace TowerDefense.Runtime
 
             var cameraFocus = camera != null ? GetCameraGroundFocus(camera) : Vector3.zero;
             var highFidelityRadius = camera != null ? GetHighFidelityRadius(camera) : float.PositiveInfinity;
+            var highFidelityRadiusSq = highFidelityRadius * highFidelityRadius;
             lastFullFidelityCount = 0;
             lastCheapFidelityCount = 0;
             lastNearCombatCount = 0;
             frameTargetBlockedMass.Clear();
+            var targetIndexStart = sampleDetailedPerformance ? Stopwatch.GetTimestamp() : 0L;
+            RebuildCombatTargetBuckets();
+            if (sampleDetailedPerformance)
+            {
+                lastTierMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - targetIndexStart);
+            }
+
             for (var i = 0; i < totalSpawned; i++)
             {
                 if (!alive[i])
@@ -336,9 +349,9 @@ namespace TowerDefense.Runtime
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                var nearCombat = IsNearCombatTarget(positions[i]);
-                var nearFocus = IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadius);
+                var nearFocus = IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadiusSq);
                 var staggeredTick = (i + frame) % OffscreenDetailStride == 0;
+                var nearCombat = IsNearCombatTarget(positions[i]);
                 var detailedTick = nearCombat || nearFocus || staggeredTick;
                 if (detailedTick)
                 {
@@ -358,7 +371,7 @@ namespace TowerDefense.Runtime
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                var target = detailedTick ? FindBlockingTarget(i) : null;
+                var target = nearCombat || staggeredTick ? FindBlockingTarget(i) : null;
                 if (target != null)
                 {
                     AttackCombatTarget(i, target, deltaTime);
@@ -776,10 +789,11 @@ namespace TowerDefense.Runtime
             var enemyPosition = positions[index];
             ICombatTarget bestTarget = null;
             var bestDistanceSq = float.PositiveInfinity;
-            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            CollectNearbyCombatTargets(enemyPosition, 2.2f, nearbyCombatTargets);
+            for (var i = nearbyCombatTargets.Count - 1; i >= 0; i--)
             {
-                var target = combatTargets[i];
-                if (target == null || !target.IsAlive || target.BlockCapacity <= 0f)
+                var target = nearbyCombatTargets[i];
+                if (target.BlockCapacity <= 0f)
                 {
                     continue;
                 }
@@ -819,14 +833,10 @@ namespace TowerDefense.Runtime
             }
 
             const float margin = 2.4f;
-            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            CollectNearbyCombatTargets(position, margin + 1.4f, nearbyCombatTargets);
+            for (var i = nearbyCombatTargets.Count - 1; i >= 0; i--)
             {
-                var target = combatTargets[i];
-                if (target == null || !target.IsAlive)
-                {
-                    continue;
-                }
-
+                var target = nearbyCombatTargets[i];
                 var range = Mathf.Max(0.75f, target.CombatRadius + margin);
                 var offset = target.Position - position;
                 if (offset.x * offset.x + offset.z * offset.z <= range * range)
@@ -923,9 +933,86 @@ namespace TowerDefense.Runtime
             }
         }
 
+        private void RebuildCombatTargetBuckets()
+        {
+            foreach (var bucket in combatTargetBuckets.Values)
+            {
+                bucket.Clear();
+            }
+
+            if (combatTargets == null || combatTargets.Count == 0)
+            {
+                return;
+            }
+
+            for (var i = combatTargets.Count - 1; i >= 0; i--)
+            {
+                var target = combatTargets[i];
+                if (target == null || !target.IsAlive)
+                {
+                    continue;
+                }
+
+                var key = GetCombatTargetKey(target.Position);
+                if (!combatTargetBuckets.TryGetValue(key, out var bucket))
+                {
+                    bucket = new List<ICombatTarget>(4);
+                    combatTargetBuckets.Add(key, bucket);
+                }
+
+                bucket.Add(target);
+            }
+        }
+
+        private void CollectNearbyCombatTargets(Vector3 center, float radius, List<ICombatTarget> results)
+        {
+            results.Clear();
+            if (combatTargetBuckets.Count == 0)
+            {
+                if (combatTargets == null)
+                {
+                    return;
+                }
+
+                for (var i = combatTargets.Count - 1; i >= 0; i--)
+                {
+                    var target = combatTargets[i];
+                    if (target != null && target.IsAlive)
+                    {
+                        results.Add(target);
+                    }
+                }
+
+                return;
+            }
+
+            var min = GetCombatTargetKey(center - new Vector3(radius, 0f, radius));
+            var max = GetCombatTargetKey(center + new Vector3(radius, 0f, radius));
+            for (var x = min.x; x <= max.x; x++)
+            {
+                for (var y = min.y; y <= max.y; y++)
+                {
+                    if (!combatTargetBuckets.TryGetValue(new Vector2Int(x, y), out var bucket))
+                    {
+                        continue;
+                    }
+
+                    for (var i = 0; i < bucket.Count; i++)
+                    {
+                        results.Add(bucket[i]);
+                    }
+                }
+            }
+        }
+
         private static Vector2Int GetSpatialKey(Vector3 position)
         {
             return new Vector2Int(Mathf.FloorToInt(position.x / SpatialCellSize), Mathf.FloorToInt(position.z / SpatialCellSize));
+        }
+
+        private static Vector2Int GetCombatTargetKey(Vector3 position)
+        {
+            return new Vector2Int(Mathf.FloorToInt(position.x / CombatTargetCellSize), Mathf.FloorToInt(position.z / CombatTargetCellSize));
         }
 
         private Vector3 SampleRoute(float distance, int preferredSegment)
@@ -1060,10 +1147,10 @@ namespace TowerDefense.Runtime
             return Mathf.Clamp(camera.transform.position.y * 0.42f, 12f, 42f);
         }
 
-        private static bool IsNearCameraFocus(Vector3 position, Vector3 focus, float radius)
+        private static bool IsNearCameraFocus(Vector3 position, Vector3 focus, float radiusSq)
         {
             var offset = position - focus;
-            return offset.x * offset.x + offset.z * offset.z <= radius * radius;
+            return offset.x * offset.x + offset.z * offset.z <= radiusSq;
         }
 
         private void FlushBatch(Material drawMaterial, int count)
