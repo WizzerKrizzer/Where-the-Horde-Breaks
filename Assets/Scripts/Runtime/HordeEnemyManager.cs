@@ -12,10 +12,10 @@ namespace TowerDefense.Runtime
     {
         private const int InstanceBatchSize = 1023;
         private const float RoadHalfWidth = 2.45f;
-        private const float VisualRadius = 0.28f;
+        private const float VisualRadius = 0.34f;
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
-        private const float PressureRadius = 0.62f;
+        private const float PressureRadius = 0.48f;
         private const float LaneDamping = 4.2f;
         private const float LaneWallBounce = 7.5f;
         private const int OffscreenDetailStride = 8;
@@ -827,8 +827,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            laneVelocities[index] += lateralPush * deltaTime * 5.2f;
-            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.68f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
+            laneVelocities[index] += lateralPush * deltaTime * 1.65f;
+            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.74f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
         }
 
         private void ApplyLaneInertia(int index, float deltaTime)
@@ -1276,7 +1276,7 @@ namespace TowerDefense.Runtime
                 return VisualRadius;
             }
 
-            return Mathf.Clamp(visualScales[index] * 0.62f, VisualRadius * 0.72f, VisualRadius * 1.55f);
+            return Mathf.Clamp(visualScales[index] * 0.78f, VisualRadius * 0.82f, VisualRadius * 1.45f);
         }
 
         private static float TicksToMilliseconds(long ticks)

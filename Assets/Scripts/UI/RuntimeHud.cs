@@ -170,7 +170,7 @@ namespace TowerDefense.UI
             {
                 text.AppendLine("Wave: endpoint flow test");
             }
-            text.AppendLine($"Spawned: {enemies.TotalSpawned}");
+            text.AppendLine($"Spawned: {enemies.TotalSpawned}   Alive: {enemies.ActiveEnemyCount}");
             text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.KillEssence)}   {FormatCurrencyBalance(profile, CurrencyType.VictorySigil)}   {FormatCurrencyBalance(profile, CurrencyType.PerfectSigil)}");
             text.AppendLine($"{FormatCurrencyBalance(profile, CurrencyType.ChallengeToken)}   {FormatCurrencyBalance(profile, CurrencyType.BossCore)}");
 
