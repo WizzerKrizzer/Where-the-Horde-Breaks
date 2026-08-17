@@ -748,8 +748,7 @@ namespace TowerDefense.Runtime
             var distance = pathDistances[index];
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
             var visualDistance = Mathf.Clamp(distance + forwardVisualOffsets[index], segmentStartDistances[segment], segmentEndDistances[segment]);
-            var center = segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, visualDistance - segmentStartDistances[segment]);
-            var side = GetSmoothedSegmentSide(segment, visualDistance);
+            SampleCorridorFrame(segment, visualDistance, out var center, out _, out var side);
             var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
             var minLane = -effectiveHalfWidth + 0.08f;
             var maxLane = effectiveHalfWidth - 0.08f;
@@ -762,23 +761,55 @@ namespace TowerDefense.Runtime
             return RoadHalfWidth;
         }
 
-        private Vector3 GetSmoothedSegmentSide(int segment, float distance)
+        private void SampleCorridorFrame(int segment, float distance, out Vector3 center, out Vector3 forward, out Vector3 side)
         {
-            var side = segmentSides[segment];
             var intoSegment = Mathf.Max(0f, distance - segmentStartDistances[segment]);
             var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - distance);
             if (segment > 0 && intoSegment < CornerSideBlendDistance)
             {
-                var t = Mathf.SmoothStep(0f, 1f, intoSegment / CornerSideBlendDistance);
-                side = Vector3.Slerp(segmentSides[segment - 1], side, t);
-            }
-            else if (segment < segmentSides.Length - 1 && toSegmentEnd < CornerSideBlendDistance)
-            {
-                var t = Mathf.SmoothStep(0f, 1f, 1f - toSegmentEnd / CornerSideBlendDistance);
-                side = Vector3.Slerp(side, segmentSides[segment + 1], t);
+                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment - 1] - segmentStartDistances[segment - 1]) * 0.45f, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.45f);
+                var t = Mathf.Clamp01(intoSegment / Mathf.Max(0.001f, radius));
+                var corner = segmentStarts[segment];
+                var p0 = corner - segmentDirections[segment - 1] * radius;
+                var p1 = corner;
+                var p2 = corner + segmentDirections[segment] * radius;
+                center = SampleQuadratic(p0, p1, p2, t);
+                forward = SampleQuadraticTangent(p0, p1, p2, t);
+                side = Vector3.Cross(Vector3.up, forward).normalized;
+                return;
             }
 
-            return side.sqrMagnitude > 0.0001f ? side.normalized : segmentSides[segment];
+            if (segment < segmentSides.Length - 1 && toSegmentEnd < CornerSideBlendDistance)
+            {
+                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.45f, (segmentEndDistances[segment + 1] - segmentStartDistances[segment + 1]) * 0.45f);
+                var t = Mathf.Clamp01(1f - toSegmentEnd / Mathf.Max(0.001f, radius));
+                var corner = segmentStarts[segment + 1];
+                var p0 = corner - segmentDirections[segment] * radius;
+                var p1 = corner;
+                var p2 = corner + segmentDirections[segment + 1] * radius;
+                center = SampleQuadratic(p0, p1, p2, t);
+                forward = SampleQuadraticTangent(p0, p1, p2, t);
+                side = Vector3.Cross(Vector3.up, forward).normalized;
+                return;
+            }
+
+            forward = segmentDirections[segment];
+            side = segmentSides[segment];
+            center = segmentStarts[segment] + forward * Mathf.Max(0f, distance - segmentStartDistances[segment]);
+        }
+
+        private static Vector3 SampleQuadratic(Vector3 p0, Vector3 p1, Vector3 p2, float t)
+        {
+            var a = Vector3.Lerp(p0, p1, t);
+            var b = Vector3.Lerp(p1, p2, t);
+            return Vector3.Lerp(a, b, t);
+        }
+
+        private static Vector3 SampleQuadraticTangent(Vector3 p0, Vector3 p1, Vector3 p2, float t)
+        {
+            var tangent = 2f * (1f - t) * (p1 - p0) + 2f * t * (p2 - p1);
+            tangent.y = 0f;
+            return tangent.sqrMagnitude > 0.0001f ? tangent.normalized : (p2 - p0).normalized;
         }
 
         private Vector3 GetClampedKnockbackOffset(int index, int segment, float lane, float minLane, float maxLane)
@@ -789,9 +820,7 @@ namespace TowerDefense.Runtime
                 return Vector3.zero;
             }
 
-            var distance = pathDistances[index];
-            var side = GetSmoothedSegmentSide(segment, distance);
-            var forward = segmentDirections[segment];
+            SampleCorridorFrame(segment, pathDistances[index], out _, out var forward, out var side);
             var lateral = Mathf.Clamp(Vector3.Dot(offset, side), minLane - lane, maxLane - lane);
             var longitudinal = Mathf.Clamp(Vector3.Dot(offset, forward), -0.9f, 0.9f);
             return side * lateral + forward * longitudinal;
@@ -812,7 +841,7 @@ namespace TowerDefense.Runtime
             }
 
             var segment = Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1);
-            var side = GetSmoothedSegmentSide(segment, pathDistances[index]);
+            SampleCorridorFrame(segment, pathDistances[index], out _, out _, out var side);
             var lateralPush = 0f;
             var forwardPressure = 0f;
             var checks = 0;
