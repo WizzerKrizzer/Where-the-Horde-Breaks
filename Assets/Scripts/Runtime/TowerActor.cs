@@ -1,4 +1,5 @@
 using TowerDefense.Data;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -167,25 +168,64 @@ namespace TowerDefense.Runtime
             }
 
             var damage = definition.damage * damageMultiplier;
-            var appliedDamage = definition.projectilePattern == ProjectilePattern.ArcSplash
-                ? enemies.DamageAndKnockbackInRadius(targetPosition, Mathf.Max(0.8f, definition.splashRadius), damage, definition.knockbackDistance, out _)
-                : enemies.DamageHordeTarget(transform.position, definition.range, definition.canHitFlying, targetingMode, damage, out targetPosition);
+            if (definition.projectilePattern == ProjectilePattern.ArcSplash)
+            {
+                var duration = GetHordeShotDuration(targetPosition);
+                StartCoroutine(ApplyDelayedHordeSplash(targetPosition, damage, duration));
+                SpawnHordeShotVisual(targetPosition, duration);
+                return true;
+            }
+
+            var appliedDamage = enemies.DamageHordeTarget(transform.position, definition.range, definition.canHitFlying, targetingMode, damage, out targetPosition);
             RecordDamage(appliedDamage);
-            SpawnHordeShotVisual(targetPosition);
+            SpawnHordeShotVisual(targetPosition, GetHordeShotDuration(targetPosition));
             return appliedDamage > 0f;
         }
 
-        private void SpawnHordeShotVisual(Vector3 targetPosition)
+        private IEnumerator ApplyDelayedHordeSplash(Vector3 targetPosition, float damage, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (enemies == null || definition == null)
+            {
+                yield break;
+            }
+
+            var radius = Mathf.Max(0.8f, definition.splashRadius);
+            var burnDamage = definition.appliesFire ? definition.fireDamagePerTick : 0f;
+            var burnRate = definition.appliesFire ? definition.fireTicksPerSecond : 0f;
+            var burnDuration = definition.appliesFire ? definition.fireDuration : 0f;
+            var burnStacks = definition.appliesFire ? definition.fireMaxStacks : 0;
+            var appliedDamage = enemies.DamageAndKnockbackInRadius(
+                targetPosition,
+                radius,
+                damage,
+                definition.knockbackDistance,
+                out _,
+                this,
+                burnDamage,
+                burnRate,
+                burnDuration,
+                burnStacks);
+            RecordDamage(appliedDamage);
+        }
+
+        private float GetHordeShotDuration(Vector3 targetPosition)
+        {
+            var start = transform.position + Vector3.up * 0.82f;
+            var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
+            var distance = Vector3.Distance(start, end);
+            return definition.projectilePattern == ProjectilePattern.ArcSplash
+                ? Mathf.Max(0.32f, distance / Mathf.Max(0.01f, definition.projectileSpeed) * Mathf.Max(1f, definition.arcFlightTimeMultiplier))
+                : Mathf.Clamp(distance / Mathf.Max(0.01f, definition.projectileSpeed), 0.06f, 0.28f);
+        }
+
+        private void SpawnHordeShotVisual(Vector3 targetPosition, float duration)
         {
             var projectileColor = definition.appliesFire
                 ? new Color(1f, 0.32f, 0.05f)
                 : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
             var start = transform.position + Vector3.up * 0.82f;
             var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
-            var distance = Vector3.Distance(start, end);
-            var duration = definition.projectilePattern == ProjectilePattern.ArcSplash
-                ? Mathf.Max(0.32f, distance / Mathf.Max(0.01f, definition.projectileSpeed) * Mathf.Max(1f, definition.arcFlightTimeMultiplier))
-                : Mathf.Clamp(distance / Mathf.Max(0.01f, definition.projectileSpeed), 0.06f, 0.28f);
             var markerRadius = definition.projectilePattern == ProjectilePattern.ArcSplash
                 ? Mathf.Max(0.55f, definition.splashRadius)
                 : 0.14f;
