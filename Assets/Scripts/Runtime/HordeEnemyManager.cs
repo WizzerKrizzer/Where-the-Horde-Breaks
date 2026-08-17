@@ -841,20 +841,17 @@ namespace TowerDefense.Runtime
         private void MoveThroughCorridor(int index, float movementMultiplier, float deltaTime)
         {
             var position = positions[index];
-            FindNearestCorridorFrame(index, position, out var nearest, out var tangent, out var side, out var progress, out var segment);
+            FindNearestCorridorFrame(position, out var nearest, out var tangent, out var side, out var progress, out var segment);
             segmentIndices[index] = segment;
             pathDistances[index] = Mathf.Max(pathDistances[index], progress);
 
-            var lookahead = Mathf.Lerp(4.5f, 8.5f, Mathf.Clamp01(activeCount / 5000f));
-            var lateral = Mathf.Clamp(Vector3.Dot(position - nearest, side), -RoadHalfWidth + CorridorWallPadding, RoadHalfWidth - CorridorWallPadding);
-            var seekCenter = SampleRoute(Mathf.Min(path.TotalLength, progress + lookahead), segment);
-            FindNearestCorridorFrame(index, seekCenter, out _, out var seekTangent, out var seekSide, out _, out _);
-            var seekPoint = seekCenter + seekSide * lateral;
+            var lookahead = Mathf.Lerp(5.5f, 11f, Mathf.Clamp01(activeCount / 5000f));
+            var seekPoint = SampleRoute(Mathf.Min(path.TotalLength, progress + lookahead), segment);
             var desired = seekPoint - position;
             desired.y = 0f;
             if (desired.sqrMagnitude < 0.01f)
             {
-                desired = Vector3.Lerp(tangent, seekTangent, 0.35f);
+                desired = tangent;
             }
             else
             {
@@ -867,7 +864,7 @@ namespace TowerDefense.Runtime
             velocities[index] = Vector3.MoveTowards(velocities[index], targetVelocity, acceleration * deltaTime);
 
             var nextPosition = position + velocities[index] * deltaTime;
-            FindNearestCorridorFrame(index, nextPosition, out nearest, out _, out side, out progress, out segment);
+            FindNearestCorridorFrame(nextPosition, out nearest, out _, out side, out progress, out segment);
             KeepInsideCorridor(ref nextPosition, ref velocities[index], nearest, side);
             positions[index] = nextPosition;
             segmentIndices[index] = segment;
@@ -897,7 +894,6 @@ namespace TowerDefense.Runtime
         }
 
         private void FindNearestCorridorFrame(
-            int index,
             Vector3 position,
             out Vector3 nearest,
             out Vector3 tangent,
@@ -911,10 +907,7 @@ namespace TowerDefense.Runtime
             progress = 0f;
             segment = 0;
             var bestDistanceSq = float.PositiveInfinity;
-            var currentSegment = segmentIndices != null && index >= 0 && index < segmentIndices.Length ? segmentIndices[index] : 0;
-            var startSegment = Mathf.Max(0, currentSegment - 1);
-            var endSegment = Mathf.Min(segmentStarts.Length - 1, currentSegment + 2);
-            for (var i = startSegment; i <= endSegment; i++)
+            for (var i = 0; i < segmentStarts.Length; i++)
             {
                 var from = segmentStarts[i];
                 var direction = segmentDirections[i];
@@ -1040,7 +1033,7 @@ namespace TowerDefense.Runtime
             if (velocity.sqrMagnitude > 0.0001f)
             {
                 var position = positions[index] + velocity * deltaTime;
-                FindNearestCorridorFrame(index, position, out var nearest, out _, out var side, out _, out _);
+                FindNearestCorridorFrame(position, out var nearest, out _, out var side, out _, out _);
                 KeepInsideCorridor(ref position, ref velocity, nearest, side);
                 positions[index] = position;
                 velocities[index] += velocity * deltaTime * 0.35f;
