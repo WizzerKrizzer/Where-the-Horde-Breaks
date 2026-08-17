@@ -36,12 +36,16 @@ namespace TowerDefense.Runtime
         private float[] laneDriftAmplitudes;
         private float[] forwardVisualOffsets;
         private float[] visualScales;
+        private float[] visualPulsePhases;
+        private float[] visualPulseSpeeds;
         private float[] speeds;
         private float[] slowMultipliers;
         private float[] slowTimers;
         private float[] attackTimers;
         private float[] spawnTimes;
         private float[] health;
+        private float[] burnDamagePerSecond;
+        private float[] burnTimers;
         private Vector3[] knockbackOffsets;
         private Vector3[] knockbackVelocities;
         private int[] segmentIndices;
@@ -138,12 +142,16 @@ namespace TowerDefense.Runtime
             laneDriftAmplitudes = new float[count];
             forwardVisualOffsets = new float[count];
             visualScales = new float[count];
+            visualPulsePhases = new float[count];
+            visualPulseSpeeds = new float[count];
             speeds = new float[count];
             slowMultipliers = new float[count];
             slowTimers = new float[count];
             attackTimers = new float[count];
             spawnTimes = new float[count];
             health = new float[count];
+            burnDamagePerSecond = new float[count];
+            burnTimers = new float[count];
             knockbackOffsets = new Vector3[count];
             knockbackVelocities = new Vector3[count];
             segmentIndices = new int[count];
@@ -201,12 +209,16 @@ namespace TowerDefense.Runtime
             laneDriftAmplitudes = null;
             forwardVisualOffsets = null;
             visualScales = null;
+            visualPulsePhases = null;
+            visualPulseSpeeds = null;
             speeds = null;
             slowMultipliers = null;
             slowTimers = null;
             attackTimers = null;
             spawnTimes = null;
             health = null;
+            burnDamagePerSecond = null;
+            burnTimers = null;
             knockbackOffsets = null;
             knockbackVelocities = null;
             segmentIndices = null;
@@ -278,6 +290,8 @@ namespace TowerDefense.Runtime
                 segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
                 visualScales[totalSpawned] = (definition != null ? definition.visualScale : 0.45f) * UnityEngine.Random.Range(0.88f, 1.12f);
+                visualPulsePhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+                visualPulseSpeeds[totalSpawned] = UnityEngine.Random.Range(1.7f, 3.8f);
                 slowMultipliers[totalSpawned] = 1f;
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
@@ -341,6 +355,26 @@ namespace TowerDefense.Runtime
                     if (slowTimers[i] <= 0f)
                     {
                         slowMultipliers[i] = 1f;
+                    }
+                }
+
+                if (burnTimers[i] > 0f)
+                {
+                    burnTimers[i] -= deltaTime;
+                    ApplyDamage(i, burnDamagePerSecond[i] * deltaTime);
+                    if (!alive[i])
+                    {
+                        if (sampleDetailedPerformance)
+                        {
+                            lastStatusMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                        }
+
+                        continue;
+                    }
+
+                    if (burnTimers[i] <= 0f)
+                    {
+                        burnDamagePerSecond[i] = 0f;
                     }
                 }
                 if (sampleDetailedPerformance)
@@ -413,9 +447,8 @@ namespace TowerDefense.Runtime
                         lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
                         sectionStart = Stopwatch.GetTimestamp();
                     }
-
-                    UpdateKnockback(i, deltaTime);
                 }
+                UpdateKnockback(i, deltaTime);
                 if (sampleDetailedPerformance)
                 {
                     if (!detailedTick)
@@ -556,7 +589,17 @@ namespace TowerDefense.Runtime
             }
         }
 
-        public float DamageAndKnockbackInRadius(Vector3 center, float radius, float damage, float knockbackDistance, int maxTargets, out int hitCount)
+        public float DamageAndKnockbackInRadius(
+            Vector3 center,
+            float radius,
+            float damage,
+            float knockbackDistance,
+            int maxTargets,
+            out int hitCount,
+            float burnDamagePerTick = 0f,
+            float burnTicksPerSecond = 0f,
+            float burnDuration = 0f,
+            int maxBurnStacks = 0)
         {
             hitCount = 0;
             if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
@@ -595,6 +638,8 @@ namespace TowerDefense.Runtime
                     appliedDamage += ApplyDamage(i, damage);
                 }
 
+                ApplyBurn(i, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks);
+
                 hitCount++;
                 if (targetLimit > 0 && hitCount >= targetLimit)
                 {
@@ -603,6 +648,24 @@ namespace TowerDefense.Runtime
             }
 
             return appliedDamage;
+        }
+
+        private void ApplyBurn(int index, float damagePerTick, float ticksPerSecond, float duration, int maxStacks)
+        {
+            if (index < 0 || index >= totalSpawned || !alive[index] || damagePerTick <= 0f || ticksPerSecond <= 0f || duration <= 0f)
+            {
+                return;
+            }
+
+            var stackCap = Mathf.Max(1, maxStacks);
+            var stackDamagePerSecond = damagePerTick * ticksPerSecond;
+            var currentStacks = burnDamagePerSecond[index] > 0f
+                ? Mathf.RoundToInt(burnDamagePerSecond[index] / Mathf.Max(0.0001f, stackDamagePerSecond))
+                : 0;
+            var nextStacks = Mathf.Clamp(currentStacks + 1, 1, stackCap);
+            burnDamagePerSecond[index] = stackDamagePerSecond * nextStacks;
+            burnTimers[index] = Mathf.Max(burnTimers[index], duration);
+            slowTimers[index] = Mathf.Max(slowTimers[index], 0.2f);
         }
 
         private int FindBestTarget(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode)
@@ -789,7 +852,7 @@ namespace TowerDefense.Runtime
             var enemyPosition = positions[index];
             ICombatTarget bestTarget = null;
             var bestDistanceSq = float.PositiveInfinity;
-            CollectNearbyCombatTargets(enemyPosition, 2.2f, nearbyCombatTargets);
+            CollectNearbyCombatTargets(enemyPosition, 3.4f, nearbyCombatTargets);
             for (var i = nearbyCombatTargets.Count - 1; i >= 0; i--)
             {
                 var target = nearbyCombatTargets[i];
@@ -1090,6 +1153,7 @@ namespace TowerDefense.Runtime
         private void DrawInstancesForMaterial(Camera camera, Material drawMaterial, HordeDrawMode mode)
         {
             var batchCount = 0;
+            var drawTime = Time.time;
             for (var i = 0; i < totalSpawned; i++)
             {
                 if (!alive[i])
@@ -1114,6 +1178,12 @@ namespace TowerDefense.Runtime
                 }
 
                 var scale = Vector3.one * GetVisualRadius(i);
+                if (visualPulsePhases != null && visualPulseSpeeds != null)
+                {
+                    var pulse = 1f + Mathf.Sin(drawTime * visualPulseSpeeds[i] + visualPulsePhases[i]) * 0.045f;
+                    scale *= pulse;
+                }
+
                 matrixBatch[batchCount++] = Matrix4x4.TRS(positions[i], Quaternion.identity, scale);
                 lastVisibleDrawn++;
                 if (batchCount >= InstanceBatchSize)

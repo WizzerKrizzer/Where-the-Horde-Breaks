@@ -179,22 +179,10 @@ namespace TowerDefense.Runtime
 
         private void FireArrowVisual(Vector3 targetPosition)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            go.name = "AlliedArrowHorde";
-            go.transform.position = targetPosition + Vector3.up * 0.45f;
-            go.transform.localScale = new Vector3(0.08f, 0.08f, 0.28f);
-            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.88f, 0.32f, 1f));
-            var components = go.GetComponents<Component>();
-            for (var i = components.Length - 1; i >= 0; i--)
-            {
-                var component = components[i];
-                if (component != null && component.GetType().Name.Contains("Collider"))
-                {
-                    Destroy(component);
-                }
-            }
-
-            Destroy(go, 0.1f);
+            var start = transform.position + Vector3.up * 0.65f;
+            var end = targetPosition + Vector3.up * 0.45f;
+            var duration = Mathf.Clamp(Vector3.Distance(start, end) / 16f, 0.06f, 0.24f);
+            HordeProjectileVisual.Spawn(start, end, new Color(1f, 0.88f, 0.32f, 1f), arcProjectile: false, travelDuration: duration, markerRadius: 0.12f);
         }
 
         public void TakeDamage(float damage, EnemyActor source)

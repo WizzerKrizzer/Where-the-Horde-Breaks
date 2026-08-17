@@ -7,11 +7,17 @@ namespace TowerDefense.Runtime
         private Vector3 start;
         private Vector3 end;
         private float duration;
+        private float impactRadius;
         private float elapsed;
         private bool arc;
         private Color impactColor;
 
         public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile)
+        {
+            Spawn(from, to, color, arcProjectile, arcProjectile ? 0.42f : 0.16f, arcProjectile ? 0.95f : 0.16f);
+        }
+
+        public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius)
         {
             var go = GameObject.CreatePrimitive(arcProjectile ? PrimitiveType.Sphere : PrimitiveType.Capsule);
             go.name = arcProjectile ? "HordeBoulderVisual" : "HordeProjectileVisual";
@@ -29,16 +35,17 @@ namespace TowerDefense.Runtime
             }
 
             var visual = go.AddComponent<HordeProjectileVisual>();
-            visual.Initialize(from, to, color, arcProjectile);
+            visual.Initialize(from, to, color, arcProjectile, travelDuration, markerRadius);
         }
 
-        private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile)
+        private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius)
         {
             start = from;
             end = to;
             arc = arcProjectile;
             impactColor = color;
-            duration = arc ? 0.42f : 0.16f;
+            duration = Mathf.Max(0.04f, travelDuration);
+            impactRadius = Mathf.Max(0.05f, markerRadius);
             elapsed = 0f;
             transform.position = start;
         }
@@ -66,17 +73,17 @@ namespace TowerDefense.Runtime
 
             if (t >= 1f)
             {
-                SpawnImpactMarker(end, impactColor, arc);
+                SpawnImpactMarker(end, impactColor, arc, impactRadius);
                 Destroy(gameObject);
             }
         }
 
-        private static void SpawnImpactMarker(Vector3 position, Color color, bool arcProjectile)
+        private static void SpawnImpactMarker(Vector3 position, Color color, bool arcProjectile, float radius)
         {
             var marker = GameObject.CreatePrimitive(arcProjectile ? PrimitiveType.Cylinder : PrimitiveType.Sphere);
             marker.name = arcProjectile ? "HordeBoulderImpactMarker" : "HordeProjectileImpactMarker";
             marker.transform.position = position + Vector3.up * 0.035f;
-            marker.transform.localScale = arcProjectile ? new Vector3(0.95f, 0.025f, 0.95f) : Vector3.one * 0.16f;
+            marker.transform.localScale = arcProjectile ? new Vector3(radius * 2f, 0.025f, radius * 2f) : Vector3.one * radius;
             var impactColor = arcProjectile
                 ? new Color(1f, 0.22f, 0.08f, 0.86f)
                 : new Color(color.r, color.g, color.b, 0.75f);

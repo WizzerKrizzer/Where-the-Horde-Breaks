@@ -618,7 +618,17 @@ namespace TowerDefense.Runtime
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
-                return hordePrototype.DamageAndKnockbackInRadius(center, radius, damage, knockbackDistance, maxTargets: 160, out hitCount);
+                return hordePrototype.DamageAndKnockbackInRadius(
+                    center,
+                    radius,
+                    damage,
+                    knockbackDistance,
+                    maxTargets: 160,
+                    out hitCount,
+                    burnDamagePerTick,
+                    burnTicksPerSecond,
+                    burnDuration,
+                    maxBurnStacks);
             }
 
             var radiusSq = radius * radius;

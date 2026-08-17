@@ -182,7 +182,14 @@ namespace TowerDefense.Runtime
                 : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
             var start = transform.position + Vector3.up * 0.82f;
             var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
-            HordeProjectileVisual.Spawn(start, end, projectileColor, definition.projectilePattern == ProjectilePattern.ArcSplash);
+            var distance = Vector3.Distance(start, end);
+            var duration = definition.projectilePattern == ProjectilePattern.ArcSplash
+                ? Mathf.Max(0.32f, distance / Mathf.Max(0.01f, definition.projectileSpeed) * Mathf.Max(1f, definition.arcFlightTimeMultiplier))
+                : Mathf.Clamp(distance / Mathf.Max(0.01f, definition.projectileSpeed), 0.06f, 0.28f);
+            var markerRadius = definition.projectilePattern == ProjectilePattern.ArcSplash
+                ? Mathf.Max(0.55f, definition.splashRadius)
+                : 0.14f;
+            HordeProjectileVisual.Spawn(start, end, projectileColor, definition.projectilePattern == ProjectilePattern.ArcSplash, duration, markerRadius);
         }
 
         private void UpdateBarracks()
