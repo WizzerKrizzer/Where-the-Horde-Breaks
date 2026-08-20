@@ -24,6 +24,13 @@ namespace TowerDefense.Runtime
         public float CombatRadius => definition != null && definition.barracksUnitType == AlliedUnitType.Paladin ? 0.72f : 0.55f;
         public float BlockCapacity => IsRangedArcher ? 0f : definition != null ? Mathf.Max(0f, definition.alliedUnitBlockCapacity) : 0f;
         public float CurrentBlockedMass => GetBlockedMass();
+        public float CurrentHealth => health;
+        public float MaximumHealth => maxHealth;
+        public float Armor => definition != null ? Mathf.Max(0f, definition.alliedUnitDefense) : 0f;
+        public float PhysicalResistance => 0f;
+        public float FireResistance => 0f;
+        public float SlowResistance => 0f;
+        public float ThornsDamage => 0f;
         private bool IsRangedArcher => definition != null && definition.barracksUnitType == AlliedUnitType.Archer;
 
         public void Initialize(TowerActor ownerTower, TowerDefinition towerDefinition, EnemyManager enemyManager, Vector3 position, int formationIndex)
@@ -160,8 +167,20 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = enemies.DamageHordeTarget(transform.position, definition.alliedUnitRange, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, definition.alliedUnitDamage, out targetPosition);
-            owner?.RecordDamage(appliedDamage);
+            var queued = enemies.QueueHordeProjectile(
+                transform.position + Vector3.up * 0.65f,
+                targetPosition,
+                0.22f,
+                definition.alliedUnitDamage,
+                0f,
+                1,
+                definition.alliedUnitCanHitFlying,
+                splash: false);
+            if (!queued)
+            {
+                return;
+            }
+            owner?.RecordDamage(definition.alliedUnitDamage);
             FireArrowVisual(targetPosition);
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }
@@ -205,6 +224,31 @@ namespace TowerDefense.Runtime
             if (source != null && source.Definition != null && source.Definition.infectsAllies)
             {
                 enemies?.SpawnConvertedEnemy(source.Definition, transform.position);
+            }
+
+            enemies?.UnregisterCombatTarget(this);
+            owner?.NotifyAlliedUnitLost(this);
+            Destroy(gameObject);
+        }
+
+        public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition)
+        {
+            if (!gameObject.activeSelf)
+            {
+                return;
+            }
+
+            health = Mathf.Clamp(authoritativeHealth, 0f, maxHealth);
+            UpdateHealthBar();
+            if (!destroyed || health > 0f)
+            {
+                return;
+            }
+
+            ReleaseAllBlockers();
+            if (sourceDefinition != null && sourceDefinition.infectsAllies)
+            {
+                enemies?.SpawnConvertedEnemy(sourceDefinition, transform.position);
             }
 
             enemies?.UnregisterCombatTarget(this);

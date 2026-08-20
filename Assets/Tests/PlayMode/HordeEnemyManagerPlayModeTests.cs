@@ -42,6 +42,11 @@ namespace TowerDefense.Tests
 
             manager.BeginWave(wave, route);
 
+            if (SystemInfo.supportsComputeShaders)
+            {
+                Assert.That(manager.Performance.ShaderName, Does.Contain("GPU Compute"));
+            }
+
             var timeout = Time.time + 2f;
             while (!manager.IsComplete && Time.time < timeout)
             {
@@ -68,8 +73,10 @@ namespace TowerDefense.Tests
             var manager = CreateManager();
 
             manager.BeginWave(wave, route);
-            yield return null;
-            yield return null;
+            for (var frame = 0; frame < 30 && manager.ActiveCount == 0; frame++)
+            {
+                yield return null;
+            }
 
             manager.ApplySlowAura(Vector3.zero, 8f, 0.5f, 100f);
             var damage = manager.DamageAndKnockbackInRadius(Vector3.zero, 8f, 3f, 1.25f, maxTargets: 20, out var hitCount);

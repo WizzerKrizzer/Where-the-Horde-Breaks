@@ -11,8 +11,16 @@ namespace TowerDefense.Runtime
         float CombatRadius { get; }
         float BlockCapacity { get; }
         float CurrentBlockedMass { get; }
+        float CurrentHealth { get; }
+        float MaximumHealth { get; }
+        float Armor { get; }
+        float PhysicalResistance { get; }
+        float FireResistance { get; }
+        float SlowResistance { get; }
+        float ThornsDamage { get; }
         bool TryAddBlocker(EnemyActor enemy);
         void RemoveBlocker(EnemyActor enemy);
         void TakeDamage(float damage, EnemyActor source);
+        void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition);
     }
 }

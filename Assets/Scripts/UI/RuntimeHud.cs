@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using System.Collections.Generic;
 using TowerDefense.Data;
@@ -20,6 +21,17 @@ namespace TowerDefense.UI
         private Text statusText;
         private Text fpsText;
         private Text perfText;
+        private GameObject performancePanel;
+        private Button performanceToggleButton;
+        private bool performancePanelVisible = true;
+        private readonly FrameTiming[] frameTimings = new FrameTiming[1];
+        private float smoothedCpuFrameMs;
+        private float smoothedGpuFrameMs;
+        private float latestFps;
+        private System.Diagnostics.Process currentProcess;
+        private TimeSpan previousProcessCpuTime;
+        private double previousProcessSampleTime;
+        private float processCpuPercent;
         private float nextFpsRefreshTime;
         private float nextPerfRefreshTime;
         private float fpsAccumulatedTime;
@@ -61,15 +73,24 @@ namespace TowerDefense.UI
         private GameObject upgradePanel;
         private RectTransform upgradeTreeContent;
         private RectTransform upgradeTreeViewport;
-        private readonly List<RectTransform> upgradeTreeLabels = new();
+        private readonly Dictionary<string, Vector2> upgradeTreeNodePositions = new();
         private GameObject upgradeDetailPanel;
+        private SkillTreeIconGraphic upgradeDetailIcon;
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
         private Text upgradeDetailBody;
         private Button upgradeBuyButton;
         private SkillNodeDefinition selectedUpgradeNode;
+        private SkillNodeDefinition hoveredUpgradeNode;
+        private SkillNodeDefinition pendingHoveredUpgradeNode;
+        private float pendingUpgradeHoverStartedAt;
+        private readonly List<RectTransform> upgradeTreeRankBadges = new();
         private Vector2 upgradeTreePan;
         private float upgradeTreeZoom = 1f;
+        private const float UpgradeHoverDelay = 0.5f;
+        private const float MaximumUpgradeTreeZoom = 1.35f;
+        private const float UpgradeTreeHorizontalPanFreedom = 160f;
+        private const float UpgradeTreeVerticalPanFreedom = 90f;
         private GameObject devPanel;
         private bool devPanelVisible;
         private Button statsToggleButton;
@@ -129,11 +150,8 @@ namespace TowerDefense.UI
             fpsText = CreateText("FpsCounter", parent, new Vector2(12f, -106f), TextAnchor.UpperLeft, 11);
             fpsText.GetComponent<RectTransform>().sizeDelta = new Vector2(120f, 22f);
             fpsText.text = "FPS: --";
-            perfText = CreateText("HordePerformance", parent, new Vector2(12f, -128f), TextAnchor.UpperLeft, 10);
-            perfText.GetComponent<RectTransform>().sizeDelta = new Vector2(430f, 132f);
-            perfText.text = string.Empty;
-            perfText.color = new Color(0.8f, 0.92f, 1f, 0.86f);
-            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -264f), TextAnchor.UpperLeft, 13);
+            CreatePerformancePanel(parent);
+            towerText = CreateText("TowerSelection", parent, new Vector2(12f, -332f), TextAnchor.UpperLeft, 13);
             towerText.GetComponent<RectTransform>().sizeDelta = new Vector2(340f, 178f);
             CreateRunDamagePanel(parent);
             CreateActiveWeaponSlot(parent);
@@ -148,6 +166,9 @@ namespace TowerDefense.UI
             CreateCodexPanel(parent);
             CreateDevPanel(parent);
             CreateTopRightToggles(parent);
+            currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+            previousProcessCpuTime = currentProcess.TotalProcessorTime;
+            previousProcessSampleTime = Time.realtimeSinceStartupAsDouble;
         }
 
         private void Update()
@@ -158,6 +179,8 @@ namespace TowerDefense.UI
             }
 
             HandleHudShortcuts();
+            UpdateUpgradeHoverDelay();
+            FrameTimingManager.CaptureFrameTimings();
 
             var profile = session.Profile;
             var text = new StringBuilder();
@@ -212,6 +235,7 @@ namespace TowerDefense.UI
             }
 
             var fps = fpsAccumulatedTime > 0.0001f ? fpsAccumulatedFrames / fpsAccumulatedTime : 0f;
+            latestFps = fps;
             fpsText.text = $"FPS: {fps:0}";
             fpsText.color = fps >= 55f
                 ? new Color(0.55f, 1f, 0.6f, 0.95f)
@@ -230,32 +254,93 @@ namespace TowerDefense.UI
                 return;
             }
 
-            if (enemies.ActiveEnemyCount <= 0)
-            {
-                perfText.text = string.Empty;
-                return;
-            }
-
             if (Time.realtimeSinceStartup < nextPerfRefreshTime)
             {
                 return;
             }
 
             var perf = enemies.HordePerformance;
-            if (perf.VisibleDrawn <= 0 && perf.FullFidelity <= 0 && perf.CheapFidelity <= 0)
+            var timingCount = FrameTimingManager.GetLatestTimings((uint)frameTimings.Length, frameTimings);
+            if (timingCount > 0)
             {
-                perfText.text = string.Empty;
-                nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
+                var timing = frameTimings[0];
+                if (timing.cpuFrameTime > 0d)
+                {
+                    smoothedCpuFrameMs = Mathf.Lerp(smoothedCpuFrameMs, (float)timing.cpuFrameTime, 0.35f);
+                }
+
+                if (timing.gpuFrameTime > 0d)
+                {
+                    smoothedGpuFrameMs = Mathf.Lerp(smoothedGpuFrameMs, (float)timing.gpuFrameTime, 0.35f);
+                }
+            }
+
+            UpdateProcessCpuUsage();
+            var frameBudgetMs = Application.targetFrameRate > 0 ? 1000f / Application.targetFrameRate : 1000f / 60f;
+            var cpuFrameLoad = smoothedCpuFrameMs > 0f ? smoothedCpuFrameMs / frameBudgetMs * 100f : 0f;
+            var gpuFrameLoad = smoothedGpuFrameMs > 0f ? smoothedGpuFrameMs / frameBudgetMs * 100f : 0f;
+            var backend = string.IsNullOrEmpty(perf.ShaderName)
+                ? "Waiting for horde"
+                : perf.ShaderName.Contains("GPU Compute") ? "GPU COMPUTE" : "CPU FALLBACK";
+            var bottleneck = smoothedGpuFrameMs <= 0f
+                ? "GPU timing unavailable"
+                : smoothedCpuFrameMs > smoothedGpuFrameMs * 1.15f
+                    ? "CPU limited"
+                    : smoothedGpuFrameMs > smoothedCpuFrameMs * 1.15f ? "GPU limited" : "Balanced";
+            var gpuTiming = smoothedGpuFrameMs > 0f
+                ? $"{smoothedGpuFrameMs:0.00} ms   {gpuFrameLoad:0}% budget"
+                : "not reported by graphics API";
+            var overflowWarning = perf.OverflowCells > 0 || perf.DroppedAgents > 0
+                ? "<color=#ff9a62>WARNING: GRID OVERFLOW — EMERGENCY PRESSURE ACTIVE</color>\n"
+                : string.Empty;
+            perfText.text =
+                $"PERF  {latestFps:0} FPS   {backend}   {bottleneck}\n" +
+                $"CPU  {smoothedCpuFrameMs:0.00} ms  {cpuFrameLoad:0}%   process {processCpuPercent:0.0}%\n" +
+                $"GPU  {gpuTiming}\n" +
+                $"HORDE  {enemies.ActiveEnemyCount} active   {perf.VisibleDrawn} visible\n" +
+                $"GRID  {perf.MaxCellOccupancy}/48 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped\n" +
+                overflowWarning +
+                $"WORK  sim {perf.SimMs:0.00}   move {perf.MovementMs:0.00}   draw {perf.DrawMs:0.00} ms\n" +
+                $"{SystemInfo.graphicsDeviceName}";
+            nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
+        }
+
+        private void UpdateProcessCpuUsage()
+        {
+            if (currentProcess == null)
+            {
                 return;
             }
 
-            perfText.text =
-                $"Horde ms  spawn {perf.SpawnMs:0.00}  sim {perf.SimMs:0.00}  buckets {perf.BucketMs:0.00}  draw {perf.DrawMs:0.00}\n" +
-                $"Loop ms   status {perf.StatusMs:0.00}  tier {perf.TierMs:0.00}  move {perf.MovementMs:0.00}  sample {perf.SampleMs:0.00}\n" +
-                $"Detail ms combat {perf.CombatMs:0.00}  crowd {perf.CrowdMs:0.00}  knock {perf.KnockbackMs:0.00}  segment {perf.SegmentMs:0.00}\n" +
-                $"Horde count  drawn {perf.VisibleDrawn}  full {perf.FullFidelity}  cheap {perf.CheapFidelity}  near {perf.NearCombat}\n" +
-                $"Build {(Debug.isDebugBuild ? "Development" : "Release")}  shader {(string.IsNullOrEmpty(perf.ShaderName) ? "none" : perf.ShaderName)}";
-            nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
+            currentProcess.Refresh();
+            var now = Time.realtimeSinceStartupAsDouble;
+            var elapsed = now - previousProcessSampleTime;
+            if (elapsed <= 0.05d)
+            {
+                return;
+            }
+
+            var cpuTime = currentProcess.TotalProcessorTime;
+            var cpuSeconds = (cpuTime - previousProcessCpuTime).TotalSeconds;
+            processCpuPercent = Mathf.Clamp((float)(cpuSeconds / elapsed / Mathf.Max(1, Environment.ProcessorCount) * 100d), 0f, 100f);
+            previousProcessCpuTime = cpuTime;
+            previousProcessSampleTime = now;
+        }
+
+        private void CreatePerformancePanel(Transform parent)
+        {
+            performancePanel = CreatePanel("PerformancePanel", parent, new Vector2(-12f, -104f), new Vector2(390f, 142f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            if (performancePanel.TryGetComponent<Image>(out var image))
+            {
+                image.color = new Color(0.018f, 0.028f, 0.035f, 0.46f);
+                image.raycastTarget = false;
+            }
+
+            perfText = CreateText("HordePerformance", performancePanel.transform, Vector2.zero, TextAnchor.UpperLeft, 9);
+            ConfigureCenteredRect(perfText.GetComponent<RectTransform>(), new Vector2(10f, -8f), new Vector2(370f, 128f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            perfText.text = "PERFORMANCE MONITOR\nCollecting frame timings...";
+            perfText.color = new Color(0.82f, 0.93f, 1f, 0.9f);
+            perfText.lineSpacing = 0.9f;
         }
 
         private void CreateRunDamagePanel(Transform parent)
@@ -360,6 +445,11 @@ namespace TowerDefense.UI
             {
                 SetPausePanelVisible(true);
                 return;
+            }
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.F3))
+            {
+                TogglePerformancePanel();
             }
 
             if (IsUpgradePanelOpen())
@@ -537,7 +627,7 @@ namespace TowerDefense.UI
             var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
-            hint.text = "Hover for details. Click a node to buy its next rank. Drag to pan. Mouse wheel zooms.";
+            hint.text = "Hover for 0.5 seconds to inspect. Click to select, then buy from the detail card. Drag to pan. Mouse wheel zooms.";
 
             var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);
@@ -557,8 +647,8 @@ namespace TowerDefense.UI
             upgradeTreeContent.anchorMax = new Vector2(0.5f, 0.5f);
             upgradeTreeContent.pivot = new Vector2(0.5f, 0.5f);
             var nodes = session.UpgradeNodes;
-            upgradeTreeContent.sizeDelta = CalculateUpgradeTreeContentSize(nodes);
-            upgradeTreeLabels.Clear();
+            BuildUpgradeTreeLayout(nodes);
+            upgradeTreeContent.sizeDelta = CalculateUpgradeTreeContentSize(nodes, upgradeTreeNodePositions);
             upgradeTreePan = Vector2.zero;
             upgradeTreeZoom = 1f;
 
@@ -569,18 +659,32 @@ namespace TowerDefense.UI
             }
             ApplyUpgradeTreeTransform();
 
-            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(0f, 76f), new Vector2(760f, 88f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-28f, 54f), new Vector2(420f, 252f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             var upgradeDetailImage = upgradeDetailPanel.GetComponent<Image>();
-            upgradeDetailImage.color = new Color(0f, 0f, 0f, 0.72f);
+            upgradeDetailImage.color = new Color(0.018f, 0.035f, 0.052f, 0.96f);
             upgradeDetailImage.raycastTarget = false;
+            var detailOutline = upgradeDetailPanel.AddComponent<Outline>();
+            detailOutline.effectColor = new Color(0.2f, 0.65f, 0.88f, 0.78f);
+            detailOutline.effectDistance = new Vector2(2f, -2f);
+            var detailIconObject = new GameObject("DetailIcon");
+            detailIconObject.transform.SetParent(upgradeDetailPanel.transform, false);
+            var detailIconRect = detailIconObject.AddComponent<RectTransform>();
+            ConfigureCenteredRect(detailIconRect, new Vector2(-170f, 104f), new Vector2(42f, 42f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailIcon = detailIconObject.AddComponent<SkillTreeIconGraphic>();
+            upgradeDetailIcon.color = new Color(0.72f, 0.93f, 1f, 1f);
+            upgradeDetailIcon.raycastTarget = false;
             upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 15);
             upgradeDetailTitle.raycastTarget = false;
-            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(-270f, 24f), new Vector2(190f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailTitle.fontStyle = FontStyle.Bold;
+            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(24f, 104f), new Vector2(330f, 30f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
             upgradeDetailBody.raycastTarget = false;
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(24f, -4f), new Vector2(470f, 74f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "BUY", new Vector2(300f, 0f), new Vector2(112f, 34f), new Vector2(0.5f, 0.5f), 12);
+            upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
+            upgradeDetailBody.verticalOverflow = VerticalWrapMode.Truncate;
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 4f), new Vector2(370f, 154f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "SELECT NODE", new Vector2(0f, -104f), new Vector2(168f, 32f), new Vector2(0.5f, 0.5f), 12);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
+            upgradeBuyButton.GetComponentInChildren<Text>().raycastTarget = false;
             upgradeBuyButton.gameObject.SetActive(false);
             upgradeDetailPanel.SetActive(false);
 
@@ -607,13 +711,13 @@ namespace TowerDefense.UI
                     var prerequisite = FindNode(nodes, prerequisiteId);
                     if (prerequisite != null)
                     {
-                        CreateUpgradeLink(parent, prerequisite.radialPosition, node.radialPosition, node);
+                        CreateUpgradeLink(parent, prerequisite, node);
                     }
                 }
             }
         }
 
-        private static Vector2 CalculateUpgradeTreeContentSize(IReadOnlyList<SkillNodeDefinition> nodes)
+        private static Vector2 CalculateUpgradeTreeContentSize(IReadOnlyList<SkillNodeDefinition> nodes, IReadOnlyDictionary<string, Vector2> positions)
         {
             if (nodes == null || nodes.Count == 0)
             {
@@ -624,8 +728,11 @@ namespace TowerDefense.UI
             var maxAbsY = 0f;
             for (var i = 0; i < nodes.Count; i++)
             {
-                maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(nodes[i].radialPosition.x));
-                maxAbsY = Mathf.Max(maxAbsY, Mathf.Abs(nodes[i].radialPosition.y));
+                var position = positions != null && positions.TryGetValue(nodes[i].id, out var resolved)
+                    ? resolved
+                    : nodes[i].radialPosition;
+                maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(position.x));
+                maxAbsY = Mathf.Max(maxAbsY, Mathf.Abs(position.y));
             }
 
             return new Vector2(
@@ -633,10 +740,115 @@ namespace TowerDefense.UI
                 Mathf.Max(580f, maxAbsY * 2f + 300f));
         }
 
-        private void CreateUpgradeLink(Transform parent, Vector2 from, Vector2 to, SkillNodeDefinition target)
+        private void BuildUpgradeTreeLayout(IReadOnlyList<SkillNodeDefinition> nodes)
         {
+            upgradeTreeNodePositions.Clear();
+            upgradeTreeRankBadges.Clear();
+            if (nodes == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                upgradeTreeNodePositions[nodes[i].id] = nodes[i].radialPosition * 1.22f;
+            }
+
+            // Authored positions define the overall branches. This small deterministic
+            // relaxation only resolves local collisions, including a few nearly
+            // identical positions in the original data, without turning the tree into
+            // an unpredictable force-directed graph.
+            for (var iteration = 0; iteration < 80; iteration++)
+            {
+                var changed = false;
+                for (var a = 0; a < nodes.Count; a++)
+                {
+                    for (var b = a + 1; b < nodes.Count; b++)
+                    {
+                        var first = nodes[a];
+                        var second = nodes[b];
+                        var firstPosition = upgradeTreeNodePositions[first.id];
+                        var secondPosition = upgradeTreeNodePositions[second.id];
+                        var delta = secondPosition - firstPosition;
+                        var distance = delta.magnitude;
+                        var minimumDistance = first.isMajorUnlock || second.isMajorUnlock ? 112f : 94f;
+                        if (distance >= minimumDistance)
+                        {
+                            continue;
+                        }
+
+                        if (distance < 0.001f)
+                        {
+                            var angle = StableTreeAngle(first.id, second.id);
+                            delta = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                            distance = 1f;
+                        }
+
+                        var correction = delta / distance * ((minimumDistance - distance) * 0.52f);
+                        var firstPinned = first.startsUnlocked || first.radialPosition.sqrMagnitude < 0.01f;
+                        var secondPinned = second.startsUnlocked || second.radialPosition.sqrMagnitude < 0.01f;
+                        if (!firstPinned && !secondPinned)
+                        {
+                            upgradeTreeNodePositions[first.id] = firstPosition - correction * 0.5f;
+                            upgradeTreeNodePositions[second.id] = secondPosition + correction * 0.5f;
+                        }
+                        else if (firstPinned && !secondPinned)
+                        {
+                            upgradeTreeNodePositions[second.id] = secondPosition + correction;
+                        }
+                        else if (!firstPinned)
+                        {
+                            upgradeTreeNodePositions[first.id] = firstPosition - correction;
+                        }
+                        changed = true;
+                    }
+                }
+
+                if (!changed)
+                {
+                    break;
+                }
+            }
+        }
+
+        private Vector2 GetUpgradeTreeNodePosition(SkillNodeDefinition node)
+        {
+            return node != null && upgradeTreeNodePositions.TryGetValue(node.id, out var position)
+                ? position
+                : node != null ? node.radialPosition : Vector2.zero;
+        }
+
+        private static float StableTreeAngle(string first, string second)
+        {
+            unchecked
+            {
+                var hash = 17;
+                var text = (first ?? string.Empty) + ":" + (second ?? string.Empty);
+                for (var i = 0; i < text.Length; i++)
+                {
+                    hash = hash * 31 + text[i];
+                }
+                return Mathf.Abs(hash % 6283) * 0.001f;
+            }
+        }
+
+        private void CreateUpgradeLink(Transform parent, SkillNodeDefinition prerequisite, SkillNodeDefinition target)
+        {
+            var from = GetUpgradeTreeNodePosition(prerequisite);
+            var to = GetUpgradeTreeNodePosition(target);
             var delta = to - from;
-            var go = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(delta.magnitude, 5f), new Color(0.15f, 0.75f, 1f, 0.65f)).gameObject;
+            if (delta.sqrMagnitude < 0.001f)
+            {
+                return;
+            }
+
+            var direction = delta.normalized;
+            from += direction * (prerequisite.isMajorUnlock ? 42f : 34f);
+            to -= direction * (target.isMajorUnlock ? 42f : 34f);
+            delta = to - from;
+            var image = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(Mathf.Max(1f, delta.magnitude), 3f), new Color(0.15f, 0.75f, 1f, 0.65f));
+            image.raycastTarget = false;
+            var go = image.gameObject;
             var rect = go.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -645,23 +857,62 @@ namespace TowerDefense.UI
 
         private void CreateUpgradeNode(Transform parent, SkillNodeDefinition node)
         {
-            var size = node.isMajorUnlock ? new Vector2(46f, 46f) : new Vector2(34f, 34f);
-            var button = CreateAnchoredButton($"Node_{node.id}", parent, "0/1", node.radialPosition, size, new Vector2(0.5f, 0.5f), node.isMajorUnlock ? 13 : 11);
-            button.onClick.AddListener(() => PurchaseUpgradeNode(node));
+            var position = GetUpgradeTreeNodePosition(node);
+            var size = node.isMajorUnlock ? new Vector2(76f, 76f) : new Vector2(60f, 60f);
+            var button = CreateAnchoredButton($"Node_{node.id}", parent, string.Empty, position, size, new Vector2(0.5f, 0.5f), 10);
+            button.onClick.AddListener(() => SelectUpgradeNode(node));
+            var nodeOutline = button.gameObject.AddComponent<Outline>();
+            nodeOutline.effectColor = new Color(0.18f, 0.67f, 0.9f, 0.72f);
+            nodeOutline.effectDistance = node.isMajorUnlock ? new Vector2(3f, -3f) : new Vector2(2f, -2f);
+
+            var label = button.GetComponentInChildren<Text>();
+            label.gameObject.name = "Rank";
+            label.fontStyle = FontStyle.Bold;
+            label.fontSize = node.isMajorUnlock ? 13 : 12;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.raycastTarget = false;
+            var rankTextOutline = label.gameObject.AddComponent<Outline>();
+            rankTextOutline.effectColor = new Color(0.015f, 0.055f, 0.085f, 0.98f);
+            rankTextOutline.effectDistance = new Vector2(1.25f, -1.25f);
+
+            var rankBadgeObject = new GameObject("RankBadge");
+            rankBadgeObject.transform.SetParent(button.transform, false);
+            var rankBadgeRect = rankBadgeObject.AddComponent<RectTransform>();
+            ConfigureCenteredRect(
+                rankBadgeRect,
+                new Vector2(0f, node.isMajorUnlock ? -42f : -34f),
+                new Vector2(node.isMajorUnlock ? 38f : 34f, 16f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f));
+            label.transform.SetParent(rankBadgeObject.transform, false);
+            var rankLabelRect = label.GetComponent<RectTransform>();
+            rankLabelRect.anchorMin = Vector2.zero;
+            rankLabelRect.anchorMax = Vector2.one;
+            rankLabelRect.offsetMin = Vector2.zero;
+            rankLabelRect.offsetMax = Vector2.zero;
+            upgradeTreeRankBadges.Add(rankBadgeRect);
+
+            var iconObject = new GameObject("Icon");
+            iconObject.transform.SetParent(button.transform, false);
+            var iconRect = iconObject.AddComponent<RectTransform>();
+            ConfigureCenteredRect(
+                iconRect,
+                new Vector2(0f, node.isMajorUnlock ? 5f : 4f),
+                node.isMajorUnlock ? new Vector2(46f, 46f) : new Vector2(36f, 36f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f));
+            var icon = iconObject.AddComponent<SkillTreeIconGraphic>();
+            icon.Kind = ResolveSkillTreeIcon(node);
+            icon.color = new Color(0.82f, 0.95f, 1f, 1f);
+            icon.raycastTarget = false;
 
             var events = button.gameObject.AddComponent<EventTrigger>();
             var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-            enter.callback.AddListener(_ => SelectUpgradeNode(node));
+            enter.callback.AddListener(_ => HoverUpgradeNode(node));
             events.triggers.Add(enter);
             var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-            exit.callback.AddListener(_ => ClearUpgradeDetails(node));
+            exit.callback.AddListener(_ => StopHoveringUpgradeNode(node));
             events.triggers.Add(exit);
-
-            var label = CreateText($"NodeLabel_{node.id}", parent, node.radialPosition + new Vector2(0f, -34f), TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(label.GetComponent<RectTransform>(), node.radialPosition + new Vector2(0f, -34f), new Vector2(128f, 28f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            label.text = node.displayName;
-            label.color = new Color(0.86f, 0.93f, 1f, 1f);
-            upgradeTreeLabels.Add(label.GetComponent<RectTransform>());
         }
 
         private void ShowUpgradePanel()
@@ -679,17 +930,57 @@ namespace TowerDefense.UI
         private void SelectUpgradeNode(SkillNodeDefinition node)
         {
             selectedUpgradeNode = node;
+            pendingHoveredUpgradeNode = null;
+            UpdateSelectedUpgradeDetails();
+        }
+
+        private void HoverUpgradeNode(SkillNodeDefinition node)
+        {
+            pendingHoveredUpgradeNode = node;
+            pendingUpgradeHoverStartedAt = Time.unscaledTime;
+        }
+
+        private void StopHoveringUpgradeNode(SkillNodeDefinition node)
+        {
+            if (pendingHoveredUpgradeNode == node)
+            {
+                pendingHoveredUpgradeNode = null;
+            }
+
+            if (hoveredUpgradeNode == node)
+            {
+                hoveredUpgradeNode = null;
+                UpdateSelectedUpgradeDetails();
+            }
+        }
+
+        private void UpdateUpgradeHoverDelay()
+        {
+            if (pendingHoveredUpgradeNode == null || upgradePanel == null || !upgradePanel.activeSelf)
+            {
+                return;
+            }
+
+            if (Time.unscaledTime - pendingUpgradeHoverStartedAt < UpgradeHoverDelay)
+            {
+                return;
+            }
+
+            hoveredUpgradeNode = pendingHoveredUpgradeNode;
+            pendingHoveredUpgradeNode = null;
             UpdateSelectedUpgradeDetails();
         }
 
         private void ClearUpgradeDetails(SkillNodeDefinition node = null)
         {
-            if (node != null && selectedUpgradeNode != node)
+            if (node != null && selectedUpgradeNode != node && hoveredUpgradeNode != node)
             {
                 return;
             }
 
             selectedUpgradeNode = null;
+            hoveredUpgradeNode = null;
+            pendingHoveredUpgradeNode = null;
             if (upgradeDetailPanel != null)
             {
                 upgradeDetailPanel.SetActive(false);
@@ -735,7 +1026,7 @@ namespace TowerDefense.UI
         private void OnUpgradeTreeScrolled(float scrollDelta)
         {
             var previousZoom = upgradeTreeZoom;
-            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom + scrollDelta * 0.12f, GetMinimumUpgradeTreeZoom(), 1.85f);
+            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom + scrollDelta * 0.12f, GetMinimumUpgradeTreeZoom(), MaximumUpgradeTreeZoom);
             if (!Mathf.Approximately(previousZoom, upgradeTreeZoom))
             {
                 ApplyUpgradeTreeTransform();
@@ -749,16 +1040,17 @@ namespace TowerDefense.UI
                 return;
             }
 
-            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom, GetMinimumUpgradeTreeZoom(), 1.85f);
+            upgradeTreeZoom = Mathf.Clamp(upgradeTreeZoom, GetMinimumUpgradeTreeZoom(), MaximumUpgradeTreeZoom);
             upgradeTreePan = ClampUpgradeTreePan(upgradeTreePan);
             upgradeTreeContent.anchoredPosition = upgradeTreePan;
             upgradeTreeContent.localScale = Vector3.one * upgradeTreeZoom;
-            var labelScale = Vector3.one * Mathf.Clamp(1f / upgradeTreeZoom, 0.72f, 1.65f);
-            for (var i = 0; i < upgradeTreeLabels.Count; i++)
+
+            var badgeScale = Mathf.Clamp(1f / upgradeTreeZoom, 1f, 2.4f);
+            for (var i = 0; i < upgradeTreeRankBadges.Count; i++)
             {
-                if (upgradeTreeLabels[i] != null)
+                if (upgradeTreeRankBadges[i] != null)
                 {
-                    upgradeTreeLabels[i].localScale = labelScale;
+                    upgradeTreeRankBadges[i].localScale = Vector3.one * badgeScale;
                 }
             }
         }
@@ -772,8 +1064,8 @@ namespace TowerDefense.UI
 
             var viewportSize = upgradeTreeViewport.rect.size;
             var contentSize = upgradeTreeContent.rect.size * upgradeTreeZoom;
-            var maxPanX = Mathf.Max(0f, (contentSize.x - viewportSize.x) * 0.5f);
-            var maxPanY = Mathf.Max(0f, (contentSize.y - viewportSize.y) * 0.5f);
+            var maxPanX = Mathf.Max(UpgradeTreeHorizontalPanFreedom, (contentSize.x - viewportSize.x) * 0.5f + UpgradeTreeHorizontalPanFreedom);
+            var maxPanY = Mathf.Max(UpgradeTreeVerticalPanFreedom, (contentSize.y - viewportSize.y) * 0.5f + UpgradeTreeVerticalPanFreedom);
             return new Vector2(
                 Mathf.Clamp(pan.x, -maxPanX, maxPanX),
                 Mathf.Clamp(pan.y, -maxPanY, maxPanY));
@@ -1240,6 +1532,10 @@ namespace TowerDefense.UI
             RegisterBlockingButton(debugSpawnToggleButton);
             debugSpawnToggleButton.onClick.AddListener(ToggleDebugSpawnPanel);
 
+            performanceToggleButton = CreateAnchoredButton("PerformanceToggle", parent, "PERF [F3]", new Vector2(-70f, -80f), new Vector2(102f, 24f), new Vector2(1f, 1f), 10);
+            RegisterBlockingButton(performanceToggleButton);
+            performanceToggleButton.onClick.AddListener(TogglePerformancePanel);
+
             codexToggleButton = CreateAnchoredButton("CodexToggle", parent, "GRIMOIRE [G]", new Vector2(-186f, -18f), new Vector2(122f, 28f), new Vector2(1f, 1f), 10);
             RegisterBlockingButton(codexToggleButton);
             codexToggleButton.onClick.AddListener(ToggleCodexPanel);
@@ -1251,6 +1547,20 @@ namespace TowerDefense.UI
             devToggleButton = CreateAnchoredButton("DevToggle", parent, "DEV [`]", new Vector2(-428f, -18f), new Vector2(82f, 28f), new Vector2(1f, 1f), 11);
             RegisterBlockingButton(devToggleButton);
             devToggleButton.onClick.AddListener(ToggleDevPanel);
+        }
+
+        private void TogglePerformancePanel()
+        {
+            performancePanelVisible = !performancePanelVisible;
+            if (performancePanel != null)
+            {
+                performancePanel.SetActive(performancePanelVisible);
+            }
+
+            if (performanceToggleButton != null)
+            {
+                HighlightSpeedButton(performanceToggleButton, performancePanelVisible);
+            }
         }
 
         private void RegisterBlockingButton(Button button)
@@ -2200,6 +2510,9 @@ namespace TowerDefense.UI
                 var rank = session.GetUpgradeRank(nodeId);
                 var maxRank = session.GetUpgradeMaxRank(nodeId);
                 label.text = $"{rank}/{maxRank}";
+                var icon = button.GetComponentInChildren<SkillTreeIconGraphic>();
+                var outline = button.GetComponent<Outline>();
+                var isInspected = selectedUpgradeNode == node || hoveredUpgradeNode == node;
 
                 if (rank >= maxRank)
                 {
@@ -2209,6 +2522,7 @@ namespace TowerDefense.UI
                         image.color = new Color(0.08f, 0.58f, 0.54f, 1f);
                     }
                     label.color = new Color(0.6f, 1f, 0.85f, 1f);
+                    if (icon != null) icon.color = new Color(0.68f, 1f, 0.86f, 1f);
                 }
                 else if (session.CanPurchaseUpgrade(nodeId))
                 {
@@ -2218,6 +2532,7 @@ namespace TowerDefense.UI
                         image.color = new Color(0.95f, 0.5f, 0.12f, 1f);
                     }
                     label.color = new Color(1f, 0.86f, 0.35f, 1f);
+                    if (icon != null) icon.color = new Color(1f, 0.9f, 0.5f, 1f);
                 }
                 else
                 {
@@ -2227,6 +2542,16 @@ namespace TowerDefense.UI
                         image.color = new Color(0.08f, 0.2f, 0.32f, 1f);
                     }
                     label.color = new Color(0.45f, 0.55f, 0.65f, 1f);
+                    if (icon != null) icon.color = new Color(0.4f, 0.54f, 0.66f, 1f);
+                }
+
+                if (outline != null)
+                {
+                    outline.effectColor = isInspected
+                        ? new Color(0.96f, 0.9f, 0.42f, 1f)
+                        : rank >= maxRank
+                            ? new Color(0.18f, 0.9f, 0.72f, 0.85f)
+                            : new Color(0.18f, 0.67f, 0.9f, 0.72f);
                 }
             }
 
@@ -2263,7 +2588,16 @@ namespace TowerDefense.UI
                 else if (child.name.StartsWith("Link_"))
                 {
                     var node = FindNode(nodes, child.name.Substring(5));
-                    child.gameObject.SetActive(node != null && IsUpgradeNodeRevealed(node) && HasAnyPurchasedPrerequisite(node));
+                    var visible = node != null && IsUpgradeNodeRevealed(node) && HasAnyPurchasedPrerequisite(node);
+                    child.gameObject.SetActive(visible);
+                    if (visible && child.TryGetComponent<Image>(out var linkImage))
+                    {
+                        linkImage.color = session.IsUpgradePurchased(node.id)
+                            ? new Color(0.18f, 0.9f, 0.72f, 0.9f)
+                            : session.CanPurchaseUpgrade(node.id)
+                                ? new Color(0.95f, 0.54f, 0.15f, 0.92f)
+                                : new Color(0.15f, 0.48f, 0.68f, 0.52f);
+                    }
                 }
             }
         }
@@ -2303,8 +2637,14 @@ namespace TowerDefense.UI
 
         private void UpdateSelectedUpgradeDetails()
         {
-            if (selectedUpgradeNode == null || upgradeDetailTitle == null || upgradeDetailBody == null || upgradeBuyButton == null)
+            var inspectedNode = hoveredUpgradeNode ?? selectedUpgradeNode;
+            if (inspectedNode == null || upgradeDetailTitle == null || upgradeDetailBody == null || upgradeBuyButton == null)
             {
+                if (upgradeDetailPanel != null)
+                {
+                    upgradeDetailPanel.SetActive(false);
+                }
+                upgradeBuyButton?.gameObject.SetActive(false);
                 return;
             }
 
@@ -2312,14 +2652,24 @@ namespace TowerDefense.UI
             {
                 upgradeDetailPanel.SetActive(true);
             }
+            upgradeBuyButton.gameObject.SetActive(true);
+            if (upgradeBuyButton.targetGraphic != null)
+            {
+                upgradeBuyButton.targetGraphic.raycastTarget = selectedUpgradeNode == inspectedNode;
+            }
 
-            var rank = session.GetUpgradeRank(selectedUpgradeNode.id);
-            var maxRank = session.GetUpgradeMaxRank(selectedUpgradeNode.id);
-            var missingPrerequisites = MissingPrerequisites(selectedUpgradeNode);
-            upgradeDetailTitle.text = $"{selectedUpgradeNode.displayName}  {rank}/{maxRank}";
+            var rank = session.GetUpgradeRank(inspectedNode.id);
+            var maxRank = session.GetUpgradeMaxRank(inspectedNode.id);
+            var missingPrerequisites = MissingPrerequisites(inspectedNode);
+            upgradeDetailTitle.text = $"{inspectedNode.displayName}  {rank}/{maxRank}";
+            if (upgradeDetailIcon != null)
+            {
+                upgradeDetailIcon.Kind = ResolveSkillTreeIcon(inspectedNode);
+                upgradeDetailIcon.SetVerticesDirty();
+            }
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text = "Locked";
+                upgradeDetailBody.text = $"{inspectedNode.description}\n\nLOCKED\nRequires: {FormatPrerequisiteNames(inspectedNode)}";
                 var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
                 upgradeBuyButton.interactable = false;
                 lockedLabel.text = "LOCKED";
@@ -2329,22 +2679,48 @@ namespace TowerDefense.UI
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatCurrentUpgradeStats(selectedUpgradeNode)}\n\nMaxed";
+                upgradeDetailBody.text = $"{inspectedNode.description}\n\nCURRENT\n{FormatCurrentUpgradeStats(inspectedNode)}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "MAXED";
             }
-            else if (session.CanPurchaseUpgrade(selectedUpgradeNode.id))
+            else if (selectedUpgradeNode != inspectedNode)
             {
-                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatUpgradePreview(selectedUpgradeNode)}\n\n{FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id))}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeBuyButton.interactable = false;
+                buttonLabel.text = "CLICK NODE TO SELECT";
+            }
+            else if (session.CanPurchaseUpgrade(inspectedNode.id))
+            {
+                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 upgradeBuyButton.interactable = true;
                 buttonLabel.text = "BUY RANK";
             }
             else
             {
-                upgradeDetailBody.text = $"{selectedUpgradeNode.description}\n\nStats:\n{FormatUpgradePreview(selectedUpgradeNode)}\n\n{FormatCosts(session.GetUpgradeNextCosts(selectedUpgradeNode.id))}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "NEED COST";
             }
+        }
+
+        private string FormatPrerequisiteNames(SkillNodeDefinition node)
+        {
+            if (node?.prerequisiteNodeIds == null || node.prerequisiteNodeIds.Length == 0)
+            {
+                return "None";
+            }
+
+            var result = new StringBuilder();
+            for (var i = 0; i < node.prerequisiteNodeIds.Length; i++)
+            {
+                if (i > 0)
+                {
+                    result.Append(", ");
+                }
+                var prerequisite = FindNode(session.UpgradeNodes, node.prerequisiteNodeIds[i]);
+                result.Append(prerequisite != null ? prerequisite.displayName : node.prerequisiteNodeIds[i]);
+            }
+            return result.ToString();
         }
 
         private bool MissingPrerequisites(SkillNodeDefinition node)
@@ -2376,6 +2752,110 @@ namespace TowerDefense.UI
             }
 
             return null;
+        }
+
+        private static SkillTreeIconKind ResolveSkillTreeIcon(SkillNodeDefinition node)
+        {
+            if (node == null)
+            {
+                return SkillTreeIconKind.Generic;
+            }
+
+            if (!string.IsNullOrWhiteSpace(node.iconKey) && TryParseSkillTreeIcon(node.iconKey, out var explicitIcon))
+            {
+                return explicitIcon;
+            }
+
+            var id = (node.id ?? string.Empty).ToLowerInvariant();
+            if (id.Contains("barracks") || id.Contains("chapter") || id.Contains("quarters") || id.Contains("muster") || id.Contains("bunks"))
+            {
+                return SkillTreeIconKind.Barracks;
+            }
+            if (id.Contains("barrier") || id.Contains("timber")) return SkillTreeIconKind.Wall;
+            if (id.Contains("fire") || id.Contains("flame") || id.Contains("pitch") || id.Contains("tar")) return SkillTreeIconKind.Fire;
+            if (id.Contains("slow") || id.Contains("bell")) return SkillTreeIconKind.Slow;
+            if (id.Contains("health") || id.Contains("mail") || id.Contains("jack") || id.Contains("vow")) return SkillTreeIconKind.Health;
+            if (id.Contains("range") || id.Contains("perch") || id.Contains("aim")) return SkillTreeIconKind.Range;
+            if (id.Contains("cooldown") || id.Contains("respawn") || id.Contains("ready")) return SkillTreeIconKind.Cooldown;
+            if (id.Contains("speed") || id.Contains("swift") || id.Contains("quick")) return SkillTreeIconKind.Speed;
+            if (id.Contains("pierce") || id.Contains("bolt") || id.Contains("skewer")) return SkillTreeIconKind.Pierce;
+            if (id.Contains("damage") || id.Contains("steel") || id.Contains("arrow")) return SkillTreeIconKind.Damage;
+            if (id.Contains("capacity") || id.Contains("additional") || id.Contains("limit")) return SkillTreeIconKind.Capacity;
+            if (id.Contains("tithe") || id.Contains("essence")) return SkillTreeIconKind.Economy;
+
+            if (node.effects != null)
+            {
+                for (var i = 0; i < node.effects.Length; i++)
+                {
+                    switch (node.effects[i].type)
+                    {
+                        case UpgradeEffectType.UnlockEra: return SkillTreeIconKind.Era;
+                        case UpgradeEffectType.BaseLivesFlat:
+                        case UpgradeEffectType.TowerHealthFlat:
+                        case UpgradeEffectType.BarracksUnitHealthPercent: return SkillTreeIconKind.Health;
+                        case UpgradeEffectType.LevelEndKillEssenceFlat: return SkillTreeIconKind.Economy;
+                        case UpgradeEffectType.TowerRangeFlat:
+                        case UpgradeEffectType.TowerAimAssistPercent:
+                        case UpgradeEffectType.ActiveWeaponRadiusFlat: return SkillTreeIconKind.Range;
+                        case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                        case UpgradeEffectType.BarracksRespawnCooldownPercent: return SkillTreeIconKind.Cooldown;
+                        case UpgradeEffectType.TowerProjectileSpeedPercent:
+                        case UpgradeEffectType.TowerFireRateFlat:
+                        case UpgradeEffectType.TowerFireRatePercent: return SkillTreeIconKind.Speed;
+                        case UpgradeEffectType.TowerPierceFlat:
+                        case UpgradeEffectType.ActiveWeaponPierceFlat: return SkillTreeIconKind.Pierce;
+                        case UpgradeEffectType.TowerSlowPercentFlat:
+                        case UpgradeEffectType.TowerSlowCapacityFlat: return SkillTreeIconKind.Slow;
+                        case UpgradeEffectType.TowerThornsDamageFlat: return SkillTreeIconKind.Defense;
+                        case UpgradeEffectType.EnableTowerFire:
+                        case UpgradeEffectType.TowerFireDamagePerTickFlat:
+                        case UpgradeEffectType.TowerFireTicksPerSecondFlat:
+                        case UpgradeEffectType.TowerFireMaxStacksFlat:
+                        case UpgradeEffectType.TowerFireDurationFlat: return SkillTreeIconKind.Fire;
+                        case UpgradeEffectType.PerTypeTowerLimitFlat:
+                        case UpgradeEffectType.BarracksUnitCapacityFlat: return SkillTreeIconKind.Capacity;
+                        case UpgradeEffectType.BarracksUnitDamagePercent:
+                        case UpgradeEffectType.TowerDamageFlat:
+                        case UpgradeEffectType.TowerDamagePercent:
+                        case UpgradeEffectType.ActiveWeaponDamagePercent: return SkillTreeIconKind.Damage;
+                        case UpgradeEffectType.UnlockTower:
+                        {
+                            var target = (node.effects[i].targetId ?? string.Empty).ToLowerInvariant();
+                            if (target.Contains("barracks")) return SkillTreeIconKind.Barracks;
+                            if (target.Contains("barrier")) return SkillTreeIconKind.Wall;
+                            if (target.Contains("archer")) return SkillTreeIconKind.Bow;
+                            return SkillTreeIconKind.Tower;
+                        }
+                    }
+                }
+            }
+
+            return id.Contains("volley") ? SkillTreeIconKind.Bow : node.isMajorUnlock ? SkillTreeIconKind.Tower : SkillTreeIconKind.Generic;
+        }
+
+        private static bool TryParseSkillTreeIcon(string key, out SkillTreeIconKind kind)
+        {
+            switch (key.Trim().ToLowerInvariant())
+            {
+                case "bow": kind = SkillTreeIconKind.Bow; return true;
+                case "tower": kind = SkillTreeIconKind.Tower; return true;
+                case "damage": kind = SkillTreeIconKind.Damage; return true;
+                case "speed": kind = SkillTreeIconKind.Speed; return true;
+                case "range": kind = SkillTreeIconKind.Range; return true;
+                case "capacity": kind = SkillTreeIconKind.Capacity; return true;
+                case "health": kind = SkillTreeIconKind.Health; return true;
+                case "cooldown": kind = SkillTreeIconKind.Cooldown; return true;
+                case "fire": kind = SkillTreeIconKind.Fire; return true;
+                case "slow": kind = SkillTreeIconKind.Slow; return true;
+                case "defense": kind = SkillTreeIconKind.Defense; return true;
+                case "economy": kind = SkillTreeIconKind.Economy; return true;
+                case "barracks": kind = SkillTreeIconKind.Barracks; return true;
+                case "wall": kind = SkillTreeIconKind.Wall; return true;
+                case "splash": kind = SkillTreeIconKind.Splash; return true;
+                case "pierce": kind = SkillTreeIconKind.Pierce; return true;
+                case "era": kind = SkillTreeIconKind.Era; return true;
+                default: kind = SkillTreeIconKind.Generic; return false;
+            }
         }
 
         private static string FormatCosts(CurrencyAmount[] costs)

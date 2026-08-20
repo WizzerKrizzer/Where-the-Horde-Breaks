@@ -9,7 +9,7 @@ This repository currently contains an early Unity prototype focused on validatin
 - Top-down 2.5D tower defense camera with pan and zoom.
 - Build phase before each wave.
 - Combat phase with tower automation and a mouse-aimed active weapon.
-- Continuous waves with fixed-path and experimental endpoint-seeking enemy movement.
+- Continuous waves with a GPU-authoritative flow-field horde, dynamic blockers, melee/projectile combat, compact events, and indirect culling/rendering; there is no legacy CPU horde mode.
 - Persistent per-level tower layout.
 - Permanent currencies and profile save data.
 - Prototype skill tree / upgrade panel.
@@ -42,6 +42,7 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 
 - `WASD` or right mouse drag: pan camera
 - Mouse wheel: zoom toward cursor
+- `F3`: toggle the CPU/GPU horde performance and grid-diagnostics panel
 - `1`, `2`, `3`: select tower type during build phase
 - Left mouse during build phase: place selected tower
 - `Delete`: remove nearest tower

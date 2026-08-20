@@ -30,6 +30,13 @@ namespace TowerDefense.Runtime
         public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? 1.25f : 0.7f;
         public float BlockCapacity => definition != null && definition.behavior == TowerBehavior.Barrier ? 9999f : 0f;
         public float CurrentBlockedMass => GetBlockedMass();
+        public float CurrentHealth => health;
+        public float MaximumHealth => maxHealth;
+        public float Armor => 0f;
+        public float PhysicalResistance => 0f;
+        public float FireResistance => 0f;
+        public float SlowResistance => 0f;
+        public float ThornsDamage => definition != null ? Mathf.Max(0f, definition.thornsDamage) : 0f;
         public TowerTargetingMode TargetingMode => targetingMode;
         public bool CanChangeTargeting => definition != null && definition.behavior == TowerBehavior.Projectile;
 
@@ -176,10 +183,23 @@ namespace TowerDefense.Runtime
                 return true;
             }
 
-            var appliedDamage = enemies.DamageHordeTarget(transform.position, definition.range, definition.canHitFlying, targetingMode, damage, out targetPosition);
-            RecordDamage(appliedDamage);
+            var start = transform.position + Vector3.up * 0.82f;
+            var queued = enemies.QueueHordeProjectile(
+                start,
+                targetPosition,
+                0.26f,
+                damage,
+                0f,
+                Mathf.Max(1, definition.pierce + 1),
+                definition.canHitFlying,
+                splash: false);
+            if (!queued)
+            {
+                return false;
+            }
+            RecordDamage(damage);
             SpawnHordeShotVisual(targetPosition, GetHordeShotDuration(targetPosition));
-            return appliedDamage > 0f;
+            return true;
         }
 
         private IEnumerator ApplyDelayedHordeSplash(Vector3 targetPosition, float damage, float delay)
@@ -195,18 +215,22 @@ namespace TowerDefense.Runtime
             var burnRate = definition.appliesFire ? definition.fireTicksPerSecond : 0f;
             var burnDuration = definition.appliesFire ? definition.fireDuration : 0f;
             var burnStacks = definition.appliesFire ? definition.fireMaxStacks : 0;
-            var appliedDamage = enemies.DamageAndKnockbackInRadius(
+            var queued = enemies.QueueHordeProjectile(
+                transform.position,
                 targetPosition,
                 radius,
                 damage,
                 definition.knockbackDistance,
-                out _,
-                this,
-                burnDamage,
-                burnRate,
+                160,
+                definition.canHitFlying,
+                splash: true,
+                burnDamage * burnRate,
                 burnDuration,
                 burnStacks);
-            RecordDamage(appliedDamage);
+            if (queued)
+            {
+                RecordDamage(damage);
+            }
         }
 
         private float GetHordeShotDuration(Vector3 targetPosition)
@@ -312,6 +336,25 @@ namespace TowerDefense.Runtime
             }
 
             health = 0f;
+            enemies?.UnregisterCombatTarget(this);
+            gameObject.SetActive(false);
+        }
+
+        public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition)
+        {
+            if (definition == null || definition.behavior != TowerBehavior.Barrier)
+            {
+                return;
+            }
+
+            health = Mathf.Clamp(authoritativeHealth, 0f, maxHealth);
+            UpdateBarrierDamageVisual();
+            UpdateBarrierHealthBar();
+            if (!destroyed || health > 0f)
+            {
+                return;
+            }
+
             enemies?.UnregisterCombatTarget(this);
             gameObject.SetActive(false);
         }

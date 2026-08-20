@@ -1,0 +1,1293 @@
+#pragma kernel ClearGrid
+#pragma kernel ClearDiagnostics
+#pragma kernel BuildGrid
+#pragma kernel ApplyDamageCommands
+#pragma kernel ApplyStatusCommands
+#pragma kernel ApplyAreaEffect
+#pragma kernel Simulate
+#pragma kernel QueryTargets
+#pragma kernel ClearVisibility
+#pragma kernel CullVisible
+#pragma kernel FinalizeActiveDispatch
+#pragma kernel ApplyDynamicTargetCommands
+#pragma kernel ClearDynamicTargetGrid
+#pragma kernel BuildDynamicTargetGrid
+#pragma kernel ResolveDynamicTargetDamage
+#pragma kernel ApplyProjectile
+
+struct AgentState
+{
+    float2 position;
+    float2 velocity;
+    float scale;
+    float tint;
+    uint status;
+    float padding;
+    float health;
+    float progress;
+    uint flags;
+    float padding2;
+    float slowMultiplier;
+    float slowTimer;
+    float burnDamagePerSecond;
+    float burnTimer;
+    float mass;
+    float padding3;
+    float maxHealth;
+    float armor;
+    float physicalResistance;
+    float fireResistance;
+    float slowResistance;
+    float attackDamage;
+    float attackInterval;
+    float wallDamageMultiplier;
+    float alliedDamageMultiplier;
+    float attackTimer;
+    uint combatFlags;
+    uint definitionIndex;
+};
+
+struct TargetQuery
+{
+    float2 position;
+    float range;
+    uint mode;
+    uint canHitFlying;
+    float3 padding;
+};
+
+struct TargetResult
+{
+    float2 position;
+    float2 velocity;
+    int index;
+    float score;
+};
+
+struct DamageCommand
+{
+    uint index;
+    float damage;
+    float2 padding;
+};
+
+struct HordeEvent
+{
+    uint index;
+    uint type;
+    float value;
+    uint generation;
+    int sourceIndex;
+    float padding;
+};
+
+struct DynamicTargetState
+{
+    float2 position;
+    float health;
+    float maxHealth;
+    float radius;
+    float blockCapacity;
+    float armor;
+    float physicalResistance;
+    float fireResistance;
+    float slowResistance;
+    float thornsDamage;
+    float slowMultiplier;
+    float slowTimer;
+    float burnDamagePerSecond;
+    float burnTimer;
+    uint generation;
+    uint status;
+    uint kind;
+    uint flags;
+};
+
+struct DynamicTargetCommand
+{
+    uint slot;
+    uint generation;
+    uint operation;
+    uint kind;
+    float2 position;
+    float health;
+    float maxHealth;
+    float radius;
+    float blockCapacity;
+    float armor;
+    float physicalResistance;
+    float fireResistance;
+    float slowResistance;
+    float thornsDamage;
+    float padding;
+};
+
+struct StatusCommand
+{
+    uint index;
+    float slowMultiplier;
+    float slowDuration;
+    float burnDamagePerSecond;
+    float burnDuration;
+    uint maxBurnStacks;
+    uint burnApplications;
+    float padding;
+};
+
+struct AreaEffectCommand
+{
+    float2 center;
+    float radius;
+    float damage;
+    float knockback;
+    uint maxTargets;
+    float burnDamagePerSecond;
+    float burnDuration;
+    uint maxBurnStacks;
+    float slowMultiplier;
+    float slowDuration;
+    float slowCapacity;
+    float padding;
+};
+
+struct ProjectileCommand
+{
+    float2 start;
+    float2 end;
+    float radius;
+    float damage;
+    float knockback;
+    uint maxHits;
+    uint canHitFlying;
+    uint mode;
+    float burnDamagePerSecond;
+    float burnDuration;
+    uint maxBurnStacks;
+    float padding;
+};
+
+RWStructuredBuffer<AgentState> _StatesRead;
+StructuredBuffer<AgentState> _StatesInput;
+RWStructuredBuffer<AgentState> _StatesWrite;
+StructuredBuffer<float4> _Controls;
+RWStructuredBuffer<float2> _Impulses;
+StructuredBuffer<float4> _FlowVectors;
+StructuredBuffer<float4> _FlowData;
+RWStructuredBuffer<uint> _CellCounts;
+RWStructuredBuffer<uint> _CellAgents;
+RWStructuredBuffer<uint> _Diagnostics;
+StructuredBuffer<TargetQuery> _TargetQueries;
+RWStructuredBuffer<TargetResult> _TargetResults;
+StructuredBuffer<DamageCommand> _DamageCommands;
+StructuredBuffer<StatusCommand> _StatusCommands;
+StructuredBuffer<AreaEffectCommand> _AreaEffectCommands;
+StructuredBuffer<ProjectileCommand> _ProjectileCommands;
+RWStructuredBuffer<HordeEvent> _HordeEvents;
+RWStructuredBuffer<uint> _EventCount;
+RWStructuredBuffer<DynamicTargetState> _DynamicTargets;
+StructuredBuffer<DynamicTargetState> _DynamicTargetsRead;
+StructuredBuffer<DynamicTargetCommand> _DynamicTargetCommands;
+RWStructuredBuffer<uint> _DynamicTargetCellCounts;
+RWStructuredBuffer<uint> _DynamicTargetCellIndices;
+StructuredBuffer<uint> _DynamicTargetCellCountsRead;
+StructuredBuffer<uint> _DynamicTargetCellIndicesRead;
+RWStructuredBuffer<uint> _DynamicTargetBlockedMass;
+RWStructuredBuffer<uint> _DynamicTargetDamage;
+RWStructuredBuffer<uint> _DynamicTargetLastAttacker;
+RWStructuredBuffer<uint> _VisibleIndices;
+RWStructuredBuffer<uint> _LodVisibleIndices;
+RWStructuredBuffer<uint> _ActiveIndices;
+StructuredBuffer<uint> _CellCountsRead;
+StructuredBuffer<uint> _CellAgentsRead;
+StructuredBuffer<uint> _ActiveIndicesRead;
+StructuredBuffer<uint> _DiagnosticsRead;
+RWByteAddressBuffer _IndirectArgs;
+RWByteAddressBuffer _LodIndirectArgs;
+RWByteAddressBuffer _ActiveDispatchArgs;
+
+uint _AgentCount;
+uint _CellCount;
+uint _CellCapacity;
+uint _QueryCount;
+uint _DamageCommandCount;
+uint _StatusCommandCount;
+uint _AreaCommandIndex;
+uint _ProjectileCommandIndex;
+uint _EventCapacity;
+uint _FrameIndex;
+uint _CullingEnabled;
+uint _DynamicTargetCapacity;
+uint _DynamicTargetCommandCount;
+uint _DynamicTargetCellCapacity;
+int2 _GridSize;
+float2 _GridOrigin;
+float _CellSize;
+float _DeltaTime;
+float _CollisionDiameter;
+float _FlowAcceleration;
+float _CollisionAcceleration;
+float _WallAcceleration;
+float _WallInfluence;
+float _VelocityDamping;
+float2 _LodCameraPosition;
+float4x4 _ViewProjection;
+
+void EmitDetailedEvent(uint objectIndex, uint eventType, float value, uint generation, int sourceIndex)
+{
+    uint eventIndex;
+    InterlockedAdd(_EventCount[0], 1, eventIndex);
+    if (eventIndex < _EventCapacity)
+    {
+        HordeEvent result;
+        result.index = objectIndex;
+        result.type = eventType;
+        result.value = value;
+        result.generation = generation;
+        result.sourceIndex = sourceIndex;
+        result.padding = 0.0;
+        _HordeEvents[eventIndex] = result;
+    }
+}
+
+void EmitEvent(uint agentIndex, uint eventType, float value)
+{
+    EmitDetailedEvent(agentIndex, eventType, value, 0u, -1);
+}
+
+int2 WorldToCell(float2 position)
+{
+    return (int2)floor((position - _GridOrigin) / _CellSize);
+}
+
+bool IsInside(int2 cell)
+{
+    return all(cell >= 0) && cell.x < _GridSize.x && cell.y < _GridSize.y;
+}
+
+uint CellIndex(int2 cell)
+{
+    return (uint)(cell.y * _GridSize.x + cell.x);
+}
+
+bool IsWalkable(float2 position)
+{
+    int2 cell = WorldToCell(position);
+    return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0;
+}
+
+float4 GetFlowVector(int2 cell)
+{
+    if (!IsInside(cell) || _FlowData[CellIndex(cell)].y < 0.0)
+    {
+        return 0.0;
+    }
+
+    return _FlowVectors[CellIndex(cell)];
+}
+
+float CellOccupancy(int2 cell)
+{
+    return IsInside(cell) ? (float)_CellCountsRead[CellIndex(cell)] : 0.0;
+}
+
+float PressureOccupancy(int2 cell)
+{
+    return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0
+        ? CellOccupancy(cell)
+        : (float)_CellCapacity;
+}
+
+float SmoothedSideOccupancy(int2 cell, int2 offset, int2 tangent)
+{
+    int2 side = cell + offset;
+    return PressureOccupancy(side) +
+        (PressureOccupancy(side + tangent) + PressureOccupancy(side - tangent)) * 0.5;
+}
+
+float2 SampleFlow(float2 position)
+{
+    float2 grid = (position - _GridOrigin) / _CellSize - 0.5;
+    int2 baseCell = (int2)floor(grid);
+    float2 t = frac(grid);
+    float2 a = lerp(GetFlowVector(baseCell).xy, GetFlowVector(baseCell + int2(1, 0)).xy, t.x);
+    float2 b = lerp(GetFlowVector(baseCell + int2(0, 1)).xy, GetFlowVector(baseCell + int2(1, 1)).xy, t.x);
+    float2 direction = lerp(a, b, t.y);
+    float lengthSq = dot(direction, direction);
+    return lengthSq > 0.000001 ? direction * rsqrt(lengthSq) : float2(0.0, 0.0);
+}
+
+float SamplePotential(float2 position)
+{
+    int2 cell = WorldToCell(position);
+    return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0
+        ? _FlowData[CellIndex(cell)].z
+        : 0.0;
+}
+
+float2 Rotate2D(float2 value, float radians)
+{
+    float sine;
+    float cosine;
+    sincos(radians, sine, cosine);
+    return float2(value.x * cosine - value.y * sine, value.x * sine + value.y * cosine);
+}
+
+float2 FindNavigableFlow(float2 position, float2 preferred)
+{
+    float probeDistance = _CellSize * 0.7;
+    if (IsWalkable(position + preferred * probeDistance))
+    {
+        return preferred;
+    }
+
+    float currentPotential = SamplePotential(position);
+    float2 best = preferred;
+    float bestScore = -1e20;
+    [unroll]
+    for (int step = 1; step <= 4; step++)
+    {
+        float angle = radians(step * 22.5);
+        float2 candidates[2] = { Rotate2D(preferred, angle), Rotate2D(preferred, -angle) };
+        [unroll]
+        for (int side = 0; side < 2; side++)
+        {
+            float2 candidate = candidates[side];
+            float2 probe = position + candidate * probeDistance;
+            if (!IsWalkable(probe))
+            {
+                continue;
+            }
+
+            float progress = currentPotential - SamplePotential(probe);
+            float score = progress * 6.0 + dot(candidate, preferred) * 0.35;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+    }
+
+    return best;
+}
+
+float2 ConstrainMove(float2 current, float2 desired)
+{
+    if (IsWalkable(desired))
+    {
+        return desired;
+    }
+
+    float2 displacement = desired - current;
+    int2 currentCell = WorldToCell(current);
+    float2 inwardNormal = GetFlowVector(currentCell).zw;
+    float normalLengthSq = dot(inwardNormal, inwardNormal);
+    if (normalLengthSq > 0.0001)
+    {
+        inwardNormal *= rsqrt(normalLengthSq);
+        float outwardAmount = min(0.0, dot(displacement, inwardNormal));
+        float2 slidePosition = current + displacement - inwardNormal * outwardAmount;
+        if (IsWalkable(slidePosition))
+        {
+            return slidePosition;
+        }
+    }
+
+    float2 xOnly = float2(desired.x, current.y);
+    float2 yOnly = float2(current.x, desired.y);
+    bool xValid = IsWalkable(xOnly);
+    bool yValid = IsWalkable(yOnly);
+    if (xValid && yValid)
+    {
+        return dot(xOnly - current, xOnly - current) >= dot(yOnly - current, yOnly - current) ? xOnly : yOnly;
+    }
+
+    return xValid ? xOnly : (yValid ? yOnly : current);
+}
+
+[numthreads(64, 1, 1)]
+void ApplyDynamicTargetCommands(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _DynamicTargetCommandCount)
+    {
+        return;
+    }
+
+    DynamicTargetCommand command = _DynamicTargetCommands[id.x];
+    if (command.slot >= _DynamicTargetCapacity)
+    {
+        return;
+    }
+
+    DynamicTargetState state = _DynamicTargets[command.slot];
+    if (command.operation == 1u)
+    {
+        state.position = command.position;
+        state.health = command.health;
+        state.maxHealth = command.maxHealth;
+        state.radius = command.radius;
+        state.blockCapacity = command.blockCapacity;
+        state.armor = command.armor;
+        state.physicalResistance = command.physicalResistance;
+        state.fireResistance = command.fireResistance;
+        state.slowResistance = command.slowResistance;
+        state.thornsDamage = command.thornsDamage;
+        state.slowMultiplier = 1.0;
+        state.slowTimer = 0.0;
+        state.burnDamagePerSecond = 0.0;
+        state.burnTimer = 0.0;
+        state.generation = command.generation;
+        state.status = 1u;
+        state.kind = command.kind;
+        state.flags = 0u;
+    }
+    else if (state.generation == command.generation && command.operation == 2u)
+    {
+        state.position = command.position;
+        state.radius = command.radius;
+        state.blockCapacity = command.blockCapacity;
+    }
+    else if (state.generation == command.generation && command.operation == 3u)
+    {
+        state.status = 0u;
+        state.health = 0.0;
+    }
+
+    _DynamicTargets[command.slot] = state;
+}
+
+[numthreads(64, 1, 1)]
+void ClearDynamicTargetGrid(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < _CellCount)
+    {
+        _DynamicTargetCellCounts[id.x] = 0u;
+    }
+    if (id.x < _DynamicTargetCapacity)
+    {
+        _DynamicTargetBlockedMass[id.x] = 0u;
+        _DynamicTargetDamage[id.x] = 0u;
+        _DynamicTargetLastAttacker[id.x] = 0u;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void BuildDynamicTargetGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint targetIndex = id.x;
+    if (targetIndex >= _DynamicTargetCapacity)
+    {
+        return;
+    }
+
+    DynamicTargetState state = _DynamicTargetsRead[targetIndex];
+    int2 cell = WorldToCell(state.position);
+    if (state.status != 1u || !IsInside(cell))
+    {
+        return;
+    }
+
+    uint cellIndex = CellIndex(cell);
+    uint slot;
+    InterlockedAdd(_DynamicTargetCellCounts[cellIndex], 1u, slot);
+    if (slot < _DynamicTargetCellCapacity)
+    {
+        _DynamicTargetCellIndices[cellIndex * _DynamicTargetCellCapacity + slot] = targetIndex;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void ResolveDynamicTargetDamage(uint3 id : SV_DispatchThreadID)
+{
+    uint targetIndex = id.x;
+    if (targetIndex >= _DynamicTargetCapacity)
+    {
+        return;
+    }
+
+    DynamicTargetState state = _DynamicTargets[targetIndex];
+    uint packedDamage = _DynamicTargetDamage[targetIndex];
+    if (state.status != 1u || packedDamage == 0u)
+    {
+        return;
+    }
+
+    float rawDamage = packedDamage / 1024.0;
+    float appliedDamage = max(0.0, rawDamage - state.armor) * (1.0 - saturate(state.physicalResistance));
+    if (appliedDamage <= 0.0)
+    {
+        return;
+    }
+
+    state.health = max(0.0, state.health - appliedDamage);
+    uint attackerToken = _DynamicTargetLastAttacker[targetIndex];
+    int sourceIndex = -1;
+    if (attackerToken > 0u && attackerToken <= _AgentCount)
+    {
+        sourceIndex = (int)_StatesInput[attackerToken - 1u].definitionIndex;
+    }
+
+    if (state.health <= 0.0)
+    {
+        state.status = 2u;
+        EmitDetailedEvent(targetIndex, 4u, 0.0, state.generation, sourceIndex);
+    }
+    else
+    {
+        EmitDetailedEvent(targetIndex, 3u, state.health, state.generation, sourceIndex);
+    }
+    _DynamicTargets[targetIndex] = state;
+}
+
+[numthreads(64, 1, 1)]
+void ClearGrid(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < _CellCount)
+    {
+        _CellCounts[id.x] = 0;
+    }
+}
+
+[numthreads(8, 1, 1)]
+void ClearDiagnostics(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < 5)
+    {
+        _Diagnostics[id.x] = 0;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void BuildGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= _AgentCount || _StatesRead[index].status != 1 || _Controls[index].y < 0.5)
+    {
+        return;
+    }
+
+    int2 cell = WorldToCell(_StatesRead[index].position);
+    if (!IsInside(cell))
+    {
+        return;
+    }
+
+    uint cellIndex = CellIndex(cell);
+    uint slot;
+    InterlockedAdd(_CellCounts[cellIndex], 1, slot);
+    uint activeSlot;
+    InterlockedAdd(_Diagnostics[3], 1, activeSlot);
+    _ActiveIndices[activeSlot] = index;
+    InterlockedMax(_Diagnostics[2], slot + 1);
+    if (slot < _CellCapacity)
+    {
+        _CellAgents[cellIndex * _CellCapacity + slot] = index;
+    }
+    else
+    {
+        InterlockedAdd(_Diagnostics[1], 1);
+        if (slot == _CellCapacity)
+        {
+            InterlockedAdd(_Diagnostics[0], 1);
+        }
+    }
+}
+
+[numthreads(1, 1, 1)]
+void FinalizeActiveDispatch(uint3 id : SV_DispatchThreadID)
+{
+    uint groupCount = (_Diagnostics[3] + 63u) / 64u;
+    _ActiveDispatchArgs.Store(0, groupCount);
+    _ActiveDispatchArgs.Store(4, 1u);
+    _ActiveDispatchArgs.Store(8, 1u);
+}
+
+[numthreads(64, 1, 1)]
+void ApplyDamageCommands(uint3 id : SV_DispatchThreadID)
+{
+    uint commandIndex = id.x;
+    if (commandIndex >= _DamageCommandCount)
+    {
+        return;
+    }
+
+    DamageCommand command = _DamageCommands[commandIndex];
+    if (command.index >= _AgentCount || command.damage <= 0.0)
+    {
+        return;
+    }
+
+    AgentState state = _StatesRead[command.index];
+    if (state.status != 1 || state.health <= 0.0)
+    {
+        return;
+    }
+
+    float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+    state.health -= appliedDamage;
+    if (state.health <= 0.0)
+    {
+        state.health = 0.0;
+        state.status = 3;
+        EmitEvent(command.index, 1u, appliedDamage);
+        _StatesWrite[command.index] = state;
+    }
+
+    _StatesRead[command.index] = state;
+}
+
+[numthreads(64, 1, 1)]
+void ApplyStatusCommands(uint3 id : SV_DispatchThreadID)
+{
+    uint commandIndex = id.x;
+    if (commandIndex >= _StatusCommandCount)
+    {
+        return;
+    }
+
+    StatusCommand command = _StatusCommands[commandIndex];
+    if (command.index >= _AgentCount)
+    {
+        return;
+    }
+
+    AgentState state = _StatesRead[command.index];
+    if (state.status != 1 || state.health <= 0.0)
+    {
+        return;
+    }
+
+    if (command.slowDuration > 0.0)
+    {
+        state.slowMultiplier = min(state.slowMultiplier, command.slowMultiplier);
+        state.slowTimer = max(state.slowTimer, command.slowDuration * (1.0 - saturate(state.slowResistance)));
+    }
+
+    if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0 && command.burnApplications > 0u)
+    {
+        uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+        uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + command.burnApplications);
+        state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+        state.burnTimer = max(state.burnTimer, command.burnDuration);
+    }
+
+    _StatesRead[command.index] = state;
+}
+
+[numthreads(1, 1, 1)]
+void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
+{
+    AreaEffectCommand command = _AreaEffectCommands[_AreaCommandIndex];
+    int2 centerCell = WorldToCell(command.center);
+    int cellRadius = max(1, (int)ceil(command.radius / _CellSize));
+    float radiusSq = command.radius * command.radius;
+    uint hitCount = 0u;
+    float usedSlowCapacity = 0.0;
+    [loop]
+    for (int oy = -cellRadius; oy <= cellRadius; oy++)
+    {
+        [loop]
+        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        {
+            int2 cell = centerCell + int2(ox, oy);
+            if (!IsInside(cell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(cell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0u; slot < count; slot++)
+            {
+                uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                AgentState state = _StatesRead[agentIndex];
+                if (state.status != 1 || state.health <= 0.0)
+                {
+                    continue;
+                }
+
+                float2 offset = state.position - command.center;
+                float distanceSq = dot(offset, offset);
+                if (distanceSq > radiusSq)
+                {
+                    continue;
+                }
+
+                bool applySlow = command.slowDuration > 0.0 && command.slowMultiplier < 0.995 &&
+                    usedSlowCapacity + max(0.1, state.mass) <= command.slowCapacity;
+                bool hasOtherEffect = command.damage > 0.0 || command.knockback > 0.0 || command.burnDamagePerSecond > 0.0;
+                if (!applySlow && !hasOtherEffect)
+                {
+                    continue;
+                }
+
+                if (command.knockback > 0.0)
+                {
+                    float distance = sqrt(max(distanceSq, 0.000001));
+                    float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
+                    float falloff = 1.0 - saturate(distance / command.radius);
+                    state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
+                }
+
+                if (command.damage > 0.0)
+                {
+                    float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                    state.health -= appliedDamage;
+                    if (state.health <= 0.0)
+                    {
+                        state.health = 0.0;
+                        state.status = 3;
+                        EmitEvent(agentIndex, 1u, appliedDamage);
+                    }
+                }
+
+                if (state.status == 1 && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                {
+                    uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+                    uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+                    state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+                    state.burnTimer = max(state.burnTimer, command.burnDuration);
+                }
+
+
+                if (state.status == 1 && applySlow)
+                {
+                    state.slowMultiplier = min(state.slowMultiplier, command.slowMultiplier);
+                    state.slowTimer = max(state.slowTimer, command.slowDuration * (1.0 - saturate(state.slowResistance)));
+                    usedSlowCapacity += max(0.1, state.mass);
+                }
+
+                _StatesRead[agentIndex] = state;
+                hitCount++;
+                if (command.maxTargets > 0u && hitCount >= command.maxTargets)
+                {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+float DistancePointToSegmentSq(float2 samplePosition, float2 a, float2 b)
+{
+    float2 segment = b - a;
+    float lengthSq = dot(segment, segment);
+    if (lengthSq <= 0.000001)
+    {
+        return dot(samplePosition - a, samplePosition - a);
+    }
+    float t = saturate(dot(samplePosition - a, segment) / lengthSq);
+    float2 nearest = a + segment * t;
+    return dot(samplePosition - nearest, samplePosition - nearest);
+}
+
+[numthreads(1, 1, 1)]
+void ApplyProjectile(uint3 id : SV_DispatchThreadID)
+{
+    ProjectileCommand command = _ProjectileCommands[_ProjectileCommandIndex];
+    float2 boundsMin = min(command.start, command.end) - command.radius;
+    float2 boundsMax = max(command.start, command.end) + command.radius;
+    int2 minCell = WorldToCell(boundsMin);
+    int2 maxCell = WorldToCell(boundsMax);
+    uint hitCount = 0u;
+    [loop]
+    for (int y = minCell.y; y <= maxCell.y; y++)
+    {
+        [loop]
+        for (int x = minCell.x; x <= maxCell.x; x++)
+        {
+            int2 cell = int2(x, y);
+            if (!IsInside(cell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(cell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0u; slot < count; slot++)
+            {
+                uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                AgentState state = _StatesRead[agentIndex];
+                if (state.status != 1u || state.health <= 0.0 || ((state.flags & 1u) != 0u && command.canHitFlying == 0u))
+                {
+                    continue;
+                }
+
+                float hitRadius = max(command.radius, state.scale * 0.62);
+                float distanceSq = command.mode == 0u
+                    ? DistancePointToSegmentSq(state.position, command.start, command.end)
+                    : dot(state.position - command.end, state.position - command.end);
+                if (distanceSq > hitRadius * hitRadius)
+                {
+                    continue;
+                }
+
+                float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                state.health = max(0.0, state.health - appliedDamage);
+                if (command.knockback > 0.0)
+                {
+                    float2 offset = state.position - command.end;
+                    float offsetLength = length(offset);
+                    float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
+                    state.velocity += direction * command.knockback * 5.0;
+                }
+                if (state.health <= 0.0)
+                {
+                    state.status = 3u;
+                    EmitEvent(agentIndex, 1u, appliedDamage);
+                }
+                else if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                {
+                    uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+                    uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+                    state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+                    state.burnTimer = max(state.burnTimer, command.burnDuration);
+                }
+
+                _StatesRead[agentIndex] = state;
+                hitCount++;
+                if (command.maxHits > 0u && hitCount >= command.maxHits)
+                {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+[numthreads(64, 1, 1)]
+void Simulate(uint3 id : SV_DispatchThreadID)
+{
+    uint activeSlot = id.x;
+    if (activeSlot >= _DiagnosticsRead[3])
+    {
+        return;
+    }
+
+    uint index = _ActiveIndicesRead[activeSlot];
+
+    AgentState state = _StatesInput[index];
+    float4 control = _Controls[index];
+    if (control.y < 0.5)
+    {
+        state.status = 0;
+        _StatesWrite[index] = state;
+        return;
+    }
+
+    if (state.status != 1)
+    {
+        _StatesWrite[index] = state;
+        return;
+    }
+
+    float simulationDelta = _DeltaTime;
+    if (_CullingEnabled != 0)
+    {
+        float cameraDistance = distance(state.position, _LodCameraPosition);
+        uint lodStride = cameraDistance > 70.0 ? 4u : (cameraDistance > 42.0 ? 2u : 1u);
+        if (lodStride > 1u && ((index + _FrameIndex) % lodStride) != 0u)
+        {
+            _StatesWrite[index] = state;
+            return;
+        }
+
+        simulationDelta *= lodStride;
+    }
+
+    if (state.slowTimer > 0.0)
+    {
+        state.slowTimer -= simulationDelta;
+        if (state.slowTimer <= 0.0)
+        {
+            state.slowTimer = 0.0;
+            state.slowMultiplier = 1.0;
+        }
+    }
+
+    if (state.burnTimer > 0.0 && state.burnDamagePerSecond > 0.0)
+    {
+        state.health -= state.burnDamagePerSecond * simulationDelta;
+        state.burnTimer -= simulationDelta;
+        if (state.health <= 0.0)
+        {
+            state.health = 0.0;
+            state.status = 3;
+            EmitEvent(index, 1u, state.burnDamagePerSecond * simulationDelta);
+            _StatesRead[index] = state;
+            _StatesWrite[index] = state;
+            return;
+        }
+
+        if (state.burnTimer <= 0.0)
+        {
+            state.burnTimer = 0.0;
+            state.burnDamagePerSecond = 0.0;
+        }
+    }
+
+    int2 centerCell = WorldToCell(state.position);
+    if (!IsInside(centerCell))
+    {
+        _StatesWrite[index] = state;
+        return;
+    }
+
+    uint centerIndex = CellIndex(centerCell);
+    if (_FlowData[centerIndex].y <= 0.001)
+    {
+        state.status = 2;
+        _StatesRead[index] = state;
+        _StatesWrite[index] = state;
+        return;
+    }
+
+    float2 flow = FindNavigableFlow(state.position, SampleFlow(state.position));
+    int blockingTarget = -1;
+    float blockingDistanceSq = 1e30;
+    const int targetCellRadius = 2;
+    [loop]
+    for (int toy = -targetCellRadius; toy <= targetCellRadius; toy++)
+    {
+        [loop]
+        for (int tox = -targetCellRadius; tox <= targetCellRadius; tox++)
+        {
+            int2 targetCell = centerCell + int2(tox, toy);
+            if (!IsInside(targetCell))
+            {
+                continue;
+            }
+
+            uint targetCellIndex = CellIndex(targetCell);
+            uint targetCount = min(_DynamicTargetCellCountsRead[targetCellIndex], _DynamicTargetCellCapacity);
+            [loop]
+            for (uint targetSlot = 0u; targetSlot < targetCount; targetSlot++)
+            {
+                uint targetIndex = _DynamicTargetCellIndicesRead[targetCellIndex * _DynamicTargetCellCapacity + targetSlot];
+                DynamicTargetState target = _DynamicTargetsRead[targetIndex];
+                float2 targetOffset = target.position - state.position;
+                float targetDistanceSq = dot(targetOffset, targetOffset);
+                float attackRange = max(0.35, target.radius + state.scale * 1.2);
+                if (target.status == 1u && target.blockCapacity > 0.0 &&
+                    targetDistanceSq <= attackRange * attackRange && targetDistanceSq < blockingDistanceSq)
+                {
+                    blockingTarget = (int)targetIndex;
+                    blockingDistanceSq = targetDistanceSq;
+                }
+            }
+        }
+    }
+
+    if (blockingTarget >= 0)
+    {
+        uint targetIndex = (uint)blockingTarget;
+        DynamicTargetState target = _DynamicTargetsRead[targetIndex];
+        uint massUnits = max(1u, (uint)round(max(0.1, state.mass) * 1024.0));
+        uint capacityUnits = max(1u, (uint)round(target.blockCapacity * 1024.0));
+        uint observed = _DynamicTargetBlockedMass[targetIndex];
+        bool reserved = false;
+        [loop]
+        for (uint attempt = 0u; attempt < 8u && observed + massUnits <= capacityUnits; attempt++)
+        {
+            uint original;
+            InterlockedCompareExchange(_DynamicTargetBlockedMass[targetIndex], observed, observed + massUnits, original);
+            if (original == observed)
+            {
+                reserved = true;
+                break;
+            }
+            observed = original;
+        }
+
+        if (reserved)
+        {
+            state.attackTimer -= simulationDelta;
+            if (state.attackTimer <= 0.0 && state.attackDamage > 0.0)
+            {
+                float targetMultiplier = target.kind == 0u ? state.wallDamageMultiplier : state.alliedDamageMultiplier;
+                uint damageUnits = max(1u, (uint)round(state.attackDamage * max(0.0, targetMultiplier) * 1024.0));
+                InterlockedAdd(_DynamicTargetDamage[targetIndex], damageUnits);
+                uint previousAttacker;
+                InterlockedExchange(_DynamicTargetLastAttacker[targetIndex], index + 1u, previousAttacker);
+                state.attackTimer = max(0.15, state.attackInterval);
+
+                if (target.thornsDamage > 0.0)
+                {
+                    float thornDamage = max(0.0, target.thornsDamage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                    state.health = max(0.0, state.health - thornDamage);
+                    if (state.health <= 0.0)
+                    {
+                        state.status = 3u;
+                        EmitEvent(index, 1u, thornDamage);
+                        _StatesRead[index] = state;
+                        _StatesWrite[index] = state;
+                        return;
+                    }
+                }
+
+                if ((state.combatFlags & 2u) != 0u && target.kind == 1u)
+                {
+                    state.health = min(state.maxHealth, state.health + state.attackDamage);
+                }
+            }
+        }
+        else
+        {
+            blockingTarget = -1;
+        }
+    }
+
+    float2 separation = 0.0;
+    float congestion = 0.0;
+    float rawOccupancy = CellOccupancy(centerCell);
+    float overflowRatio = saturate((rawOccupancy - (float)_CellCapacity) / max(1.0, (float)_CellCapacity));
+    float maximumCollisionDiameter = _CollisionDiameter * 1.25;
+    float searchRadiusSq = maximumCollisionDiameter * maximumCollisionDiameter;
+    int cellRadius = max(1, (int)ceil(maximumCollisionDiameter / _CellSize));
+    [loop]
+    for (int oy = -cellRadius; oy <= cellRadius; oy++)
+    {
+        [loop]
+        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        {
+            int2 neighborCell = centerCell + int2(ox, oy);
+            if (!IsInside(neighborCell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(neighborCell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0; slot < count; slot++)
+            {
+                uint otherIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                if (otherIndex == index)
+                {
+                    continue;
+                }
+
+                AgentState other = _StatesInput[otherIndex];
+                float2 delta = state.position - other.position;
+                float distanceSq = dot(delta, delta);
+                if (distanceSq >= searchRadiusSq)
+                {
+                    continue;
+                }
+
+
+                float pairDiameter = clamp(
+                    (state.scale + other.scale) * 1.12,
+                    _CollisionDiameter * 0.78,
+                    maximumCollisionDiameter) * lerp(1.0, 0.72, overflowRatio);
+                if (distanceSq >= pairDiameter * pairDiameter)
+                {
+                    continue;
+                }
+
+                float distance = sqrt(max(distanceSq, 0.000001));
+                float2 direction;
+                if (distanceSq <= 0.000001)
+                {
+                    float angle = frac((index * 0.7548777 + otherIndex * 0.5698403)) * 6.2831853;
+                    sincos(angle, direction.y, direction.x);
+                }
+                else
+                {
+                    direction = delta / distance;
+                }
+
+                float penetration = 1.0 - distance / pairDiameter;
+                separation += direction * penetration * 1.25;
+                congestion += dot(other.position - state.position, flow) > 0.0 ? penetration : 0.0;
+            }
+        }
+    }
+
+    separation = clamp(separation, -1.25, 1.25);
+    float2 lateralAxis = float2(-flow.y, flow.x);
+    separation = flow * dot(separation, flow) * 0.72 + lateralAxis * dot(separation, lateralAxis) * 1.28;
+    float densityLeft = SmoothedSideOccupancy(centerCell, int2(-1, 0), int2(0, 1));
+    float densityRight = SmoothedSideOccupancy(centerCell, int2(1, 0), int2(0, 1));
+    float densityDown = SmoothedSideOccupancy(centerCell, int2(0, -1), int2(1, 0));
+    float densityUp = SmoothedSideOccupancy(centerCell, int2(0, 1), int2(1, 0));
+    float2 densityGradient = float2(
+        densityRight - densityLeft,
+        densityUp - densityDown);
+    densityGradient /= max(1.0, (float)_CellCapacity * 3.0);
+    float2 pressureAwayFromDensity = -densityGradient;
+    float2 widthPressure = lateralAxis * dot(pressureAwayFromDensity, lateralAxis) * 1.35 +
+        flow * dot(pressureAwayFromDensity, flow) * 0.22;
+    float crowdPressureWeight = saturate(rawOccupancy / 8.0);
+    float overflowAngle = frac(index * 0.61803398875 + _FrameIndex * 0.0027) * 6.2831853;
+    float2 overflowScatter;
+    sincos(overflowAngle, overflowScatter.y, overflowScatter.x);
+    float2 overflowPressure = (pressureAwayFromDensity * 1.8 + overflowScatter * 0.22) * overflowRatio;
+    float2 crowdPressure = widthPressure * crowdPressureWeight + overflowPressure;
+    float combatSpeed = blockingTarget >= 0 ? 0.04 : 1.0;
+    float desiredSpeed = control.x * combatSpeed * max(0.05, state.slowMultiplier) * lerp(1.0, 0.64, saturate(congestion / 3.0));
+    float2 desiredVelocity = flow * desiredSpeed;
+    float2 flowForce = (desiredVelocity - state.velocity) * _FlowAcceleration;
+    float2 collisionForce = (separation * lerp(1.0, 0.58, overflowRatio) + crowdPressure) * _CollisionAcceleration;
+    float4 flowCell = _FlowVectors[centerIndex];
+    float clearance = _FlowData[centerIndex].x;
+    float wallPenetration = 1.0 - saturate(clearance / _WallInfluence);
+    float2 wallNormal = flowCell.zw;
+    float backwardsWallComponent = min(0.0, dot(wallNormal, flow));
+    wallNormal -= flow * backwardsWallComponent;
+    float2 wallForce = wallNormal * wallPenetration * _WallAcceleration;
+    float2 impulse = _Impulses[index];
+    _Impulses[index] = 0.0;
+    state.velocity += (flowForce + collisionForce + wallForce) * simulationDelta + impulse;
+    state.velocity *= rcp(1.0 + _VelocityDamping * simulationDelta);
+    float maxSpeed = max(0.25, desiredSpeed * 1.12);
+    float velocityLength = length(state.velocity);
+    if (velocityLength > maxSpeed)
+    {
+        state.velocity *= maxSpeed / velocityLength;
+    }
+
+    float2 oldPosition = state.position;
+    float2 desiredPosition = oldPosition + state.velocity * simulationDelta;
+    state.position = ConstrainMove(oldPosition, desiredPosition);
+    if (dot(state.position - desiredPosition, state.position - desiredPosition) > 0.000001)
+    {
+        state.velocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
+    }
+
+    state.tint = state.slowTimer > 0.0 && state.slowMultiplier < 0.995 ? 1.0 : control.z;
+    int2 finalCell = WorldToCell(state.position);
+    if (IsInside(finalCell) && _FlowData[CellIndex(finalCell)].y <= 0.001)
+    {
+        state.status = 2;
+        EmitEvent(index, 2u, 0.0);
+        _StatesRead[index] = state;
+    }
+    else if (IsInside(finalCell))
+    {
+        state.progress = -_FlowData[CellIndex(finalCell)].y;
+    }
+
+    _StatesWrite[index] = state;
+}
+
+[numthreads(64, 1, 1)]
+void QueryTargets(uint3 id : SV_DispatchThreadID)
+{
+    uint queryIndex = id.x;
+    if (queryIndex >= _QueryCount)
+    {
+        return;
+    }
+
+    TargetQuery query = _TargetQueries[queryIndex];
+    int2 center = WorldToCell(query.position);
+    int cellRadius = max(1, (int)ceil(query.range / _CellSize));
+    float rangeSq = query.range * query.range;
+    TargetResult best;
+    best.position = 0.0;
+    best.velocity = 0.0;
+    best.index = -1;
+    best.score = -1e30;
+    float bestDistanceSq = 1e30;
+    [loop]
+    for (int oy = -cellRadius; oy <= cellRadius; oy++)
+    {
+        [loop]
+        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        {
+            int2 cell = center + int2(ox, oy);
+            if (!IsInside(cell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(cell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0; slot < count; slot++)
+            {
+                uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                AgentState state = _StatesInput[agentIndex];
+                if (state.status != 1 || state.health <= 0.0 || (query.canHitFlying == 0 && (state.flags & 1u) != 0))
+                {
+                    continue;
+                }
+
+                float2 delta = state.position - query.position;
+                float distanceSq = dot(delta, delta);
+                if (distanceSq > rangeSq)
+                {
+                    continue;
+                }
+
+                float score = -distanceSq;
+                if (query.mode == 1u) score = state.progress;
+                else if (query.mode == 2u) score = -state.progress;
+                else if (query.mode == 3u) score = state.health;
+                if (best.index < 0 || score > best.score || (abs(score - best.score) < 0.0001 && distanceSq < bestDistanceSq))
+                {
+                    best.position = state.position;
+                    best.velocity = state.velocity;
+                    best.index = (int)agentIndex;
+                    best.score = score;
+                    bestDistanceSq = distanceSq;
+                }
+            }
+        }
+    }
+
+    _TargetResults[queryIndex] = best;
+}
+
+[numthreads(1, 1, 1)]
+void ClearVisibility(uint3 id : SV_DispatchThreadID)
+{
+    _IndirectArgs.Store(4, 0u);
+    _LodIndirectArgs.Store(4, 0u);
+}
+
+[numthreads(64, 1, 1)]
+void CullVisible(uint3 id : SV_DispatchThreadID)
+{
+    uint activeSlot = id.x;
+    if (activeSlot >= _DiagnosticsRead[3])
+    {
+        return;
+    }
+
+    uint index = _ActiveIndicesRead[activeSlot];
+
+    AgentState state = _StatesInput[index];
+    if (state.status != 1)
+    {
+        return;
+    }
+
+    bool visible = true;
+    if (_CullingEnabled != 0)
+    {
+        float4 clip = mul(_ViewProjection, float4(state.position.x, 0.0, state.position.y, 1.0));
+        float margin = max(0.5, clip.w * 0.08);
+        visible = clip.w > 0.0 && abs(clip.x) <= clip.w + margin && abs(clip.y) <= clip.w + margin;
+    }
+
+    if (visible)
+    {
+        uint visibleIndex;
+        float cameraDistance = distance(state.position, _LodCameraPosition);
+        if (_CullingEnabled != 0 && cameraDistance > 32.0)
+        {
+            _LodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            _LodVisibleIndices[visibleIndex] = index;
+        }
+        else
+        {
+            _IndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            _VisibleIndices[visibleIndex] = index;
+        }
+        InterlockedAdd(_Diagnostics[4], 1u);
+    }
+}

@@ -15,6 +15,7 @@ namespace TowerDefense.Runtime
         private readonly Dictionary<Vector2Int, List<EnemyActor>> spatialBuckets = new();
         private readonly List<EnemyActor> targetCandidates = new();
         private static Mesh sharedDetailedEnemyMesh;
+        private static Mesh sharedLowEnemyMesh;
         private WaveDefinition wave;
         private PathRoute path;
         private EnemyCorpseManager corpseManager;
@@ -673,6 +674,33 @@ namespace TowerDefense.Runtime
                 : 0f;
         }
 
+        public bool QueueHordeProjectile(
+            Vector3 start,
+            Vector3 end,
+            float radius,
+            float damage,
+            float knockback,
+            int maxHits,
+            bool canHitFlying,
+            bool splash,
+            float burnDamagePerSecond = 0f,
+            float burnDuration = 0f,
+            int maxBurnStacks = 1)
+        {
+            return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.QueueProjectile(
+                start,
+                end,
+                radius,
+                damage,
+                knockback,
+                maxHits,
+                canHitFlying,
+                splash,
+                burnDamagePerSecond,
+                burnDuration,
+                maxBurnStacks);
+        }
+
         public void ClearAll(bool clearCombatTargets = true)
         {
             foreach (var enemy in activeEnemies)
@@ -753,7 +781,32 @@ namespace TowerDefense.Runtime
 
         public static Mesh GetLowEnemyMesh()
         {
-            return GetDetailedEnemyMesh();
+            if (sharedLowEnemyMesh != null)
+            {
+                return sharedLowEnemyMesh;
+            }
+
+            sharedLowEnemyMesh = new Mesh
+            {
+                name = "LowEnemyOctahedron",
+                vertices = new[]
+                {
+                    new Vector3(0f, 2f, 0f),
+                    new Vector3(0f, 0f, 0f),
+                    new Vector3(1f, 0.85f, 0f),
+                    new Vector3(-1f, 0.85f, 0f),
+                    new Vector3(0f, 0.85f, 1f),
+                    new Vector3(0f, 0.85f, -1f)
+                },
+                triangles = new[]
+                {
+                    0, 2, 4, 0, 4, 3, 0, 3, 5, 0, 5, 2,
+                    1, 4, 2, 1, 3, 4, 1, 5, 3, 1, 2, 5
+                }
+            };
+            sharedLowEnemyMesh.RecalculateNormals();
+            sharedLowEnemyMesh.RecalculateBounds();
+            return sharedLowEnemyMesh;
         }
 
         public static Mesh GetDetailedEnemyMesh()

@@ -15,13 +15,18 @@ namespace TowerDefense.Runtime
         private const float VisualRadius = 0.34f;
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
-        private const float PressureRadius = 0.48f;
-        private const float CornerSideBlendDistance = 5.2f;
-        private const float LaneDamping = 4.2f;
-        private const float LaneWallBounce = 7.5f;
+        // Visual diameter is roughly 0.68. Collision is deliberately a little larger,
+        // but remains contact-only; a broad influence radius crystallizes into patterns.
+        private const float CollisionDiameter = 0.84f;
+        private const float FlowCellSize = 0.62f;
+        private const float FlowAcceleration = 8.5f;
+        private const float CollisionAcceleration = 18f;
+        private const float WallAcceleration = 13f;
+        private const float WallInfluenceDistance = 0.9f;
+        private const float VelocityDamping = 1.15f;
         private const int OffscreenDetailStride = 8;
         private const int DetailedPerfSampleStride = 15;
-        private const int MaxPressureNeighbors = 8;
+        private const int MaxCollisionNeighbors = 16;
 
         private readonly List<EnemyDefinition> spawnSequence = new();
         private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
@@ -33,10 +38,8 @@ namespace TowerDefense.Runtime
         private Vector3[] positions;
         private Vector3[] previousPositions;
         private float[] pathDistances;
-        private float[] laneOffsets;
-        private float[] laneVelocities;
+        private Vector3[] velocities;
         private float[] crowdSpeedFactors;
-        private float[] forwardVisualOffsets;
         private float[] visualScales;
         private float[] visualPulsePhases;
         private float[] visualPulseSpeeds;
@@ -48,19 +51,16 @@ namespace TowerDefense.Runtime
         private float[] health;
         private float[] burnDamagePerSecond;
         private float[] burnTimers;
-        private Vector3[] knockbackOffsets;
         private Vector3[] knockbackVelocities;
-        private int[] segmentIndices;
         private EnemyDefinition[] definitions;
         private bool[] alive;
+        private Vector4[] gpuControls;
+        private Vector2[] gpuImpulses;
+        private GpuHordeSimulation gpuSimulation;
         private IReadOnlyList<ICombatTarget> combatTargets;
-        private Vector3[] segmentStarts;
-        private Vector3[] segmentDirections;
-        private Vector3[] segmentSides;
-        private float[] segmentStartDistances;
-        private float[] segmentEndDistances;
         private WaveDefinition wave;
         private PathRoute path;
+        private HordeFlowField flowField;
         private Mesh mesh;
         private Material material;
         private Material slowedMaterial;
@@ -109,7 +109,12 @@ namespace TowerDefense.Runtime
             lastFullFidelityCount,
             lastCheapFidelityCount,
             lastNearCombatCount,
-            material != null && material.shader != null ? material.shader.name : "none");
+            gpuSimulation?.OverflowCellCount ?? 0u,
+            gpuSimulation?.DroppedAgentCount ?? 0u,
+            gpuSimulation?.MaximumCellOccupancy ?? 0u,
+            gpuSimulation != null
+                ? "GPU Compute / HordeIndirect"
+                : material != null && material.shader != null ? material.shader.name : "none");
 
         public void SetCombatTargets(IReadOnlyList<ICombatTarget> targets)
         {
@@ -129,20 +134,11 @@ namespace TowerDefense.Runtime
             }
 
             var count = spawnSequence.Count;
-            BuildRouteCache();
-            if (segmentStarts == null || segmentStarts.Length == 0)
-            {
-                running = false;
-                return;
-            }
-
             positions = new Vector3[count];
             previousPositions = new Vector3[count];
             pathDistances = new float[count];
-            laneOffsets = new float[count];
-            laneVelocities = new float[count];
+            velocities = new Vector3[count];
             crowdSpeedFactors = new float[count];
-            forwardVisualOffsets = new float[count];
             visualScales = new float[count];
             visualPulsePhases = new float[count];
             visualPulseSpeeds = new float[count];
@@ -154,11 +150,12 @@ namespace TowerDefense.Runtime
             health = new float[count];
             burnDamagePerSecond = new float[count];
             burnTimers = new float[count];
-            knockbackOffsets = new Vector3[count];
             knockbackVelocities = new Vector3[count];
-            segmentIndices = new int[count];
             definitions = new EnemyDefinition[count];
             alive = new bool[count];
+            gpuControls = new Vector4[count];
+            gpuImpulses = new Vector2[count];
+            flowField = new HordeFlowField(path.Waypoints, path.SecondaryWaypoints, RoadHalfWidth - VisualRadius, FlowCellSize);
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
             var packedSpawnSpan = Mathf.Max(0.02f, windowDuration * 0.42f);
@@ -185,6 +182,11 @@ namespace TowerDefense.Runtime
             slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
             slowedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
+            if (!GpuHordeSimulation.TryCreate(count, flowField, mesh, out gpuSimulation))
+            {
+                running = false;
+                return;
+            }
             elapsed = 0f;
             totalSpawned = 0;
             activeCount = 0;
@@ -197,8 +199,16 @@ namespace TowerDefense.Runtime
             Clear();
         }
 
+        private void OnDestroy()
+        {
+            gpuSimulation?.Dispose();
+            gpuSimulation = null;
+        }
+
         private void Clear()
         {
+            gpuSimulation?.Dispose();
+            gpuSimulation = null;
             running = false;
             wave = null;
             spawnSequence.Clear();
@@ -207,10 +217,8 @@ namespace TowerDefense.Runtime
             positions = null;
             previousPositions = null;
             pathDistances = null;
-            laneOffsets = null;
-            laneVelocities = null;
+            velocities = null;
             crowdSpeedFactors = null;
-            forwardVisualOffsets = null;
             visualScales = null;
             visualPulsePhases = null;
             visualPulseSpeeds = null;
@@ -222,16 +230,12 @@ namespace TowerDefense.Runtime
             health = null;
             burnDamagePerSecond = null;
             burnTimers = null;
-            knockbackOffsets = null;
             knockbackVelocities = null;
-            segmentIndices = null;
             definitions = null;
             alive = null;
-            segmentStarts = null;
-            segmentDirections = null;
-            segmentSides = null;
-            segmentStartDistances = null;
-            segmentEndDistances = null;
+            gpuControls = null;
+            gpuImpulses = null;
+            flowField = null;
             spatialBuckets.Clear();
             combatTargetBuckets.Clear();
             nearbyIndices.Clear();
@@ -266,13 +270,21 @@ namespace TowerDefense.Runtime
 
         private void LateUpdate()
         {
-            if (!running || mesh == null || material == null || positions == null)
+            if (!running || mesh == null || positions == null)
             {
                 return;
             }
 
             var drawStart = Stopwatch.GetTimestamp();
-            DrawInstances();
+            if (gpuSimulation != null)
+            {
+                gpuSimulation.Draw(mesh, gameObject.layer);
+                lastVisibleDrawn = (int)gpuSimulation.VisibleAgentCount;
+            }
+            else if (material != null)
+            {
+                DrawInstances();
+            }
             lastDrawMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - drawStart);
         }
 
@@ -283,12 +295,8 @@ namespace TowerDefense.Runtime
                 var definition = spawnSequence[totalSpawned];
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
-                laneOffsets[totalSpawned] = UnityEngine.Random.Range(-RoadHalfWidth + 0.08f, RoadHalfWidth - 0.08f);
-                laneVelocities[totalSpawned] = UnityEngine.Random.Range(-0.18f, 0.18f);
                 crowdSpeedFactors[totalSpawned] = 1f;
-                forwardVisualOffsets[totalSpawned] = UnityEngine.Random.Range(-0.38f, 0.38f);
                 pathDistances[totalSpawned] = 0f;
-                segmentIndices[totalSpawned] = 0;
                 speeds[totalSpawned] = definition != null ? definition.speed : 4.8f;
                 visualScales[totalSpawned] = (definition != null ? definition.visualScale : 0.45f) * UnityEngine.Random.Range(0.88f, 1.12f);
                 visualPulsePhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
@@ -296,12 +304,27 @@ namespace TowerDefense.Runtime
                 slowMultipliers[totalSpawned] = 1f;
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
-                knockbackOffsets[totalSpawned] = Vector3.zero;
                 knockbackVelocities[totalSpawned] = Vector3.zero;
-                var position = SamplePosition(totalSpawned);
+                var lateral = UnityEngine.Random.Range(-RoadHalfWidth + VisualRadius, RoadHalfWidth - VisualRadius);
+                var position = flowField.GetSpawnPoint(lateral);
+                position += flowField.GetDirection(position) * UnityEngine.Random.Range(-0.35f, 0.15f);
+                position = flowField.ConstrainMove(flowField.GetSpawnPoint(lateral), position);
                 positions[totalSpawned] = position;
                 previousPositions[totalSpawned] = position;
+                velocities[totalSpawned] = flowField.GetDirection(position) * speeds[totalSpawned];
                 alive[totalSpawned] = true;
+                gpuControls[totalSpawned] = new Vector4(speeds[totalSpawned], 1f, 0f, 0f);
+                gpuSimulation?.Spawn(
+                    totalSpawned,
+                    position,
+                    velocities[totalSpawned],
+                    GetVisualRadius(totalSpawned),
+                    0f,
+                    health[totalSpawned],
+                    -flowField.GetDistanceToExit(position),
+                    definition != null && definition.isFlying,
+                    definition != null ? definition.mass : 1f,
+                    definition);
                 totalSpawned++;
                 activeCount++;
             }
@@ -319,6 +342,18 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (gpuSimulation == null)
+            {
+                running = false;
+                UnityEngine.Debug.LogError("The horde requires the GPU-authoritative compute backend; no legacy CPU simulation is available.");
+                return;
+            }
+
+            SyncGpuShadow();
+            SimulateGpuFast(deltaTime);
+            return;
+
+#if false // Removed from the runtime assembly: historical CPU prototype only.
             var camera = Camera.main;
             var frame = Time.frameCount;
             var sampleDetailedPerformance = frame % DetailedPerfSampleStride == 0;
@@ -350,7 +385,7 @@ namespace TowerDefense.Runtime
 
                 var sectionStart = sampleDetailedPerformance ? Stopwatch.GetTimestamp() : 0L;
                 previousPositions[i] = positions[i];
-                if (slowTimers[i] > 0f)
+                if (gpuSimulation == null && slowTimers[i] > 0f)
                 {
                     slowTimers[i] -= deltaTime;
                     if (slowTimers[i] <= 0f)
@@ -359,7 +394,7 @@ namespace TowerDefense.Runtime
                     }
                 }
 
-                if (burnTimers[i] > 0f)
+                if (gpuSimulation == null && burnTimers[i] > 0f)
                 {
                     burnTimers[i] -= deltaTime;
                     ApplyDamage(i, burnDamagePerSecond[i] * deltaTime);
@@ -418,19 +453,61 @@ namespace TowerDefense.Runtime
                 }
 
                 var combatMultiplier = target == null ? 1f : 0.08f;
-                var crowdMultiplier = crowdSpeedFactors != null ? Mathf.Clamp(crowdSpeedFactors[i], 0.58f, 1.08f) : 1f;
-                pathDistances[i] += speeds[i] * Mathf.Clamp(slowMultipliers[i], 0.05f, 1f) * combatMultiplier * crowdMultiplier * deltaTime;
+                var crowdMultiplier = crowdSpeedFactors != null ? Mathf.Clamp(crowdSpeedFactors[i], 0.45f, 1f) : 1f;
+                var desiredSpeed = speeds[i] * combatMultiplier * crowdMultiplier;
+                if (gpuSimulation == null)
+                {
+                    desiredSpeed *= Mathf.Clamp(slowMultipliers[i], 0.05f, 1f);
+                }
+                if (gpuSimulation != null)
+                {
+                    gpuControls[i] = new Vector4(
+                        desiredSpeed,
+                        1f,
+                        0f,
+                        0f);
+                    continue;
+                }
+
+                var flowDirection = flowField.GetDirection(positions[i]);
+                var congestion = 0f;
+                var separation = detailedTick ? CalculateSeparation(i, flowDirection, out congestion) : Vector3.zero;
                 if (crowdSpeedFactors != null)
                 {
-                    crowdSpeedFactors[i] = Mathf.MoveTowards(crowdSpeedFactors[i], 1f, deltaTime * 2.4f);
+                    var pressureSpeed = Mathf.Lerp(1f, 0.48f, congestion);
+                    crowdSpeedFactors[i] = Mathf.MoveTowards(crowdSpeedFactors[i], pressureSpeed, deltaTime * 5f);
                 }
+
+                var desiredVelocity = flowDirection * desiredSpeed;
+                var flowForce = (desiredVelocity - velocities[i]) * FlowAcceleration;
+                var collisionForce = separation * CollisionAcceleration;
+                var wallForce = flowField.GetWallRepulsion(positions[i], WallInfluenceDistance) * WallAcceleration;
+                var acceleration = flowForce + collisionForce + wallForce;
+                velocities[i] += acceleration * deltaTime;
+                velocities[i] *= 1f / (1f + VelocityDamping * deltaTime);
+                velocities[i] = Vector3.ClampMagnitude(velocities[i], Mathf.Max(0.25f, desiredSpeed * 1.12f));
+                var knockbackVelocity = knockbackVelocities[i];
+                var oldPosition = positions[i];
+                var desiredPosition = oldPosition + (velocities[i] + knockbackVelocity) * deltaTime;
+                positions[i] = flowField.ConstrainMove(oldPosition, desiredPosition);
+                if ((positions[i] - desiredPosition).sqrMagnitude > 0.0001f)
+                {
+                    // Keep only the displacement the wall actually allowed. Otherwise
+                    // the blocked normal velocity keeps pinning agents against corners.
+                    velocities[i] = deltaTime > 0.0001f
+                        ? Vector3.ClampMagnitude((positions[i] - oldPosition) / deltaTime, speeds[i])
+                        : Vector3.zero;
+                }
+
+                knockbackVelocities[i] = Vector3.MoveTowards(knockbackVelocity, Vector3.zero, deltaTime * 6f);
+                pathDistances[i] = Mathf.Max(0f, path.TotalLength - flowField.GetDistanceToExit(positions[i]));
                 if (sampleDetailedPerformance)
                 {
                     lastMovementMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                if (pathDistances[i] >= path.TotalLength)
+                if (flowField.HasReachedExit(positions[i]))
                 {
                     alive[i] = false;
                     activeCount--;
@@ -438,24 +515,17 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                AdvanceSegmentIndex(i);
                 if (sampleDetailedPerformance)
                 {
                     lastSegmentMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                if (detailedTick)
+                if (sampleDetailedPerformance)
                 {
-                    ApplyCrowdPressure(i, deltaTime);
-                    if (sampleDetailedPerformance)
-                    {
-                        lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                        sectionStart = Stopwatch.GetTimestamp();
-                    }
+                    lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
+                    sectionStart = Stopwatch.GetTimestamp();
                 }
-                ApplyLaneInertia(i, deltaTime);
-                UpdateKnockback(i, deltaTime);
                 if (sampleDetailedPerformance)
                 {
                     if (!detailedTick)
@@ -468,16 +538,45 @@ namespace TowerDefense.Runtime
                     sectionStart = Stopwatch.GetTimestamp();
                 }
 
-                positions[i] = SamplePosition(i);
                 if (sampleDetailedPerformance)
                 {
                     lastSampleMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
                 }
             }
 
+            if (gpuSimulation != null)
+            {
+                for (var i = 0; i < totalSpawned; i++)
+                {
+                    if (!alive[i])
+                    {
+                        gpuControls[i] = Vector4.zero;
+                    }
+                }
+
+                var movementStart = Stopwatch.GetTimestamp();
+                gpuSimulation.Dispatch(deltaTime, gpuControls, gpuImpulses);
+                Array.Clear(gpuImpulses, 0, gpuImpulses.Length);
+                lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
+            }
+
             var bucketStart = Stopwatch.GetTimestamp();
             RebuildSpatialBuckets();
             lastBucketMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - bucketStart);
+#endif
+        }
+
+        private void SimulateGpuFast(float deltaTime)
+        {
+            ClearDetailedPerformance();
+            lastBucketMs = 0f;
+            lastNearCombatCount = 0;
+            lastFullFidelityCount = (int)(gpuSimulation?.VisibleAgentCount ?? 0u);
+            lastCheapFidelityCount = Mathf.Max(0, activeCount - lastFullFidelityCount);
+            var movementStart = Stopwatch.GetTimestamp();
+            gpuSimulation.SynchronizeDynamicTargets(combatTargets);
+            gpuSimulation.Dispatch(deltaTime, null, null);
+            lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
         }
 
         public bool TryGetLeadAimPoint(float radius, out Vector3 aimPoint)
@@ -491,8 +590,7 @@ namespace TowerDefense.Runtime
 
             var lookBackDistance = Mathf.Max(0.2f, radius * 0.55f);
             var speedLead = Mathf.Clamp(speeds[index] * 0.22f, 0f, radius * 0.28f);
-            var distance = Mathf.Max(0f, pathDistances[index] + speedLead - lookBackDistance);
-            aimPoint = SampleRoute(distance, segmentIndices[index]);
+            aimPoint = positions[index] + velocities[index].normalized * Mathf.Max(0f, speedLead - lookBackDistance);
             return true;
         }
 
@@ -522,12 +620,45 @@ namespace TowerDefense.Runtime
             return ApplyDamage(index, damage);
         }
 
+        public bool QueueProjectile(
+            Vector3 start,
+            Vector3 end,
+            float radius,
+            float damage,
+            float knockback,
+            int maxHits,
+            bool canHitFlying,
+            bool splash,
+            float burnDamagePerSecond = 0f,
+            float burnDuration = 0f,
+            int maxBurnStacks = 1)
+        {
+            return gpuSimulation != null && gpuSimulation.QueueProjectile(
+                start,
+                end,
+                radius,
+                damage,
+                knockback,
+                maxHits,
+                canHitFlying,
+                splash,
+                burnDamagePerSecond,
+                burnDuration,
+                maxBurnStacks);
+        }
+
         public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
         {
             hitCount = 0;
             if (damage <= 0f || radius <= 0f || activeCount <= 0)
             {
                 return 0f;
+            }
+
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(center, radius, damage, 0f, maxTargets, 0f, 0f, 0))
+            {
+                hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
+                return damage * hitCount;
             }
 
             var radiusSq = radius * radius;
@@ -566,9 +697,25 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            var multiplier = Mathf.Clamp01(1f - slowPercent);
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(
+                    center,
+                    radius,
+                    0f,
+                    0f,
+                    0,
+                    0f,
+                    0f,
+                    0,
+                    multiplier,
+                    0.35f,
+                    capacity))
+            {
+                return;
+            }
+
             var radiusSq = radius * radius;
             var usedCapacity = 0f;
-            var multiplier = Mathf.Clamp01(1f - slowPercent);
             CollectNearbyIndices(center, radius, nearbyIndices, 160);
             for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
             {
@@ -592,6 +739,7 @@ namespace TowerDefense.Runtime
 
                 slowMultipliers[i] = Mathf.Min(slowMultipliers[i], multiplier);
                 slowTimers[i] = Mathf.Max(slowTimers[i], 0.35f);
+                gpuSimulation?.QueueStatus(i, multiplier, 0.35f, 0f, 0f, 0);
                 usedCapacity += cost;
             }
         }
@@ -612,6 +760,21 @@ namespace TowerDefense.Runtime
             if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
             {
                 return 0f;
+            }
+
+            var burnDamagePerSecond = burnDamagePerTick * burnTicksPerSecond;
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(
+                    center,
+                    radius,
+                    damage,
+                    knockbackDistance,
+                    maxTargets,
+                    burnDamagePerSecond,
+                    burnDuration,
+                    maxBurnStacks))
+            {
+                hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
+                return damage * hitCount;
             }
 
             var radiusSq = radius * radius;
@@ -635,9 +798,19 @@ namespace TowerDefense.Runtime
 
                 if (knockbackDistance > 0f)
                 {
-                    var direction = distanceSq > 0.0001f ? offset.normalized : segmentSides[Mathf.Clamp(segmentIndices[i], 0, segmentSides.Length - 1)];
+                    var direction = distanceSq > 0.0001f
+                        ? offset.normalized
+                        : Vector3.Cross(Vector3.up, flowField.GetDirection(positions[i])).normalized;
                     var falloff = 1f - Mathf.Clamp01(Mathf.Sqrt(distanceSq) / radius);
-                    knockbackVelocities[i] += direction * knockbackDistance * Mathf.Lerp(2.5f, 8f, falloff);
+                    var impulse = direction * knockbackDistance * Mathf.Lerp(2.5f, 8f, falloff);
+                    if (gpuSimulation != null)
+                    {
+                        gpuImpulses[i] += new Vector2(impulse.x, impulse.z);
+                    }
+                    else
+                    {
+                        knockbackVelocities[i] += impulse;
+                    }
                 }
 
                 if (damage > 0f)
@@ -666,6 +839,12 @@ namespace TowerDefense.Runtime
 
             var stackCap = Mathf.Max(1, maxStacks);
             var stackDamagePerSecond = damagePerTick * ticksPerSecond;
+            if (gpuSimulation != null)
+            {
+                gpuSimulation.QueueStatus(index, 1f, 0f, stackDamagePerSecond, duration, stackCap);
+                return;
+            }
+
             var currentStacks = burnDamagePerSecond[index] > 0f
                 ? Mathf.RoundToInt(burnDamagePerSecond[index] / Mathf.Max(0.0001f, stackDamagePerSecond))
                 : 0;
@@ -680,6 +859,32 @@ namespace TowerDefense.Runtime
             if (activeCount <= 0)
             {
                 return -1;
+            }
+
+            if (gpuSimulation != null)
+            {
+                if (!gpuSimulation.TryGetCachedTarget(
+                        position,
+                        range,
+                        canHitFlying,
+                        targetingMode,
+                        out var gpuIndex,
+                        out var gpuPosition,
+                        out var gpuVelocity))
+                {
+                    return -1;
+                }
+
+                if (gpuIndex >= 0 && gpuIndex < totalSpawned)
+                {
+                    previousPositions[gpuIndex] = positions[gpuIndex];
+                    positions[gpuIndex] = gpuPosition;
+                    velocities[gpuIndex] = gpuVelocity;
+                }
+
+                return gpuIndex >= 0 && gpuIndex < totalSpawned && alive[gpuIndex] && health[gpuIndex] > 0f && definitions[gpuIndex] != null
+                    ? gpuIndex
+                    : -1;
             }
 
             var rangeSq = range * range;
@@ -726,16 +931,26 @@ namespace TowerDefense.Runtime
 
         private float ApplyDamage(int index, float damage)
         {
-            if (index < 0 || index >= totalSpawned || !alive[index] || damage <= 0f)
+            if (index < 0 || index >= totalSpawned || !alive[index] || health[index] <= 0f || damage <= 0f)
             {
                 return 0f;
             }
 
             var appliedDamage = Mathf.Min(health[index], damage);
             health[index] -= damage;
+            if (gpuSimulation != null)
+            {
+                gpuSimulation.QueueDamage(index, damage);
+                return appliedDamage;
+            }
+
             if (health[index] <= 0f)
             {
                 alive[index] = false;
+                if (gpuControls != null)
+                {
+                    gpuControls[index] = Vector4.zero;
+                }
                 activeCount--;
                 totalResolved++;
             }
@@ -743,119 +958,72 @@ namespace TowerDefense.Runtime
             return appliedDamage;
         }
 
-        private Vector3 SamplePosition(int index)
+        private void SyncGpuShadow()
         {
-            var distance = pathDistances[index];
-            var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
-            var visualDistance = Mathf.Clamp(distance + forwardVisualOffsets[index], segmentStartDistances[segment], segmentEndDistances[segment]);
-            SampleCorridorFrame(segment, visualDistance, out var center, out _, out var side);
-            var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
-            var minLane = -effectiveHalfWidth + 0.08f;
-            var maxLane = effectiveHalfWidth - 0.08f;
-            var lane = Mathf.Clamp(laneOffsets[index], minLane, maxLane);
-            return center + side * lane + GetClampedKnockbackOffset(index, segment, lane, minLane, maxLane);
-        }
-
-        private float GetEffectiveRoadHalfWidth(int index, int segment)
-        {
-            return RoadHalfWidth;
-        }
-
-        private void SampleCorridorFrame(int segment, float distance, out Vector3 center, out Vector3 forward, out Vector3 side)
-        {
-            var intoSegment = Mathf.Max(0f, distance - segmentStartDistances[segment]);
-            var toSegmentEnd = Mathf.Max(0f, segmentEndDistances[segment] - distance);
-            if (segment > 0 && intoSegment < CornerSideBlendDistance)
+            if (gpuSimulation == null)
             {
-                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment - 1] - segmentStartDistances[segment - 1]) * 0.42f, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.42f);
-                var t = Mathf.Clamp01(intoSegment / Mathf.Max(0.001f, radius));
-                var corner = segmentStarts[segment];
-                var p0 = corner - segmentDirections[segment - 1] * radius;
-                var p3 = corner + segmentDirections[segment] * radius;
-                var p1 = p0 + segmentDirections[segment - 1] * radius * 0.58f;
-                var p2 = p3 - segmentDirections[segment] * radius * 0.58f;
-                center = SampleCubic(p0, p1, p2, p3, t);
-                forward = SampleCubicTangent(p0, p1, p2, p3, t);
-                side = Vector3.Cross(Vector3.up, forward).normalized;
                 return;
             }
 
-            if (segment < segmentSides.Length - 1 && toSegmentEnd < CornerSideBlendDistance)
+            while (gpuSimulation.TryDequeueEvent(
+                out var eventIndex,
+                out var eventType,
+                out var eventValue,
+                out var generation,
+                out var sourceIndex))
             {
-                var radius = Mathf.Min(CornerSideBlendDistance, (segmentEndDistances[segment] - segmentStartDistances[segment]) * 0.42f, (segmentEndDistances[segment + 1] - segmentStartDistances[segment + 1]) * 0.42f);
-                var t = Mathf.Clamp01(1f - toSegmentEnd / Mathf.Max(0.001f, radius));
-                var corner = segmentStarts[segment + 1];
-                var p0 = corner - segmentDirections[segment] * radius;
-                var p3 = corner + segmentDirections[segment + 1] * radius;
-                var p1 = p0 + segmentDirections[segment] * radius * 0.58f;
-                var p2 = p3 - segmentDirections[segment + 1] * radius * 0.58f;
-                center = SampleCubic(p0, p1, p2, p3, t);
-                forward = SampleCubicTangent(p0, p1, p2, p3, t);
-                side = Vector3.Cross(Vector3.up, forward).normalized;
+                if (eventType == 1u || eventType == 2u)
+                {
+                    ResolveGpuAgent(eventIndex);
+                    continue;
+                }
+
+                if ((eventType == 3u || eventType == 4u) &&
+                    gpuSimulation.TryGetDynamicTarget(eventIndex, generation, out var target))
+                {
+                    var sourceDefinition = sourceIndex >= 0 && sourceIndex < definitions.Length
+                        ? definitions[sourceIndex]
+                        : null;
+                    target.ApplyGpuCombatState(eventValue, eventType == 4u, sourceDefinition);
+                }
+            }
+        }
+
+        private void ResolveGpuAgent(int index)
+        {
+            if (index < 0 || index >= totalSpawned || !alive[index])
+            {
                 return;
             }
 
-            forward = segmentDirections[segment];
-            side = segmentSides[segment];
-            center = segmentStarts[segment] + forward * Mathf.Max(0f, distance - segmentStartDistances[segment]);
+            alive[index] = false;
+            health[index] = Mathf.Max(0f, health[index]);
+            gpuControls[index] = Vector4.zero;
+            activeCount--;
+            totalResolved++;
         }
 
-        private static Vector3 SampleCubic(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        private Vector3 CalculateSeparation(int index, Vector3 flowDirection, out float congestion)
         {
-            var a = Vector3.Lerp(p0, p1, t);
-            var b = Vector3.Lerp(p1, p2, t);
-            var c = Vector3.Lerp(p2, p3, t);
-            var d = Vector3.Lerp(a, b, t);
-            var e = Vector3.Lerp(b, c, t);
-            return Vector3.Lerp(d, e, t);
-        }
-
-        private static Vector3 SampleCubicTangent(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-        {
-            var oneMinusT = 1f - t;
-            var tangent =
-                3f * oneMinusT * oneMinusT * (p1 - p0) +
-                6f * oneMinusT * t * (p2 - p1) +
-                3f * t * t * (p3 - p2);
-            tangent.y = 0f;
-            return tangent.sqrMagnitude > 0.0001f ? tangent.normalized : (p3 - p0).normalized;
-        }
-
-        private Vector3 GetClampedKnockbackOffset(int index, int segment, float lane, float minLane, float maxLane)
-        {
-            var offset = knockbackOffsets[index];
-            if (offset.sqrMagnitude <= 0.0001f)
+            congestion = 0f;
+            if (activeCount <= 1)
             {
                 return Vector3.zero;
             }
 
-            SampleCorridorFrame(segment, pathDistances[index], out _, out var forward, out var side);
-            var lateral = Mathf.Clamp(Vector3.Dot(offset, side), minLane - lane, maxLane - lane);
-            var longitudinal = Mathf.Clamp(Vector3.Dot(offset, forward), -0.9f, 0.9f);
-            return side * lateral + forward * longitudinal;
-        }
-
-        private void ApplyCrowdPressure(int index, float deltaTime)
-        {
-            if (activeCount <= 1)
-            {
-                return;
-            }
-
             var position = positions[index];
-            CollectNearbyIndices(position, PressureRadius, nearbyIndices, MaxPressureNeighbors + 1);
+            // Buckets are unordered. Gather enough candidates to reach the genuinely
+            // local bodies instead of stopping on the first unrelated bucket entries.
+            CollectNearbyIndices(position, CollisionDiameter, nearbyIndices, 64);
             if (nearbyIndices.Count <= 1)
             {
-                return;
+                return Vector3.zero;
             }
 
-            var segment = Mathf.Clamp(segmentIndices[index], 0, segmentSides.Length - 1);
-            SampleCorridorFrame(segment, pathDistances[index], out _, out _, out var side);
-            var lateralPush = 0f;
-            var forwardPressure = 0f;
+            var push = Vector3.zero;
             var checks = 0;
-            var radiusSq = PressureRadius * PressureRadius;
-            for (var candidate = 0; candidate < nearbyIndices.Count && checks < MaxPressureNeighbors; candidate++)
+            var radiusSq = CollisionDiameter * CollisionDiameter;
+            for (var candidate = 0; candidate < nearbyIndices.Count && checks < MaxCollisionNeighbors; candidate++)
             {
                 var other = nearbyIndices[candidate];
                 if (other == index || !alive[other])
@@ -865,77 +1033,43 @@ namespace TowerDefense.Runtime
 
                 var offset = position - positions[other];
                 var distanceSq = offset.x * offset.x + offset.z * offset.z;
-                if (distanceSq <= 0.0001f || distanceSq > radiusSq)
+                if (distanceSq > radiusSq)
                 {
                     continue;
                 }
 
-                var distance = Mathf.Sqrt(distanceSq);
-                var direction = offset / distance;
-                var pressure = 1f - distance / PressureRadius;
-                lateralPush += Vector3.Dot(direction, side) * pressure;
-                forwardPressure += pressure;
+                Vector3 direction;
+                float distance;
+                if (distanceSq <= 0.0001f)
+                {
+                    // Stable per-pair fallback prevents coincident spawns forming a fixed lattice.
+                    var angle = ((index * 73856093) ^ (other * 19349663)) * 0.0001f;
+                    direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                    distance = 0f;
+                }
+                else
+                {
+                    distance = Mathf.Sqrt(distanceSq);
+                    direction = offset / distance;
+                }
+
+                var overlap = 1f - distance / CollisionDiameter;
+                push += direction * overlap * 1.25f;
+                if (Vector3.Dot(positions[other] - position, flowDirection) > 0f)
+                {
+                    congestion += overlap;
+                }
+
                 checks++;
             }
 
             if (checks <= 0)
             {
-                return;
+                return Vector3.zero;
             }
 
-            laneVelocities[index] += lateralPush * deltaTime * 1.65f;
-            crowdSpeedFactors[index] = Mathf.Min(crowdSpeedFactors[index], Mathf.Lerp(1f, 0.74f, Mathf.Clamp01(forwardPressure / MaxPressureNeighbors)));
-        }
-
-        private void ApplyLaneInertia(int index, float deltaTime)
-        {
-            if (laneVelocities == null || segmentStarts == null)
-            {
-                return;
-            }
-
-            var segment = Mathf.Clamp(segmentIndices[index], 0, segmentStarts.Length - 1);
-            var effectiveHalfWidth = GetEffectiveRoadHalfWidth(index, segment);
-            var minLane = -effectiveHalfWidth + 0.1f;
-            var maxLane = effectiveHalfWidth - 0.1f;
-            var lane = laneOffsets[index];
-            var velocity = laneVelocities[index];
-
-            if (lane < minLane + 0.22f)
-            {
-                velocity += (minLane + 0.22f - lane) * LaneWallBounce * deltaTime;
-            }
-            else if (lane > maxLane - 0.22f)
-            {
-                velocity -= (lane - (maxLane - 0.22f)) * LaneWallBounce * deltaTime;
-            }
-
-            velocity = Mathf.MoveTowards(velocity, 0f, LaneDamping * deltaTime);
-            lane = Mathf.Clamp(lane + velocity * deltaTime, minLane, maxLane);
-            if ((lane <= minLane && velocity < 0f) || (lane >= maxLane && velocity > 0f))
-            {
-                velocity *= -0.24f;
-            }
-
-            laneOffsets[index] = lane;
-            laneVelocities[index] = Mathf.Clamp(velocity, -2.2f, 2.2f);
-        }
-
-        private void UpdateKnockback(int index, float deltaTime)
-        {
-            var velocity = knockbackVelocities[index];
-            if (velocity.sqrMagnitude <= 0.0001f && knockbackOffsets[index].sqrMagnitude <= 0.0001f)
-            {
-                return;
-            }
-
-            knockbackOffsets[index] += velocity * deltaTime;
-            knockbackVelocities[index] = Vector3.MoveTowards(velocity, Vector3.zero, deltaTime * 4.5f);
-            knockbackOffsets[index] = Vector3.MoveTowards(knockbackOffsets[index], Vector3.zero, deltaTime * 1.25f);
-            if (knockbackOffsets[index].sqrMagnitude > 3.24f)
-            {
-                knockbackOffsets[index] = knockbackOffsets[index].normalized * 1.8f;
-            }
+            congestion = Mathf.Clamp01(congestion / 3f);
+            return Vector3.ClampMagnitude(push, 1.25f);
         }
 
         private ICombatTarget FindBlockingTarget(int index)
@@ -1175,66 +1309,6 @@ namespace TowerDefense.Runtime
             return new Vector2Int(Mathf.FloorToInt(position.x / CombatTargetCellSize), Mathf.FloorToInt(position.z / CombatTargetCellSize));
         }
 
-        private Vector3 SampleRoute(float distance, int preferredSegment)
-        {
-            var segment = Mathf.Clamp(preferredSegment, 0, segmentStarts.Length - 1);
-            while (segment < segmentEndDistances.Length - 1 && distance > segmentEndDistances[segment])
-            {
-                segment++;
-            }
-
-            while (segment > 0 && distance < segmentStartDistances[segment])
-            {
-                segment--;
-            }
-
-            return segmentStarts[segment] + segmentDirections[segment] * Mathf.Max(0f, distance - segmentStartDistances[segment]);
-        }
-
-        private void AdvanceSegmentIndex(int enemyIndex)
-        {
-            var segment = segmentIndices[enemyIndex];
-            while (segment < segmentEndDistances.Length - 1 && pathDistances[enemyIndex] > segmentEndDistances[segment])
-            {
-                segment++;
-            }
-
-            segmentIndices[enemyIndex] = segment;
-        }
-
-        private void BuildRouteCache()
-        {
-            var points = path.Waypoints;
-            if (points == null || points.Count < 2)
-            {
-                segmentStarts = null;
-                return;
-            }
-
-            var segmentCount = points.Count - 1;
-            segmentStarts = new Vector3[segmentCount];
-            segmentDirections = new Vector3[segmentCount];
-            segmentSides = new Vector3[segmentCount];
-            segmentStartDistances = new float[segmentCount];
-            segmentEndDistances = new float[segmentCount];
-            var distance = 0f;
-            for (var i = 0; i < segmentCount; i++)
-            {
-                var from = points[i];
-                var to = points[i + 1];
-                var delta = to - from;
-                delta.y = 0f;
-                var length = Mathf.Max(0.001f, delta.magnitude);
-                var direction = delta / length;
-                segmentStarts[i] = from;
-                segmentDirections[i] = direction;
-                segmentSides[i] = Vector3.Cross(Vector3.up, direction);
-                segmentStartDistances[i] = distance;
-                distance += length;
-                segmentEndDistances[i] = distance;
-            }
-        }
-
         private void DrawInstances()
         {
             var camera = Camera.main;
@@ -1401,6 +1475,9 @@ namespace TowerDefense.Runtime
             public readonly int FullFidelity;
             public readonly int CheapFidelity;
             public readonly int NearCombat;
+            public readonly uint OverflowCells;
+            public readonly uint DroppedAgents;
+            public readonly uint MaxCellOccupancy;
             public readonly string ShaderName;
 
             public HordePerformanceSnapshot(
@@ -1420,6 +1497,9 @@ namespace TowerDefense.Runtime
                 int fullFidelity,
                 int cheapFidelity,
                 int nearCombat,
+                uint overflowCells,
+                uint droppedAgents,
+                uint maxCellOccupancy,
                 string shaderName)
             {
                 SpawnMs = spawnMs;
@@ -1438,6 +1518,9 @@ namespace TowerDefense.Runtime
                 FullFidelity = fullFidelity;
                 CheapFidelity = cheapFidelity;
                 NearCombat = nearCombat;
+                OverflowCells = overflowCells;
+                DroppedAgents = droppedAgents;
+                MaxCellOccupancy = maxCellOccupancy;
                 ShaderName = shaderName;
             }
         }

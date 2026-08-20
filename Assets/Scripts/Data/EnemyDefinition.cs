@@ -15,6 +15,10 @@ namespace TowerDefense.Data
         public float maxHealth = 10f;
         public float speed = 3f;
         public float mass = 1f;
+        public float armor;
+        [Range(0f, 0.95f)] public float physicalResistance;
+        [Range(0f, 0.95f)] public float fireResistance;
+        [Range(0f, 0.95f)] public float slowResistance;
         public float attackDamage = 2f;
         public float attackInterval = 0.9f;
         public float wallDamageMultiplier = 1f;

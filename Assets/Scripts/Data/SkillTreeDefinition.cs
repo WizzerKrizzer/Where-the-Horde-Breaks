@@ -15,6 +15,8 @@ namespace TowerDefense.Data
         public string id;
         public string displayName;
         [TextArea] public string description;
+        [Tooltip("Optional visual key such as damage, speed, range, health, fire, barracks or wall. Inferred from effects when empty.")]
+        public string iconKey;
         public Vector2 radialPosition;
         [Min(1)] public int maxRanks = 1;
         [Min(1f)] public float costGrowthMultiplier = 1.2f;
