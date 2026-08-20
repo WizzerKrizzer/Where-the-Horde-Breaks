@@ -68,7 +68,7 @@ Inside the skill tree:
 - Bottom active weapon slot shows cooldown and readiness.
 - Result panel appears after victory or defeat.
 - `Retry` returns to build phase.
-- `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; compact hover cards show the per-rank increase, the live value before and after purchase, and a centered currency cost. Affordable hovered upgrades glow white, unavailable ones glow red, and maxed ones glow teal. Purchases happen directly on the node.
+- `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; compact hover cards show the per-rank increase, the live value before and after purchase, and a centered currency cost. Affordable price numbers are white and unavailable price numbers are red, while currency symbols remain blue. Purchases happen directly on the node.
 - `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, test speed, save/load dev snapshots, switch prototype levels, and run balance automation.
 - The Breaker's Grimoire contains prototype entries for turrets, active weapons, enemies, bosses, and levels.
 
