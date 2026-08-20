@@ -59,7 +59,7 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 Inside the skill tree:
 
 - Hover a node for `0.5` seconds: show its detailed description and next-rank preview
-- Left click a node: select it for purchase
+- Left click a node: immediately purchase its next rank when unlocked and affordable
 - Left mouse drag: pan the tree, including while hovering a node and a small inspection margin when the full tree fits onscreen
 - Mouse wheel: zoom the tree, including while hovering a node
 
@@ -68,7 +68,7 @@ Inside the skill tree:
 - Bottom active weapon slot shows cooldown and readiness.
 - Result panel appears after victory or defeat.
 - `Retry` returns to build phase.
-- `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; hover cards show a short stat label, the accumulated bonus, and the resulting live gameplay value.
+- `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; compact hover cards show the accumulated bonus, resulting live value, next-rank increase, and cost. Purchases happen directly on the node.
 - `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, test speed, save/load dev snapshots, switch prototype levels, and run balance automation.
 - The Breaker's Grimoire contains prototype entries for turrets, active weapons, enemies, bosses, and levels.
 

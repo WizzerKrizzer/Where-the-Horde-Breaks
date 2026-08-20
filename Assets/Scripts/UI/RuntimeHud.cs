@@ -80,7 +80,6 @@ namespace TowerDefense.UI
         private Text upgradeDetailTitle;
         private Text upgradeDetailRank;
         private Text upgradeDetailBody;
-        private Button upgradeBuyButton;
         private SkillNodeDefinition selectedUpgradeNode;
         private SkillNodeDefinition hoveredUpgradeNode;
         private SkillNodeDefinition pendingHoveredUpgradeNode;
@@ -660,7 +659,7 @@ namespace TowerDefense.UI
             }
             ApplyUpgradeTreeTransform();
 
-            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-18f, 44f), new Vector2(320f, 164f), new Vector2(1f, 0f), new Vector2(1f, 0f));
+            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-14f, 44f), new Vector2(300f, 124f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             var upgradeDetailImage = upgradeDetailPanel.GetComponent<Image>();
             upgradeDetailImage.color = new Color(0.018f, 0.035f, 0.052f, 0.96f);
             upgradeDetailImage.raycastTarget = false;
@@ -670,28 +669,24 @@ namespace TowerDefense.UI
             var detailIconObject = new GameObject("DetailIcon");
             detailIconObject.transform.SetParent(upgradeDetailPanel.transform, false);
             var detailIconRect = detailIconObject.AddComponent<RectTransform>();
-            ConfigureCenteredRect(detailIconRect, new Vector2(-137f, 64f), new Vector2(32f, 32f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(detailIconRect, new Vector2(-131f, 47f), new Vector2(24f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailIcon = detailIconObject.AddComponent<SkillTreeIconGraphic>();
             upgradeDetailIcon.color = new Color(0.72f, 0.93f, 1f, 1f);
             upgradeDetailIcon.raycastTarget = false;
-            upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 13);
+            upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 11);
             upgradeDetailTitle.raycastTarget = false;
             upgradeDetailTitle.fontStyle = FontStyle.Bold;
-            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(8f, 64f), new Vector2(226f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeDetailRank = CreateText("DetailRank", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleRight, 11);
+            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(0f, 47f), new Vector2(218f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailRank = CreateText("DetailRank", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleRight, 10);
             upgradeDetailRank.raycastTarget = false;
             upgradeDetailRank.fontStyle = FontStyle.Bold;
             upgradeDetailRank.color = new Color(0.72f, 0.93f, 1f, 1f);
-            ConfigureCenteredRect(upgradeDetailRank.GetComponent<RectTransform>(), new Vector2(136f, 64f), new Vector2(42f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeDetailRank.GetComponent<RectTransform>(), new Vector2(128f, 47f), new Vector2(40f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 10);
             upgradeDetailBody.raycastTarget = false;
             upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
             upgradeDetailBody.verticalOverflow = VerticalWrapMode.Truncate;
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 5f), new Vector2(292f, 82f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "SELECT NODE", new Vector2(0f, -64f), new Vector2(134f, 26f), new Vector2(0.5f, 0.5f), 10);
-            upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
-            upgradeBuyButton.GetComponentInChildren<Text>().raycastTarget = false;
-            upgradeBuyButton.gameObject.SetActive(false);
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, -12f), new Vector2(272f, 82f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailPanel.SetActive(false);
 
             CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
@@ -866,7 +861,7 @@ namespace TowerDefense.UI
             var position = GetUpgradeTreeNodePosition(node);
             var size = node.isMajorUnlock ? new Vector2(76f, 76f) : new Vector2(60f, 60f);
             var button = CreateAnchoredButton($"Node_{node.id}", parent, string.Empty, position, size, new Vector2(0.5f, 0.5f), 10);
-            button.onClick.AddListener(() => SelectUpgradeNode(node));
+            button.onClick.AddListener(() => PurchaseUpgradeNode(node));
             var nodeOutline = button.gameObject.AddComponent<Outline>();
             nodeOutline.effectColor = new Color(0.18f, 0.67f, 0.9f, 0.72f);
             nodeOutline.effectDistance = node.isMajorUnlock ? new Vector2(3f, -3f) : new Vector2(2f, -2f);
@@ -939,13 +934,6 @@ namespace TowerDefense.UI
             ClearUpgradeDetails();
         }
 
-        private void SelectUpgradeNode(SkillNodeDefinition node)
-        {
-            selectedUpgradeNode = node;
-            pendingHoveredUpgradeNode = null;
-            UpdateSelectedUpgradeDetails();
-        }
-
         private void HoverUpgradeNode(SkillNodeDefinition node)
         {
             pendingHoveredUpgradeNode = node;
@@ -1016,22 +1004,15 @@ namespace TowerDefense.UI
 
         private void PurchaseUpgradeNode(SkillNodeDefinition node)
         {
-            selectedUpgradeNode = node;
+            selectedUpgradeNode = null;
+            pendingHoveredUpgradeNode = null;
+            hoveredUpgradeNode = node;
             if (session.TryPurchaseUpgrade(node.id))
             {
                 UpdateUpgradePanel();
             }
 
             UpdateSelectedUpgradeDetails();
-        }
-
-        private void BuySelectedUpgrade()
-        {
-            if (selectedUpgradeNode != null && session.TryPurchaseUpgrade(selectedUpgradeNode.id))
-            {
-                UpdateUpgradePanel();
-                UpdateSelectedUpgradeDetails();
-            }
         }
 
         private void OnUpgradeTreeDragged(Vector2 delta)
@@ -2655,24 +2636,18 @@ namespace TowerDefense.UI
         private void UpdateSelectedUpgradeDetails()
         {
             var inspectedNode = hoveredUpgradeNode ?? selectedUpgradeNode;
-            if (inspectedNode == null || upgradeDetailTitle == null || upgradeDetailBody == null || upgradeBuyButton == null)
+            if (inspectedNode == null || upgradeDetailTitle == null || upgradeDetailBody == null)
             {
                 if (upgradeDetailPanel != null)
                 {
                     upgradeDetailPanel.SetActive(false);
                 }
-                upgradeBuyButton?.gameObject.SetActive(false);
                 return;
             }
 
             if (upgradeDetailPanel != null)
             {
                 upgradeDetailPanel.SetActive(true);
-            }
-            upgradeBuyButton.gameObject.SetActive(true);
-            if (upgradeBuyButton.targetGraphic != null)
-            {
-                upgradeBuyButton.targetGraphic.raycastTarget = selectedUpgradeNode == inspectedNode;
             }
 
             var rank = session.GetUpgradeRank(inspectedNode.id);
@@ -2691,36 +2666,19 @@ namespace TowerDefense.UI
             if (missingPrerequisites)
             {
                 upgradeDetailBody.text = $"{FormatCurrentUpgradeStats(inspectedNode)}\nLOCKED · Requires: {FormatPrerequisiteNames(inspectedNode)}";
-                var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
-                upgradeBuyButton.interactable = false;
-                lockedLabel.text = "LOCKED";
                 return;
             }
 
-            var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
-                upgradeBuyButton.interactable = false;
-                buttonLabel.text = "MAXED";
-            }
-            else if (selectedUpgradeNode != inspectedNode)
-            {
-                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
-                upgradeBuyButton.interactable = false;
-                buttonLabel.text = "CLICK NODE TO SELECT";
-            }
-            else if (session.CanPurchaseUpgrade(inspectedNode.id))
-            {
-                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
-                upgradeBuyButton.interactable = true;
-                buttonLabel.text = $"BUY · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = $"{FormatCurrentUpgradeStats(inspectedNode)}\nMAXED";
             }
             else
             {
-                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
-                upgradeBuyButton.interactable = false;
-                buttonLabel.text = $"NEED · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                var affordability = session.CanPurchaseUpgrade(inspectedNode.id) ? "COST" : "NEED";
+                upgradeDetailBody.text =
+                    $"{FormatCurrentUpgradeStats(inspectedNode)}\n" +
+                    $"NEXT {FormatNextRankIncrease(inspectedNode)} · {affordability} {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
             }
         }
 
@@ -2787,6 +2745,72 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.UnlockTower: return $"{target} Unlock";
                 case UpgradeEffectType.UnlockEra: return $"{effect.targetId} Era";
                 default: return "Upgrade";
+            }
+        }
+
+        private static string FormatNextRankIncrease(SkillNodeDefinition node)
+        {
+            if (node?.effects == null || node.effects.Length == 0)
+            {
+                return "Milestone";
+            }
+
+            var text = new StringBuilder();
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                var increase = FormatEffectRankIncrease(node.effects[i]);
+                if (string.IsNullOrWhiteSpace(increase))
+                {
+                    continue;
+                }
+
+                if (text.Length > 0)
+                {
+                    text.Append(" / ");
+                }
+                text.Append(increase);
+            }
+
+            return text.Length > 0 ? text.ToString() : "Upgrade";
+        }
+
+        private static string FormatEffectRankIncrease(UpgradeEffect effect)
+        {
+            switch (effect.type)
+            {
+                case UpgradeEffectType.ActiveWeaponDamagePercent: return $"+{effect.value:0.#}% damage";
+                case UpgradeEffectType.ActiveWeaponCooldownPercent: return $"-{effect.value:0.#}% cooldown";
+                case UpgradeEffectType.ActiveWeaponRadiusFlat: return $"+{effect.value:0.#} radius";
+                case UpgradeEffectType.ActiveWeaponPierceFlat: return $"+{effect.value:0.#} targets";
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock: return "Enable auto-fire";
+                case UpgradeEffectType.PerTypeTowerLimitFlat: return $"+{effect.value:0.#} limit";
+                case UpgradeEffectType.TowerDamageFlat: return $"+{effect.value:0.#} damage";
+                case UpgradeEffectType.TowerDamagePercent: return $"+{effect.value:0.#}% damage";
+                case UpgradeEffectType.TowerFireRateFlat: return $"+{effect.value:0.#} shots/sec";
+                case UpgradeEffectType.TowerFireRatePercent: return $"+{effect.value:0.#}% fire rate";
+                case UpgradeEffectType.TowerProjectileSpeedPercent: return $"+{effect.value:0.#}% speed";
+                case UpgradeEffectType.TowerAimAssistPercent: return $"+{effect.value:0.#}% aim assist";
+                case UpgradeEffectType.TowerPierceFlat: return $"+{effect.value:0.#} pierce";
+                case UpgradeEffectType.TowerDoubleShotChancePercent: return $"+{effect.value:0.#}% double shot";
+                case UpgradeEffectType.TowerSlowPercentFlat: return $"+{effect.value:0.#}% slow";
+                case UpgradeEffectType.TowerSlowCapacityFlat: return $"+{effect.value:0.#} capacity";
+                case UpgradeEffectType.TowerRangeFlat: return $"+{effect.value:0.#} range";
+                case UpgradeEffectType.TowerHealthFlat: return $"+{effect.value:0.#} health";
+                case UpgradeEffectType.TowerThornsDamageFlat: return $"+{effect.value:0.#} thorns";
+                case UpgradeEffectType.BarracksUnitCapacityFlat: return $"+{effect.value:0.#} slot";
+                case UpgradeEffectType.BarracksUnitDamagePercent: return $"+{effect.value:0.#}% troop damage";
+                case UpgradeEffectType.BarracksUnitHealthPercent: return $"+{effect.value:0.#}% troop health";
+                case UpgradeEffectType.BarracksRespawnCooldownPercent: return $"-{effect.value:0.#}% respawn";
+                case UpgradeEffectType.EnableTowerFire: return "Enable fire";
+                case UpgradeEffectType.TowerFireDamagePerTickFlat: return $"+{effect.value:0.#} burn damage";
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat: return $"+{effect.value:0.#} ticks/sec";
+                case UpgradeEffectType.TowerFireMaxStacksFlat: return $"+{effect.value:0.#} stack";
+                case UpgradeEffectType.TowerFireDurationFlat: return $"+{effect.value:0.#}s duration";
+                case UpgradeEffectType.BaseLivesFlat: return $"+{effect.value:0.#} life";
+                case UpgradeEffectType.LevelEndKillEssenceFlat: return $"+{effect.value:0.#} essence";
+                case UpgradeEffectType.UnlockTower: return "Unlock tower";
+                case UpgradeEffectType.UnlockEra: return "Unlock era";
+                default: return string.Empty;
             }
         }
 
