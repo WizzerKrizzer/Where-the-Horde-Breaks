@@ -78,6 +78,7 @@ namespace TowerDefense.UI
         private SkillTreeIconGraphic upgradeDetailIcon;
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
+        private Text upgradeDetailRank;
         private Text upgradeDetailBody;
         private Button upgradeBuyButton;
         private SkillNodeDefinition selectedUpgradeNode;
@@ -676,7 +677,12 @@ namespace TowerDefense.UI
             upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 13);
             upgradeDetailTitle.raycastTarget = false;
             upgradeDetailTitle.fontStyle = FontStyle.Bold;
-            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(18f, 64f), new Vector2(250f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(8f, 64f), new Vector2(226f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailRank = CreateText("DetailRank", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleRight, 11);
+            upgradeDetailRank.raycastTarget = false;
+            upgradeDetailRank.fontStyle = FontStyle.Bold;
+            upgradeDetailRank.color = new Color(0.72f, 0.93f, 1f, 1f);
+            ConfigureCenteredRect(upgradeDetailRank.GetComponent<RectTransform>(), new Vector2(136f, 64f), new Vector2(42f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 10);
             upgradeDetailBody.raycastTarget = false;
             upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
@@ -1000,6 +1006,11 @@ namespace TowerDefense.UI
             if (upgradeDetailBody != null)
             {
                 upgradeDetailBody.text = string.Empty;
+            }
+
+            if (upgradeDetailRank != null)
+            {
+                upgradeDetailRank.text = string.Empty;
             }
         }
 
@@ -2667,7 +2678,11 @@ namespace TowerDefense.UI
             var rank = session.GetUpgradeRank(inspectedNode.id);
             var maxRank = session.GetUpgradeMaxRank(inspectedNode.id);
             var missingPrerequisites = MissingPrerequisites(inspectedNode);
-            upgradeDetailTitle.text = $"{inspectedNode.displayName}  {rank}/{maxRank}";
+            upgradeDetailTitle.text = $"{inspectedNode.displayName} — {FormatUpgradeStatNames(inspectedNode)}";
+            if (upgradeDetailRank != null)
+            {
+                upgradeDetailRank.text = $"{rank}/{maxRank}";
+            }
             if (upgradeDetailIcon != null)
             {
                 upgradeDetailIcon.Kind = ResolveSkillTreeIcon(inspectedNode);
@@ -2675,7 +2690,7 @@ namespace TowerDefense.UI
             }
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\nLOCKED · Requires: {FormatPrerequisiteNames(inspectedNode)}";
+                upgradeDetailBody.text = $"{FormatCurrentUpgradeStats(inspectedNode)}\nLOCKED · Requires: {FormatPrerequisiteNames(inspectedNode)}";
                 var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
                 upgradeBuyButton.interactable = false;
                 lockedLabel.text = "LOCKED";
@@ -2685,27 +2700,93 @@ namespace TowerDefense.UI
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\nCURRENT · {FormatCurrentUpgradeStats(inspectedNode)}";
+                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "MAXED";
             }
             else if (selectedUpgradeNode != inspectedNode)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "CLICK NODE TO SELECT";
             }
             else if (session.CanPurchaseUpgrade(inspectedNode.id))
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
                 upgradeBuyButton.interactable = true;
-                buttonLabel.text = "BUY RANK";
+                buttonLabel.text = $"BUY · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
             }
             else
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = FormatCurrentUpgradeStats(inspectedNode);
                 upgradeBuyButton.interactable = false;
-                buttonLabel.text = "NEED COST";
+                buttonLabel.text = $"NEED · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+            }
+        }
+
+        private static string FormatUpgradeStatNames(SkillNodeDefinition node)
+        {
+            if (node?.effects == null || node.effects.Length == 0)
+            {
+                return "Milestone";
+            }
+
+            var names = new List<string>();
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                var name = FormatEffectStatName(node.effects[i]);
+                if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
+                {
+                    names.Add(name);
+                }
+            }
+
+            if (names.Count == 0)
+            {
+                return "Upgrade";
+            }
+
+            return names.Count <= 2 ? string.Join(" + ", names) : names[0] + " + More";
+        }
+
+        private static string FormatEffectStatName(UpgradeEffect effect)
+        {
+            var target = FormatTargetName(effect.targetId);
+            switch (effect.type)
+            {
+                case UpgradeEffectType.ActiveWeaponDamagePercent: return "Active Weapon Damage";
+                case UpgradeEffectType.ActiveWeaponCooldownPercent: return "Active Weapon Cooldown";
+                case UpgradeEffectType.ActiveWeaponRadiusFlat: return "Active Weapon Radius";
+                case UpgradeEffectType.ActiveWeaponPierceFlat: return "Active Weapon Targets";
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock: return "Active Weapon Auto-Fire";
+                case UpgradeEffectType.PerTypeTowerLimitFlat: return $"{target} Limit";
+                case UpgradeEffectType.TowerDamageFlat:
+                case UpgradeEffectType.TowerDamagePercent: return $"{target} Damage";
+                case UpgradeEffectType.TowerFireRateFlat:
+                case UpgradeEffectType.TowerFireRatePercent: return $"{target} Fire Rate";
+                case UpgradeEffectType.TowerProjectileSpeedPercent: return $"{target} Projectile Speed";
+                case UpgradeEffectType.TowerAimAssistPercent: return $"{target} Aim Assist";
+                case UpgradeEffectType.TowerPierceFlat: return $"{target} Pierce";
+                case UpgradeEffectType.TowerDoubleShotChancePercent: return $"{target} Double Shot";
+                case UpgradeEffectType.TowerSlowPercentFlat: return $"{target} Slow";
+                case UpgradeEffectType.TowerSlowCapacityFlat: return $"{target} Slow Capacity";
+                case UpgradeEffectType.TowerRangeFlat: return $"{target} Range";
+                case UpgradeEffectType.TowerHealthFlat: return $"{target} Health";
+                case UpgradeEffectType.TowerThornsDamageFlat: return $"{target} Thorns";
+                case UpgradeEffectType.BarracksUnitCapacityFlat: return $"{target} Troop Slots";
+                case UpgradeEffectType.BarracksUnitDamagePercent: return $"{target} Troop Damage";
+                case UpgradeEffectType.BarracksUnitHealthPercent: return $"{target} Troop Health";
+                case UpgradeEffectType.BarracksRespawnCooldownPercent: return $"{target} Respawn";
+                case UpgradeEffectType.EnableTowerFire: return $"{target} Fire";
+                case UpgradeEffectType.TowerFireDamagePerTickFlat: return $"{target} Burn Damage";
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat: return $"{target} Burn Rate";
+                case UpgradeEffectType.TowerFireMaxStacksFlat: return $"{target} Burn Stacks";
+                case UpgradeEffectType.TowerFireDurationFlat: return $"{target} Burn Duration";
+                case UpgradeEffectType.BaseLivesFlat: return "Base Lives";
+                case UpgradeEffectType.LevelEndKillEssenceFlat: return "Level Essence";
+                case UpgradeEffectType.UnlockTower: return $"{target} Unlock";
+                case UpgradeEffectType.UnlockEra: return $"{effect.targetId} Era";
+                default: return "Upgrade";
             }
         }
 
@@ -2954,6 +3035,10 @@ namespace TowerDefense.UI
             for (var i = 0; i < node.effects.Length; i++)
             {
                 var line = FormatEffectCurrentValue(node.effects[i]);
+                if (node.effects.Length > 1)
+                {
+                    line = line?.Replace("\n", " · ");
+                }
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
@@ -2973,102 +3058,101 @@ namespace TowerDefense.UI
         private string FormatEffectCurrentValue(UpgradeEffect effect)
         {
             var current = session.GetUpgradeEffectTotal(effect.type, effect.targetId);
-            var target = FormatTargetName(effect.targetId);
             var tower = session.GetTowerDefinition(effect.targetId);
 
             switch (effect.type)
             {
                 case UpgradeEffectType.UnlockTower:
-                    return $"{target}: unlocked";
+                    return current > 0f ? "Unlocked" : "Not unlocked";
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                 {
                     var baseLimit = tower != null ? tower.perTypeLimit : 0;
-                    return $"{target} limit: {baseLimit + Mathf.RoundToInt(current)}";
+                    return $"+{Mathf.RoundToInt(current)} total\n{baseLimit + Mathf.RoundToInt(current)} placement limit";
                 }
                 case UpgradeEffectType.TowerDamagePercent:
                 {
                     var baseDamage = session.GetTowerBaseDamage(effect.targetId);
                     var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamageFlat, effect.targetId);
                     var currentDamage = baseDamage * (1f + current / 100f) + flatBonus;
-                    return $"{target} bonus damage: {current:0}%\nDamage/hit: {currentDamage:0.#}";
+                    return $"+{current:0}% total\n{currentDamage:0.#} damage/hit";
                 }
                 case UpgradeEffectType.TowerDamageFlat:
                 {
                     var baseDamage = session.GetTowerBaseDamage(effect.targetId);
                     var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, effect.targetId);
                     var currentDamage = baseDamage * (1f + percentBonus / 100f) + current;
-                    return $"{target} damage/hit: {currentDamage:0.#}";
+                    return $"+{current:0.#} damage total\n{currentDamage:0.#} damage/hit";
                 }
                 case UpgradeEffectType.TowerFireRatePercent:
                 {
                     var baseRate = session.GetTowerBaseFireRate(effect.targetId);
                     var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRateFlat, effect.targetId);
                     var currentRate = baseRate * (1f + current / 100f) + flatBonus;
-                    return $"{target} fire rate bonus: {current:0}%\nShots/sec: {currentRate:0.#}";
+                    return $"+{current:0}% total\n{currentRate:0.#} shots/sec";
                 }
                 case UpgradeEffectType.TowerFireRateFlat:
                 {
                     var baseRate = session.GetTowerBaseFireRate(effect.targetId);
                     var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, effect.targetId);
                     var currentRate = baseRate * (1f + percentBonus / 100f) + current;
-                    return $"{target} shots/sec: {currentRate:0.#}";
+                    return $"+{current:0.#} shots/sec total\n{currentRate:0.#} shots/sec";
                 }
                 case UpgradeEffectType.TowerProjectileSpeedPercent:
                 {
                     var baseSpeed = session.GetTowerBaseProjectileSpeed(effect.targetId);
                     var currentSpeed = baseSpeed * (1f + current / 100f);
-                    return $"{target} projectile speed: {current:0}%\nSpeed: {currentSpeed:0.#}";
+                    return $"+{current:0}% total\n{currentSpeed:0.#} projectile speed";
                 }
                 case UpgradeEffectType.TowerAimAssistPercent:
-                    return $"Projectile aim assist: {current:0}%";
+                    return $"+{current:0}% total\n{current:0}% attraction";
                 case UpgradeEffectType.TowerPierceFlat:
-                    return $"{target} pierce: {Mathf.RoundToInt(current)}";
+                    return $"+{Mathf.RoundToInt(current)} total\n{Mathf.RoundToInt(current)} extra pierce";
                 case UpgradeEffectType.TowerDoubleShotChancePercent:
-                    return $"{target} double shot chance: {current:0}%";
+                    return $"+{current:0}% total\n{current:0}% double-shot chance";
                 case UpgradeEffectType.TowerSlowPercentFlat:
-                    return $"{target} slow: {current:0}%";
+                    return $"+{current:0}% total\n{current:0}% slow";
                 case UpgradeEffectType.TowerSlowCapacityFlat:
-                    return $"{target} slow capacity: {current:0.#} mass";
+                    return $"+{current:0.#} total\n{current:0.#} slow capacity";
                 case UpgradeEffectType.TowerRangeFlat:
-                    return $"{target} range: {(tower != null ? tower.range : current):0.#}";
+                    return $"+{current:0.#} range total\n{(tower != null ? tower.range : current):0.#} range";
                 case UpgradeEffectType.TowerHealthFlat:
-                    return $"{target} health: {(tower != null ? tower.health : current):0.#}";
+                    return $"+{current:0.#} health total\n{(tower != null ? tower.health : current):0.#} health";
                 case UpgradeEffectType.TowerThornsDamageFlat:
-                    return $"{target} thorns damage: {current:0.#}";
+                    return $"+{current:0.#} damage total\n{current:0.#} thorns damage";
                 case UpgradeEffectType.BarracksUnitCapacityFlat:
-                    return $"{target} troop slots: {(tower != null ? tower.barracksCapacity : Mathf.RoundToInt(current))}";
+                    return $"+{Mathf.RoundToInt(current)} slots total\n{(tower != null ? tower.barracksCapacity : Mathf.RoundToInt(current))} troop slots";
                 case UpgradeEffectType.BarracksUnitDamagePercent:
-                    return $"{target} troop damage bonus: {current:0}%\nTroop damage: {(tower != null ? tower.alliedUnitDamage : 0f):0.#}";
+                    return $"+{current:0}% total\n{(tower != null ? tower.alliedUnitDamage : 0f):0.#} troop damage";
                 case UpgradeEffectType.BarracksUnitHealthPercent:
-                    return $"{target} troop health bonus: {current:0}%\nTroop health: {(tower != null ? tower.alliedUnitHealth : 0f):0.#}";
+                    return $"+{current:0}% total\n{(tower != null ? tower.alliedUnitHealth : 0f):0.#} troop health";
                 case UpgradeEffectType.BarracksRespawnCooldownPercent:
-                    return $"{target} respawn reduction: {current:0}%\nRespawn: {(tower != null ? tower.barracksRespawnSeconds : 0f):0.#}s";
+                    return $"-{current:0}% total\n{(tower != null ? tower.barracksRespawnSeconds : 0f):0.#}s respawn";
                 case UpgradeEffectType.EnableTowerFire:
-                    return $"{target} fire: unlocked";
+                    return current > 0f ? "Fire unlocked" : "Fire locked";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:
-                    return $"{target} burn damage/tick: {current:0.#}";
+                    return $"+{current:0.#} total\n{current:0.#} burn damage/tick";
                 case UpgradeEffectType.TowerFireTicksPerSecondFlat:
-                    return $"{target} burn ticks/sec: {current:0.#}";
+                    return $"+{current:0.#} total\n{current:0.#} burn ticks/sec";
                 case UpgradeEffectType.TowerFireMaxStacksFlat:
-                    return $"{target} burn stacks: {Mathf.RoundToInt(current)}";
+                    return $"+{Mathf.RoundToInt(current)} total\n{Mathf.RoundToInt(current)} burn stacks";
                 case UpgradeEffectType.TowerFireDurationFlat:
-                    return $"{target} burn duration: {current:0.#}s";
+                    return $"+{current:0.#}s total\n{current:0.#}s burn duration";
                 case UpgradeEffectType.ActiveWeaponDamagePercent:
-                    return $"Active weapon bonus damage: {current:0}%\nDamage/hit: {session.BaseActiveWeaponDamage * (1f + current / 100f):0.#}";
+                    return $"+{current:0}% total\n{session.BaseActiveWeaponDamage * (1f + current / 100f):0.#} damage/hit";
                 case UpgradeEffectType.ActiveWeaponCooldownPercent:
-                    return $"Active weapon cooldown reduction: {current:0}%\nCooldown: {session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - current / 100f):0.#}s";
+                    return $"-{current:0}% total\n{session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - current / 100f):0.#}s cooldown";
                 case UpgradeEffectType.ActiveWeaponRadiusFlat:
-                    return $"Active weapon radius: {session.BaseActiveWeaponRadius + current:0.#}";
+                    return $"+{current:0.#} radius total\n{session.BaseActiveWeaponRadius + current:0.#} radius";
                 case UpgradeEffectType.ActiveWeaponPierceFlat:
-                    return $"Active weapon targets: {session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(current)}";
+                    return $"+{Mathf.RoundToInt(current)} targets total\n{session.BaseActiveWeaponMaxTargets + Mathf.RoundToInt(current)} max targets";
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
-                    return "Active weapon auto-fire: unlocked";
+                    return current > 0f ? "Auto-fire unlocked" : "Auto-fire locked";
                 case UpgradeEffectType.BaseLivesFlat:
-                    return $"Base lives: {session.Level.startingLives + Mathf.RoundToInt(current)}";
+                    return $"+{Mathf.RoundToInt(current)} lives total\n{session.Level.startingLives + Mathf.RoundToInt(current)} base lives";
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
-                    return $"Bonus after each level: {Mathf.RoundToInt(current)} {FormatCurrencySymbol(CurrencyType.KillEssence)}";
+                    return $"+{Mathf.RoundToInt(current)} total\n{Mathf.RoundToInt(current)} {FormatCurrencySymbol(CurrencyType.KillEssence)} after each level";
                 case UpgradeEffectType.UnlockEra:
-                    return $"{effect.targetId} era: unlocked";
+                    return current > 0f ? "Era unlocked" : "Era locked";
                 default:
                     return FormatEffect(effect);
             }
