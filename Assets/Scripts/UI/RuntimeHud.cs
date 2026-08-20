@@ -81,6 +81,7 @@ namespace TowerDefense.UI
         private Text upgradeDetailRank;
         private Text upgradeDetailBody;
         private Text upgradeDetailCost;
+        private Outline upgradeDetailCostGlow;
         private SkillNodeDefinition selectedUpgradeNode;
         private SkillNodeDefinition hoveredUpgradeNode;
         private SkillNodeDefinition pendingHoveredUpgradeNode;
@@ -695,6 +696,8 @@ namespace TowerDefense.UI
             upgradeDetailCost.raycastTarget = false;
             upgradeDetailCost.fontStyle = FontStyle.Bold;
             ConfigureCenteredRect(upgradeDetailCost.GetComponent<RectTransform>(), new Vector2(0f, -48f), new Vector2(210f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailCostGlow = upgradeDetailCost.gameObject.AddComponent<Outline>();
+            upgradeDetailCostGlow.effectDistance = new Vector2(1.4f, -1.4f);
             upgradeDetailPanel.SetActive(false);
 
             CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
@@ -2559,10 +2562,15 @@ namespace TowerDefense.UI
                 if (outline != null)
                 {
                     outline.effectColor = isInspected
-                        ? new Color(0.96f, 0.9f, 0.42f, 1f)
+                        ? rank >= maxRank
+                            ? new Color(0.35f, 1f, 0.72f, 1f)
+                            : session.CanPurchaseUpgrade(nodeId)
+                                ? Color.white
+                                : new Color(1f, 0.16f, 0.12f, 1f)
                         : rank >= maxRank
                             ? new Color(0.18f, 0.9f, 0.72f, 0.85f)
                             : new Color(0.18f, 0.67f, 0.9f, 0.72f);
+                    outline.effectDistance = isInspected ? new Vector2(3f, -3f) : new Vector2(2f, -2f);
                 }
             }
 
@@ -2680,6 +2688,7 @@ namespace TowerDefense.UI
             {
                 upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
                 upgradeDetailCost.text = $"LOCKED · {FormatTooltipCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                SetUpgradeCostVisual(false);
                 return;
             }
 
@@ -2687,11 +2696,41 @@ namespace TowerDefense.UI
             {
                 upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
                 upgradeDetailCost.text = "MAXED";
+                SetUpgradeCostVisual(false, true);
             }
             else
             {
                 upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
                 upgradeDetailCost.text = FormatTooltipCosts(session.GetUpgradeNextCosts(inspectedNode.id));
+                SetUpgradeCostVisual(session.CanPurchaseUpgrade(inspectedNode.id));
+            }
+        }
+
+        private void SetUpgradeCostVisual(bool affordable, bool maxed = false)
+        {
+            if (upgradeDetailCost == null)
+            {
+                return;
+            }
+
+            if (maxed)
+            {
+                upgradeDetailCost.color = new Color(0.55f, 1f, 0.78f, 1f);
+                if (upgradeDetailCostGlow != null)
+                {
+                    upgradeDetailCostGlow.effectColor = new Color(0.08f, 0.65f, 0.46f, 0.9f);
+                }
+                return;
+            }
+
+            upgradeDetailCost.color = affordable
+                ? Color.white
+                : new Color(1f, 0.24f, 0.2f, 1f);
+            if (upgradeDetailCostGlow != null)
+            {
+                upgradeDetailCostGlow.effectColor = affordable
+                    ? new Color(0.35f, 0.68f, 1f, 0.95f)
+                    : new Color(0.7f, 0.015f, 0.01f, 0.95f);
             }
         }
 
@@ -3236,11 +3275,9 @@ namespace TowerDefense.UI
                     text.Append("   ");
                 }
 
-                text.Append("<color=#ff6f21>");
                 text.Append(costs[i].amount);
-                text.Append("</color> <color=#8295ff>");
+                text.Append(' ');
                 text.Append(FormatCurrencySymbol(costs[i].currency));
-                text.Append("</color>");
             }
 
             return text.ToString();
