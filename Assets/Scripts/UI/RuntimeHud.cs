@@ -3041,10 +3041,27 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.TowerFireDurationFlat: return $"+{effect.value:0.#}s duration";
                 case UpgradeEffectType.BaseLivesFlat: return $"+{effect.value:0.#} life";
                 case UpgradeEffectType.LevelEndKillEssenceFlat: return $"+{effect.value:0.#} essence";
-                case UpgradeEffectType.UnlockTower: return "Unlock tower";
+                case UpgradeEffectType.UnlockTower: return FormatTowerUnlockText(effect.targetId);
                 case UpgradeEffectType.UnlockEra: return "Unlock era";
                 default: return string.Empty;
             }
+        }
+
+        private static string FormatTowerUnlockText(string targetId)
+        {
+            var target = FormatTargetName(targetId);
+            if (IsBarracksTarget(targetId) || targetId == "barrier")
+            {
+                return $"Unlocks the \"{target}\"";
+            }
+
+            const string towerSuffix = " Tower";
+            if (target.EndsWith(towerSuffix, StringComparison.Ordinal))
+            {
+                target = target.Substring(0, target.Length - towerSuffix.Length);
+            }
+
+            return $"Unlocks the \"{target}\" tower";
         }
 
         private string FormatPrerequisiteNames(SkillNodeDefinition node)
