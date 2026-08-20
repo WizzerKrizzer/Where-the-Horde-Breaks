@@ -80,6 +80,7 @@ namespace TowerDefense.UI
         private Text upgradeDetailTitle;
         private Text upgradeDetailRank;
         private Text upgradeDetailBody;
+        private Text upgradeDetailCost;
         private SkillNodeDefinition selectedUpgradeNode;
         private SkillNodeDefinition hoveredUpgradeNode;
         private SkillNodeDefinition pendingHoveredUpgradeNode;
@@ -682,11 +683,18 @@ namespace TowerDefense.UI
             upgradeDetailRank.fontStyle = FontStyle.Bold;
             upgradeDetailRank.color = new Color(0.72f, 0.93f, 1f, 1f);
             ConfigureCenteredRect(upgradeDetailRank.GetComponent<RectTransform>(), new Vector2(128f, 47f), new Vector2(40f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+            var detailDivider = CreateImage("DetailDivider", upgradeDetailPanel.transform, new Vector2(0f, 31f), new Vector2(276f, 1f), new Color(0.78f, 0.88f, 0.94f, 0.9f));
+            detailDivider.raycastTarget = false;
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 10);
             upgradeDetailBody.raycastTarget = false;
             upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
             upgradeDetailBody.verticalOverflow = VerticalWrapMode.Truncate;
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, -12f), new Vector2(272f, 82f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 3f), new Vector2(272f, 44f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailCost = CreateText("DetailCost", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
+            upgradeDetailCost.raycastTarget = false;
+            upgradeDetailCost.fontStyle = FontStyle.Bold;
+            ConfigureCenteredRect(upgradeDetailCost.GetComponent<RectTransform>(), new Vector2(0f, -48f), new Vector2(210f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailPanel.SetActive(false);
 
             CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
@@ -999,6 +1007,11 @@ namespace TowerDefense.UI
             if (upgradeDetailRank != null)
             {
                 upgradeDetailRank.text = string.Empty;
+            }
+
+            if (upgradeDetailCost != null)
+            {
+                upgradeDetailCost.text = string.Empty;
             }
         }
 
@@ -2636,7 +2649,7 @@ namespace TowerDefense.UI
         private void UpdateSelectedUpgradeDetails()
         {
             var inspectedNode = hoveredUpgradeNode ?? selectedUpgradeNode;
-            if (inspectedNode == null || upgradeDetailTitle == null || upgradeDetailBody == null)
+            if (inspectedNode == null || upgradeDetailTitle == null || upgradeDetailBody == null || upgradeDetailCost == null)
             {
                 if (upgradeDetailPanel != null)
                 {
@@ -2665,21 +2678,20 @@ namespace TowerDefense.UI
             }
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text =
-                    $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\n" +
-                    $"COST {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))} · LOCKED: {FormatPrerequisiteNames(inspectedNode)}";
+                upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
+                upgradeDetailCost.text = $"LOCKED · {FormatTooltipCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 return;
             }
 
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\nMAXED";
+                upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
+                upgradeDetailCost.text = "MAXED";
             }
             else
             {
-                upgradeDetailBody.text =
-                    $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\n" +
-                    $"COST {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = FormatUpgradeProgression(inspectedNode, rank, maxRank);
+                upgradeDetailCost.text = FormatTooltipCosts(session.GetUpgradeNextCosts(inspectedNode.id));
             }
         }
 
@@ -2712,7 +2724,7 @@ namespace TowerDefense.UI
         {
             if (node?.effects == null || node.effects.Length == 0)
             {
-                return rank < maxRank ? "Locked → Unlocked\nMAX Unlocked" : "Unlocked\nMAX Unlocked";
+                return rank < maxRank ? "+1 milestone\n(Locked → Unlocked)" : "+1 milestone\n(Unlocked)";
             }
 
             var remainingRanks = Mathf.Max(0, maxRank - rank);
@@ -2720,10 +2732,14 @@ namespace TowerDefense.UI
             var text = new StringBuilder();
             for (var i = 0; i < node.effects.Length; i++)
             {
-                var line = FormatEffectProgression(node.effects[i], remainingRanks, hasNextRank);
+                var increase = FormatEffectRankIncrease(node.effects[i]);
+                var transition = FormatEffectProgression(node.effects[i], remainingRanks, hasNextRank);
+                var line = node.effects.Length > 1
+                    ? $"{increase} {transition}"
+                    : $"{increase}\n{transition}";
                 if (node.effects.Length > 1)
                 {
-                    line = line?.Replace("\nMAX ", " · MAX ");
+                    line = line?.Replace("\n", " ");
                 }
                 if (string.IsNullOrWhiteSpace(line))
                 {
@@ -2900,7 +2916,9 @@ namespace TowerDefense.UI
 
         private static string FormatProgressionValues(float current, float next, float maximum, string unit, string suffix = "")
         {
-            return $"{current:0.#}{suffix} → {next:0.#}{suffix} {unit}\nMAX {maximum:0.#}{suffix} {unit}";
+            return Mathf.Approximately(current, next)
+                ? $"({current:0.#}{suffix})"
+                : $"({current:0.#}{suffix} → {next:0.#}{suffix})";
         }
 
         private static string FormatPercentScaledProgression(float currentValue, float currentBonus, float nextBonus, float maxBonus, string unit)
@@ -2915,7 +2933,7 @@ namespace TowerDefense.UI
         {
             var current = unlocked ? unlockedText : lockedText;
             var next = unlocked || !hasNextRank ? current : unlockedText;
-            return $"{current} → {next}\nMAX {unlockedText}";
+            return current == next ? $"({current})" : $"({current} → {next})";
         }
 
         private static string FormatEffectStatName(UpgradeEffect effect)
@@ -2997,7 +3015,7 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.PerTypeTowerLimitFlat: return $"+{effect.value:0.#} limit";
                 case UpgradeEffectType.TowerDamageFlat: return $"+{effect.value:0.#} damage";
                 case UpgradeEffectType.TowerDamagePercent: return $"+{effect.value:0.#}% damage";
-                case UpgradeEffectType.TowerFireRateFlat: return $"+{effect.value:0.#} shots/sec";
+                case UpgradeEffectType.TowerFireRateFlat: return $"+{effect.value:0.#} shots / second";
                 case UpgradeEffectType.TowerFireRatePercent: return $"+{effect.value:0.#}% fire rate";
                 case UpgradeEffectType.TowerProjectileSpeedPercent: return $"+{effect.value:0.#}% speed";
                 case UpgradeEffectType.TowerAimAssistPercent: return $"+{effect.value:0.#}% aim assist";
@@ -3198,6 +3216,31 @@ namespace TowerDefense.UI
                 text.Append(costs[i].amount);
                 text.Append(' ');
                 text.Append(FormatCurrencySymbol(costs[i].currency));
+            }
+
+            return text.ToString();
+        }
+
+        private static string FormatTooltipCosts(CurrencyAmount[] costs)
+        {
+            if (costs == null || costs.Length == 0)
+            {
+                return "FREE";
+            }
+
+            var text = new StringBuilder();
+            for (var i = 0; i < costs.Length; i++)
+            {
+                if (i > 0)
+                {
+                    text.Append("   ");
+                }
+
+                text.Append("<color=#ff6f21>");
+                text.Append(costs[i].amount);
+                text.Append("</color> <color=#8295ff>");
+                text.Append(FormatCurrencySymbol(costs[i].currency));
+                text.Append("</color>");
             }
 
             return text.ToString();
