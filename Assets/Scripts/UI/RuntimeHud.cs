@@ -599,9 +599,11 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(upgradeDetailCost.GetComponent<RectTransform>(), new Vector2(0f, -48f), new Vector2(210f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailPanel.SetActive(false);
 
-            CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
+            CreateAnchoredButton("ResetUpgradeButton", upgradePanel.transform, "RESET", new Vector2(-140f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateAnchoredButton("CloseUpgradeButton", upgradePanel.transform, "BACK", new Vector2(70f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
+            CreateAnchoredButton("BuyAllUpgradeButton", upgradePanel.transform, "BUY ALL", new Vector2(0f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
+                .onClick.AddListener(BuyAllAffordableUpgrades);
+            CreateAnchoredButton("CloseUpgradeButton", upgradePanel.transform, "BACK", new Vector2(140f, 18f), new Vector2(120f, 28f), new Vector2(0.5f, 0f), 13)
                 .onClick.AddListener(() => SetUpgradePanelVisible(false));
 
             input.RegisterBlockingUiRect(upgradePanel.GetComponent<RectTransform>());
@@ -927,6 +929,37 @@ namespace TowerDefense.UI
                 UpdateUpgradePanel();
             }
 
+            UpdateSelectedUpgradeDetails();
+        }
+
+        private void BuyAllAffordableUpgrades()
+        {
+            var nodes = session.UpgradeNodes;
+            var remainingRanks = 0;
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                remainingRanks += Mathf.Max(0, session.GetUpgradeMaxRank(nodes[i].id) - session.GetUpgradeRank(nodes[i].id));
+            }
+
+            var purchasedRanks = 0;
+            var purchasedDuringPass = true;
+            while (purchasedDuringPass && purchasedRanks < remainingRanks)
+            {
+                purchasedDuringPass = false;
+                for (var i = 0; i < nodes.Count && purchasedRanks < remainingRanks; i++)
+                {
+                    var node = nodes[i];
+                    if (!session.CanPurchaseUpgrade(node.id) || !session.TryPurchaseUpgrade(node.id))
+                    {
+                        continue;
+                    }
+
+                    purchasedRanks++;
+                    purchasedDuringPass = true;
+                }
+            }
+
+            UpdateUpgradePanel();
             UpdateSelectedUpgradeDetails();
         }
 

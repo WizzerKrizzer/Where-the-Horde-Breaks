@@ -60,6 +60,7 @@ Inside the skill tree:
 
 - Hover a node for `0.3` seconds: show its current stats and next-rank preview
 - Left click a node: immediately purchase its next rank when unlocked and affordable
+- `BUY ALL`: purchase affordable ranks across all unlocked nodes, one rank per node per pass, until no further purchase is possible
 - Left mouse drag: pan the tree, including while hovering a node and a small inspection margin when the full tree fits onscreen
 - Mouse wheel: zoom the tree, including while hovering a node
 
