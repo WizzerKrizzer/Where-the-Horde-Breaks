@@ -12,12 +12,12 @@ This repository currently contains an early Unity prototype focused on validatin
 - Continuous waves with a GPU-authoritative flow-field horde, dynamic blockers, melee/projectile combat, compact events, and indirect culling/rendering; there is no legacy CPU horde mode.
 - Persistent per-level tower layout.
 - Permanent currencies and profile save data.
-- Prototype skill tree / upgrade panel.
+- Icon-based permanent skill tree with prerequisite links, delayed hover details, zoom, pan, rank indicators, and upgrade purchasing.
 - Dev wallet for testing currencies, upgrade reset, test speed, level loading, save snapshots, and automated balance runs.
 - Enemy health bars, tower placement preview, range display, and placement error popups.
 - Three prototype levels:
   - Level 1: playable balance target and first progression slice.
-  - Level 2: larger split-road map with experimental crowd-flow pathing.
+  - Level 2: larger split-road map using the shared GPU flow-field horde simulation.
   - Level 3: foundation map with mixed undead/support/flying enemies for future design work.
 
 ## Unity Version
@@ -27,6 +27,8 @@ Built for:
 - Unity `6000.3.19f1` / Unity 6.3 LTS
 
 Open through Unity Hub and allow Unity to regenerate project files if prompted.
+
+The horde runtime requires compute-shader support. It intentionally has no legacy CPU enemy-simulation fallback.
 
 ## Running The Project
 
@@ -54,12 +56,19 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 - `G`: open the Breaker's Grimoire
 - `` ` ``: open developer tools
 
+Inside the skill tree:
+
+- Hover a node for `0.5` seconds: show its detailed description and next-rank preview
+- Left click a node: select it for purchase
+- Left mouse drag: pan the tree, including a small inspection margin when the full tree fits onscreen
+- Mouse wheel: zoom the tree
+
 ## Prototype UI
 
 - Bottom active weapon slot shows cooldown and readiness.
 - Result panel appears after victory or defeat.
 - `Retry` returns to build phase.
-- `Upgrades` opens the prototype skill tree.
+- `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; full descriptions appear only after hovering or selecting a node.
 - `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, test speed, save/load dev snapshots, switch prototype levels, and run balance automation.
 - The Breaker's Grimoire contains prototype entries for turrets, active weapons, enemies, bosses, and levels.
 
@@ -69,7 +78,7 @@ The long-term goal is a tower defense / roguelite with huge enemy hordes, perman
 
 Planned systems include:
 
-- Larger radial/network skill tree.
+- Currency-specific skill-tree node styling and final icon art.
 - Unlockable tower types and tower limits.
 - Multiple permanent currencies.
 - Level replay rewards and challenge objectives.
@@ -79,3 +88,9 @@ Planned systems include:
 ## Status
 
 This is not final gameplay, art, balance, or UI. It is a living prototype used to test the foundations before expanding scope.
+
+## Validation
+
+The project includes EditMode and PlayMode coverage for flow-field construction, dense corner movement, GPU targeting, combat events, overflow handling, and stress scenarios. A Windows Development build is used as the final verification step for completed runtime changes.
+
+Detailed GPU pipeline and simulation notes are available in [`docs/Architecture.md`](docs/Architecture.md).
