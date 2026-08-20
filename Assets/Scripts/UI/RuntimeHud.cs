@@ -2736,9 +2736,11 @@ namespace TowerDefense.UI
             {
                 var increase = FormatEffectRankIncrease(node.effects[i]);
                 var transition = FormatEffectProgression(node.effects[i], remainingRanks, hasNextRank);
-                var line = node.effects.Length > 1
-                    ? $"{increase} {transition}"
-                    : $"{increase}\n{transition}";
+                var line = string.IsNullOrWhiteSpace(transition)
+                    ? increase
+                    : node.effects.Length > 1
+                        ? $"{increase} {transition}"
+                        : $"{increase}\n{transition}";
                 if (node.effects.Length > 1)
                 {
                     line = line?.Replace("\n", " ");
@@ -2768,7 +2770,7 @@ namespace TowerDefense.UI
             switch (effect.type)
             {
                 case UpgradeEffectType.UnlockTower:
-                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank);
+                    return string.Empty;
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                 {
                     var currentValue = tower != null ? tower.perTypeLimit : Mathf.RoundToInt(currentBonus);
