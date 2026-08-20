@@ -87,7 +87,7 @@ namespace TowerDefense.UI
         private readonly List<RectTransform> upgradeTreeRankBadges = new();
         private Vector2 upgradeTreePan;
         private float upgradeTreeZoom = 1f;
-        private const float UpgradeHoverDelay = 0.5f;
+        private const float UpgradeHoverDelay = 0.3f;
         private const float MaximumUpgradeTreeZoom = 1.35f;
         private const float UpgradeTreeHorizontalPanFreedom = 160f;
         private const float UpgradeTreeVerticalPanFreedom = 90f;
@@ -627,7 +627,7 @@ namespace TowerDefense.UI
             var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
-            hint.text = "Hover for 0.5 seconds to inspect. Click to select, then buy from the detail card. Drag to pan. Mouse wheel zooms.";
+            hint.text = "Hover for 0.3 seconds to inspect. Click a node to buy its next rank. Drag to pan. Mouse wheel zooms.";
 
             var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);

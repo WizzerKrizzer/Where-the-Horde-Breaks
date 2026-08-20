@@ -58,7 +58,7 @@ The scene currently creates sample gameplay content at runtime, so there is no f
 
 Inside the skill tree:
 
-- Hover a node for `0.5` seconds: show its detailed description and next-rank preview
+- Hover a node for `0.3` seconds: show its current stats and next-rank preview
 - Left click a node: immediately purchase its next rank when unlocked and affordable
 - Left mouse drag: pan the tree, including while hovering a node and a small inspection margin when the full tree fits onscreen
 - Mouse wheel: zoom the tree, including while hovering a node
