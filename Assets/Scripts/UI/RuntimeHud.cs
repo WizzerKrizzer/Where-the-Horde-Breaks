@@ -2665,20 +2665,21 @@ namespace TowerDefense.UI
             }
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text = $"{FormatCurrentUpgradeStats(inspectedNode)}\nLOCKED · Requires: {FormatPrerequisiteNames(inspectedNode)}";
+                upgradeDetailBody.text =
+                    $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\n" +
+                    $"COST {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))} · LOCKED: {FormatPrerequisiteNames(inspectedNode)}";
                 return;
             }
 
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = $"{FormatCurrentUpgradeStats(inspectedNode)}\nMAXED";
+                upgradeDetailBody.text = $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\nMAXED";
             }
             else
             {
-                var affordability = session.CanPurchaseUpgrade(inspectedNode.id) ? "COST" : "NEED";
                 upgradeDetailBody.text =
-                    $"{FormatCurrentUpgradeStats(inspectedNode)}\n" +
-                    $"NEXT {FormatNextRankIncrease(inspectedNode)} · {affordability} {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                    $"{FormatUpgradeProgression(inspectedNode, rank, maxRank)}\n" +
+                    $"COST {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
             }
         }
 
@@ -2705,6 +2706,216 @@ namespace TowerDefense.UI
             }
 
             return names.Count <= 2 ? string.Join(" + ", names) : names[0] + " + More";
+        }
+
+        private string FormatUpgradeProgression(SkillNodeDefinition node, int rank, int maxRank)
+        {
+            if (node?.effects == null || node.effects.Length == 0)
+            {
+                return rank < maxRank ? "Locked → Unlocked\nMAX Unlocked" : "Unlocked\nMAX Unlocked";
+            }
+
+            var remainingRanks = Mathf.Max(0, maxRank - rank);
+            var hasNextRank = remainingRanks > 0;
+            var text = new StringBuilder();
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                var line = FormatEffectProgression(node.effects[i], remainingRanks, hasNextRank);
+                if (node.effects.Length > 1)
+                {
+                    line = line?.Replace("\nMAX ", " · MAX ");
+                }
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                if (text.Length > 0)
+                {
+                    text.AppendLine();
+                }
+                text.Append(line);
+            }
+
+            return text.Length > 0 ? text.ToString() : "Upgrade";
+        }
+
+        private string FormatEffectProgression(UpgradeEffect effect, int remainingRanks, bool hasNextRank)
+        {
+            var currentBonus = session.GetUpgradeEffectTotal(effect.type, effect.targetId);
+            var nextBonus = hasNextRank ? currentBonus + effect.value : currentBonus;
+            var maxBonus = currentBonus + effect.value * remainingRanks;
+            var tower = session.GetTowerDefinition(effect.targetId);
+
+            switch (effect.type)
+            {
+                case UpgradeEffectType.UnlockTower:
+                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank);
+                case UpgradeEffectType.PerTypeTowerLimitFlat:
+                {
+                    var currentValue = tower != null ? tower.perTypeLimit : Mathf.RoundToInt(currentBonus);
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "placement limit");
+                }
+                case UpgradeEffectType.TowerDamagePercent:
+                {
+                    var baseDamage = session.GetTowerBaseDamage(effect.targetId);
+                    var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamageFlat, effect.targetId);
+                    return FormatProgressionValues(
+                        baseDamage * (1f + currentBonus / 100f) + flatBonus,
+                        baseDamage * (1f + nextBonus / 100f) + flatBonus,
+                        baseDamage * (1f + maxBonus / 100f) + flatBonus,
+                        "damage/hit");
+                }
+                case UpgradeEffectType.TowerDamageFlat:
+                {
+                    var baseDamage = session.GetTowerBaseDamage(effect.targetId);
+                    var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, effect.targetId);
+                    var percentDamage = baseDamage * (1f + percentBonus / 100f);
+                    return FormatProgressionValues(percentDamage + currentBonus, percentDamage + nextBonus, percentDamage + maxBonus, "damage/hit");
+                }
+                case UpgradeEffectType.TowerFireRatePercent:
+                {
+                    var baseRate = session.GetTowerBaseFireRate(effect.targetId);
+                    var flatBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRateFlat, effect.targetId);
+                    return FormatProgressionValues(
+                        baseRate * (1f + currentBonus / 100f) + flatBonus,
+                        baseRate * (1f + nextBonus / 100f) + flatBonus,
+                        baseRate * (1f + maxBonus / 100f) + flatBonus,
+                        "shots/sec");
+                }
+                case UpgradeEffectType.TowerFireRateFlat:
+                {
+                    var baseRate = session.GetTowerBaseFireRate(effect.targetId);
+                    var percentBonus = session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, effect.targetId);
+                    var percentRate = baseRate * (1f + percentBonus / 100f);
+                    return FormatProgressionValues(percentRate + currentBonus, percentRate + nextBonus, percentRate + maxBonus, "shots/sec");
+                }
+                case UpgradeEffectType.TowerProjectileSpeedPercent:
+                {
+                    var baseSpeed = session.GetTowerBaseProjectileSpeed(effect.targetId);
+                    return FormatProgressionValues(
+                        baseSpeed * (1f + currentBonus / 100f),
+                        baseSpeed * (1f + nextBonus / 100f),
+                        baseSpeed * (1f + maxBonus / 100f),
+                        "projectile speed");
+                }
+                case UpgradeEffectType.TowerAimAssistPercent:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "aim assist", "%");
+                case UpgradeEffectType.TowerPierceFlat:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "pierce");
+                case UpgradeEffectType.TowerDoubleShotChancePercent:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "double-shot chance", "%");
+                case UpgradeEffectType.TowerSlowPercentFlat:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "slow", "%");
+                case UpgradeEffectType.TowerSlowCapacityFlat:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "slow capacity");
+                case UpgradeEffectType.TowerRangeFlat:
+                {
+                    var currentValue = tower != null ? tower.range : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "range");
+                }
+                case UpgradeEffectType.TowerHealthFlat:
+                {
+                    var currentValue = tower != null ? tower.health : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "health");
+                }
+                case UpgradeEffectType.TowerThornsDamageFlat:
+                {
+                    var currentValue = tower != null ? tower.thornsDamage : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "thorns damage");
+                }
+                case UpgradeEffectType.BarracksUnitCapacityFlat:
+                {
+                    var currentValue = tower != null ? tower.barracksCapacity : Mathf.RoundToInt(currentBonus);
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "troop slots");
+                }
+                case UpgradeEffectType.BarracksUnitDamagePercent:
+                {
+                    var currentValue = tower != null ? tower.alliedUnitDamage : 0f;
+                    return FormatPercentScaledProgression(currentValue, currentBonus, nextBonus, maxBonus, "troop damage");
+                }
+                case UpgradeEffectType.BarracksUnitHealthPercent:
+                {
+                    var currentValue = tower != null ? tower.alliedUnitHealth : 0f;
+                    return FormatPercentScaledProgression(currentValue, currentBonus, nextBonus, maxBonus, "troop health");
+                }
+                case UpgradeEffectType.BarracksRespawnCooldownPercent:
+                {
+                    var currentValue = tower != null ? tower.barracksRespawnSeconds : 0f;
+                    var currentFactor = Mathf.Max(0.1f, 1f - currentBonus / 100f);
+                    var nextValue = currentValue * Mathf.Max(0.1f, 1f - nextBonus / 100f) / currentFactor;
+                    var maxValue = currentValue * Mathf.Max(0.1f, 1f - maxBonus / 100f) / currentFactor;
+                    return FormatProgressionValues(currentValue, nextValue, maxValue, "seconds respawn");
+                }
+                case UpgradeEffectType.EnableTowerFire:
+                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank, "Fire locked", "Fire enabled");
+                case UpgradeEffectType.TowerFireDamagePerTickFlat:
+                {
+                    var currentValue = tower != null ? tower.fireDamagePerTick : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "burn damage/tick");
+                }
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat:
+                {
+                    var currentValue = tower != null ? tower.fireTicksPerSecond : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "burn ticks/sec");
+                }
+                case UpgradeEffectType.TowerFireMaxStacksFlat:
+                {
+                    var currentValue = tower != null ? tower.fireMaxStacks : Mathf.RoundToInt(currentBonus);
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "burn stacks");
+                }
+                case UpgradeEffectType.TowerFireDurationFlat:
+                {
+                    var currentValue = tower != null ? tower.fireDuration : currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "seconds burn");
+                }
+                case UpgradeEffectType.ActiveWeaponDamagePercent:
+                    return FormatProgressionValues(
+                        session.BaseActiveWeaponDamage * (1f + currentBonus / 100f),
+                        session.BaseActiveWeaponDamage * (1f + nextBonus / 100f),
+                        session.BaseActiveWeaponDamage * (1f + maxBonus / 100f),
+                        "damage/hit");
+                case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                    return FormatProgressionValues(
+                        session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - currentBonus / 100f),
+                        session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - nextBonus / 100f),
+                        session.BaseActiveWeaponCooldown * Mathf.Max(0.1f, 1f - maxBonus / 100f),
+                        "seconds cooldown");
+                case UpgradeEffectType.ActiveWeaponRadiusFlat:
+                    return FormatProgressionValues(session.BaseActiveWeaponRadius + currentBonus, session.BaseActiveWeaponRadius + nextBonus, session.BaseActiveWeaponRadius + maxBonus, "radius");
+                case UpgradeEffectType.ActiveWeaponPierceFlat:
+                    return FormatProgressionValues(session.BaseActiveWeaponMaxTargets + currentBonus, session.BaseActiveWeaponMaxTargets + nextBonus, session.BaseActiveWeaponMaxTargets + maxBonus, "max targets");
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
+                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank, "Auto-fire locked", "Auto-fire enabled");
+                case UpgradeEffectType.BaseLivesFlat:
+                    return FormatProgressionValues(session.Level.startingLives + currentBonus, session.Level.startingLives + nextBonus, session.Level.startingLives + maxBonus, "base lives");
+                case UpgradeEffectType.LevelEndKillEssenceFlat:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, $"{FormatCurrencySymbol(CurrencyType.KillEssence)} per level");
+                case UpgradeEffectType.UnlockEra:
+                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank, "Era locked", "Era unlocked");
+                default:
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, "value");
+            }
+        }
+
+        private static string FormatProgressionValues(float current, float next, float maximum, string unit, string suffix = "")
+        {
+            return $"{current:0.#}{suffix} → {next:0.#}{suffix} {unit}\nMAX {maximum:0.#}{suffix} {unit}";
+        }
+
+        private static string FormatPercentScaledProgression(float currentValue, float currentBonus, float nextBonus, float maxBonus, string unit)
+        {
+            var denominator = Mathf.Max(1f, 100f + currentBonus);
+            var nextValue = currentValue * (100f + nextBonus) / denominator;
+            var maxValue = currentValue * (100f + maxBonus) / denominator;
+            return FormatProgressionValues(currentValue, nextValue, maxValue, unit);
+        }
+
+        private static string FormatUnlockProgression(bool unlocked, bool hasNextRank, string lockedText = "Locked", string unlockedText = "Unlocked")
+        {
+            var current = unlocked ? unlockedText : lockedText;
+            var next = unlocked || !hasNextRank ? current : unlockedText;
+            return $"{current} → {next}\nMAX {unlockedText}";
         }
 
         private static string FormatEffectStatName(UpgradeEffect effect)
