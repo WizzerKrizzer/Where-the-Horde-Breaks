@@ -3240,7 +3240,7 @@ namespace TowerDefense.UI
 
                 text.Append(affordable ? "<color=#ffffff>" : "<color=#ff3d38>");
                 text.Append(costs[i].amount);
-                text.Append("</color> <color=#8295ff>");
+                text.Append("</color> <color=#ffb52e>");
                 text.Append(FormatCurrencySymbol(costs[i].currency));
                 text.Append("</color>");
             }
