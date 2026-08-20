@@ -659,7 +659,7 @@ namespace TowerDefense.UI
             }
             ApplyUpgradeTreeTransform();
 
-            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-28f, 54f), new Vector2(420f, 252f), new Vector2(1f, 0f), new Vector2(1f, 0f));
+            upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-18f, 44f), new Vector2(320f, 164f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             var upgradeDetailImage = upgradeDetailPanel.GetComponent<Image>();
             upgradeDetailImage.color = new Color(0.018f, 0.035f, 0.052f, 0.96f);
             upgradeDetailImage.raycastTarget = false;
@@ -669,20 +669,20 @@ namespace TowerDefense.UI
             var detailIconObject = new GameObject("DetailIcon");
             detailIconObject.transform.SetParent(upgradeDetailPanel.transform, false);
             var detailIconRect = detailIconObject.AddComponent<RectTransform>();
-            ConfigureCenteredRect(detailIconRect, new Vector2(-170f, 104f), new Vector2(42f, 42f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(detailIconRect, new Vector2(-137f, 64f), new Vector2(32f, 32f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailIcon = detailIconObject.AddComponent<SkillTreeIconGraphic>();
             upgradeDetailIcon.color = new Color(0.72f, 0.93f, 1f, 1f);
             upgradeDetailIcon.raycastTarget = false;
-            upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 15);
+            upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 13);
             upgradeDetailTitle.raycastTarget = false;
             upgradeDetailTitle.fontStyle = FontStyle.Bold;
-            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(24f, 104f), new Vector2(330f, 30f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 12);
+            ConfigureCenteredRect(upgradeDetailTitle.GetComponent<RectTransform>(), new Vector2(18f, 64f), new Vector2(250f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 10);
             upgradeDetailBody.raycastTarget = false;
             upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
             upgradeDetailBody.verticalOverflow = VerticalWrapMode.Truncate;
-            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 4f), new Vector2(370f, 154f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "SELECT NODE", new Vector2(0f, -104f), new Vector2(168f, 32f), new Vector2(0.5f, 0.5f), 12);
+            ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 5f), new Vector2(292f, 82f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            upgradeBuyButton = CreateAnchoredButton("BuySelectedUpgrade", upgradeDetailPanel.transform, "SELECT NODE", new Vector2(0f, -64f), new Vector2(134f, 26f), new Vector2(0.5f, 0.5f), 10);
             upgradeBuyButton.onClick.AddListener(BuySelectedUpgrade);
             upgradeBuyButton.GetComponentInChildren<Text>().raycastTarget = false;
             upgradeBuyButton.gameObject.SetActive(false);
@@ -913,6 +913,12 @@ namespace TowerDefense.UI
             var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
             exit.callback.AddListener(_ => StopHoveringUpgradeNode(node));
             events.triggers.Add(exit);
+
+            // Buttons normally consume pointer input before it reaches the viewport.
+            // Forward drag and wheel input from every node so inspecting a node never
+            // locks tree navigation.
+            var nodeTreeInput = button.gameObject.AddComponent<SkillTreeViewportInput>();
+            nodeTreeInput.Initialize(OnUpgradeTreeDragged, OnUpgradeTreeScrolled);
         }
 
         private void ShowUpgradePanel()
@@ -2669,7 +2675,7 @@ namespace TowerDefense.UI
             }
             if (missingPrerequisites)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\n\nLOCKED\nRequires: {FormatPrerequisiteNames(inspectedNode)}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\nLOCKED · Requires: {FormatPrerequisiteNames(inspectedNode)}";
                 var lockedLabel = upgradeBuyButton.GetComponentInChildren<Text>();
                 upgradeBuyButton.interactable = false;
                 lockedLabel.text = "LOCKED";
@@ -2679,25 +2685,25 @@ namespace TowerDefense.UI
             var buttonLabel = upgradeBuyButton.GetComponentInChildren<Text>();
             if (rank >= maxRank)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\n\nCURRENT\n{FormatCurrentUpgradeStats(inspectedNode)}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\nCURRENT · {FormatCurrentUpgradeStats(inspectedNode)}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "MAXED";
             }
             else if (selectedUpgradeNode != inspectedNode)
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "CLICK NODE TO SELECT";
             }
             else if (session.CanPurchaseUpgrade(inspectedNode.id))
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 upgradeBuyButton.interactable = true;
                 buttonLabel.text = "BUY RANK";
             }
             else
             {
-                upgradeDetailBody.text = $"{inspectedNode.description}\n\nNEXT RANK\n{FormatUpgradePreview(inspectedNode)}\n\nCOST  {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
+                upgradeDetailBody.text = $"{inspectedNode.description}\nNEXT · {FormatUpgradePreview(inspectedNode)}\nCOST · {FormatCosts(session.GetUpgradeNextCosts(inspectedNode.id))}";
                 upgradeBuyButton.interactable = false;
                 buttonLabel.text = "NEED COST";
             }

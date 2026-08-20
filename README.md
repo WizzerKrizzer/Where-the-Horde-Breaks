@@ -60,8 +60,8 @@ Inside the skill tree:
 
 - Hover a node for `0.5` seconds: show its detailed description and next-rank preview
 - Left click a node: select it for purchase
-- Left mouse drag: pan the tree, including a small inspection margin when the full tree fits onscreen
-- Mouse wheel: zoom the tree
+- Left mouse drag: pan the tree, including while hovering a node and a small inspection margin when the full tree fits onscreen
+- Mouse wheel: zoom the tree, including while hovering a node
 
 ## Prototype UI
 
