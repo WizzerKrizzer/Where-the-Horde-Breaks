@@ -45,6 +45,7 @@ namespace TowerDefense.Tests
             Assert.That(session.DevBestBotRunning, Is.False);
             Assert.That(session.DevBestBotReportAvailable, Is.True);
             Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("Steady Tithe"));
+            Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("+3 Kill Essence after each run"));
             Assert.That(session.DevBestBotPurchaseHistory, Does.Not.Contain("Reinforced Gate"));
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));

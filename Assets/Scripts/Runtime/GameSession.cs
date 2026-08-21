@@ -1046,7 +1046,8 @@ namespace TowerDefense.Runtime
                     Attempt = devBestBotAttemptCount + 1,
                     DisplayName = bestNode.displayName,
                     Rank = progression.GetPurchasedRank(bestNode.id),
-                    MaxRank = progression.GetMaxRank(bestNode.id)
+                    MaxRank = progression.GetMaxRank(bestNode.id),
+                    EffectSummary = FormatBestBotUpgradeEffects(bestNode)
                 });
             }
 
@@ -1057,6 +1058,107 @@ namespace TowerDefense.Runtime
             }
 
             return bought;
+        }
+
+        private string FormatBestBotUpgradeEffects(SkillNodeDefinition node)
+        {
+            if (node?.effects == null || node.effects.Length == 0)
+            {
+                return string.IsNullOrWhiteSpace(node?.description) ? "Milestone unlock" : node.description;
+            }
+
+            var parts = new List<string>();
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                parts.Add(FormatBestBotUpgradeEffect(node.effects[i]));
+            }
+
+            return string.Join("; ", parts);
+        }
+
+        private string FormatBestBotUpgradeEffect(UpgradeEffect effect)
+        {
+            var target = FormatBestBotTarget(effect.targetId);
+            switch (effect.type)
+            {
+                case UpgradeEffectType.UnlockTower:
+                    return $"Unlocks the {target}";
+                case UpgradeEffectType.PerTypeTowerLimitFlat:
+                    return $"+{effect.value:0} {target} placement limit";
+                case UpgradeEffectType.TowerDamageFlat:
+                    return $"+{effect.value:0.#} {target} damage per hit";
+                case UpgradeEffectType.TowerDamagePercent:
+                    return string.IsNullOrEmpty(effect.targetId) ? $"+{effect.value:0.#}% tower damage" : $"+{effect.value:0.#}% {target} damage";
+                case UpgradeEffectType.TowerFireRateFlat:
+                    return $"+{effect.value:0.#} {target} shots per second";
+                case UpgradeEffectType.TowerFireRatePercent:
+                    return string.IsNullOrEmpty(effect.targetId) ? $"+{effect.value:0.#}% tower fire rate" : $"+{effect.value:0.#}% {target} fire rate";
+                case UpgradeEffectType.TowerProjectileSpeedPercent:
+                    return $"+{effect.value:0.#}% {target} projectile speed";
+                case UpgradeEffectType.TowerAimAssistPercent:
+                    return $"+{effect.value:0.#}% {target} aim assist";
+                case UpgradeEffectType.TowerPierceFlat:
+                    return $"+{effect.value:0} {target} pierce";
+                case UpgradeEffectType.TowerDoubleShotChancePercent:
+                    return $"+{effect.value:0.#}% {target} double-shot chance";
+                case UpgradeEffectType.TowerSlowPercentFlat:
+                    return $"+{effect.value:0.#}% {target} slow";
+                case UpgradeEffectType.TowerSlowCapacityFlat:
+                    return $"+{effect.value:0.#} {target} slow capacity";
+                case UpgradeEffectType.TowerRangeFlat:
+                    return $"+{effect.value:0.#} {target} range";
+                case UpgradeEffectType.TowerHealthFlat:
+                    return $"+{effect.value:0.#} {target} health";
+                case UpgradeEffectType.TowerThornsDamageFlat:
+                    return $"+{effect.value:0.#} {target} thorns damage";
+                case UpgradeEffectType.BarracksUnitCapacityFlat:
+                    return $"+{effect.value:0} {target} troop slot";
+                case UpgradeEffectType.BarracksUnitDamagePercent:
+                    return $"+{effect.value:0.#}% {target} troop damage";
+                case UpgradeEffectType.BarracksUnitHealthPercent:
+                    return $"+{effect.value:0.#}% {target} troop health";
+                case UpgradeEffectType.BarracksRespawnCooldownPercent:
+                    return $"-{effect.value:0.#}% {target} respawn time";
+                case UpgradeEffectType.EnableTowerFire:
+                    return $"Enables {target} fire damage";
+                case UpgradeEffectType.TowerFireDamagePerTickFlat:
+                    return $"+{effect.value:0.#} {target} fire damage per tick";
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat:
+                    return $"+{effect.value:0.#} {target} fire ticks per second";
+                case UpgradeEffectType.TowerFireMaxStacksFlat:
+                    return $"+{effect.value:0} {target} fire stacks";
+                case UpgradeEffectType.TowerFireDurationFlat:
+                    return $"+{effect.value:0.#}s {target} fire duration";
+                case UpgradeEffectType.ActiveWeaponDamagePercent:
+                    return $"+{effect.value:0.#}% active weapon damage";
+                case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                    return $"-{effect.value:0.#}% active weapon cooldown";
+                case UpgradeEffectType.ActiveWeaponRadiusFlat:
+                    return $"+{effect.value:0.#} active weapon radius";
+                case UpgradeEffectType.ActiveWeaponPierceFlat:
+                    return $"+{effect.value:0} active weapon targets";
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
+                    return "Unlocks active weapon auto-fire";
+                case UpgradeEffectType.BaseLivesFlat:
+                    return $"+{effect.value:0} base lives";
+                case UpgradeEffectType.LevelEndKillEssenceFlat:
+                    return $"+{effect.value:0} Kill Essence after each run";
+                case UpgradeEffectType.UnlockEra:
+                    return $"Unlocks the {target} era";
+                default:
+                    return $"{effect.type} +{effect.value:0.#}";
+            }
+        }
+
+        private string FormatBestBotTarget(string targetId)
+        {
+            if (string.IsNullOrWhiteSpace(targetId))
+            {
+                return "all towers";
+            }
+
+            var tower = GetTowerDefinition(targetId);
+            return tower != null ? tower.displayName : targetId.Replace('_', ' ');
         }
 
         private SkillNodeDefinition FindBestBotIncomeNode(SkillNodeDefinition[] nodes)
@@ -1634,6 +1736,7 @@ namespace TowerDefense.Runtime
                     }
 
                     text.AppendLine($"  • {purchase.DisplayName}  {purchase.Rank}/{purchase.MaxRank}");
+                    text.AppendLine($"    {purchase.EffectSummary}");
                     purchaseCount++;
                 }
 
@@ -2097,6 +2200,7 @@ namespace TowerDefense.Runtime
             public string DisplayName;
             public int Rank;
             public int MaxRank;
+            public string EffectSummary;
         }
     }
 }
