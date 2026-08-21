@@ -54,6 +54,7 @@ namespace TowerDefense.UI
         private Button devAutoActiveButton;
         private Button devBestBotButton;
         private Button devBestBotRunAllButton;
+        private Button devBestBotModeButton;
         private Text devBestBotProfileText;
         private Button devBestBotSpeed20Button;
         private Button devBestBotSpeed30Button;
@@ -1410,7 +1411,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 820f);
+            contentRect.sizeDelta = new Vector2(214f, 850f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -1474,19 +1475,26 @@ namespace TowerDefense.UI
             devBestBotSpeed40Button.onClick.AddListener(() => session.SetDevBestBotTimeScale(40f));
             devBestBotSpeed50Button.onClick.AddListener(() => session.SetDevBestBotTimeScale(50f));
 
-            devBestBotButton = CreateButton("DevBestBot", content.transform, "START", new Vector2(-46f, -346f), new Vector2(86f, 24f), 11);
+            devBestBotModeButton = CreateButton("DevBestBotMode", content.transform, "MODE: CAMPAIGN", new Vector2(0f, -346f), new Vector2(178f, 24f), 10);
+            devBestBotModeButton.onClick.AddListener(() =>
+            {
+                session.ToggleDevBestBotRunMode();
+                UpdateDevSpeedButtons();
+            });
+
+            devBestBotButton = CreateButton("DevBestBot", content.transform, "START", new Vector2(-46f, -374f), new Vector2(86f, 24f), 11);
             devBestBotButton.onClick.AddListener(() =>
             {
                 session.ToggleDevBestBot();
                 UpdateDevSpeedButtons();
             });
-            devBestBotRunAllButton = CreateButton("DevBestBotRunAll", content.transform, "RUN ALL 5", new Vector2(46f, -346f), new Vector2(86f, 24f), 10);
+            devBestBotRunAllButton = CreateButton("DevBestBotRunAll", content.transform, "RUN ALL 5", new Vector2(46f, -374f), new Vector2(86f, 24f), 10);
             devBestBotRunAllButton.onClick.AddListener(() =>
             {
                 session.StartAllDevBestBots();
                 UpdateDevSpeedButtons();
             });
-            CreateButton("DevStopRun", content.transform, "STOP RUN", new Vector2(0f, -374f), new Vector2(178f, 24f), 11)
+            CreateButton("DevStopRun", content.transform, "STOP RUN", new Vector2(0f, -402f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() =>
                 {
                     if (session.DevBestBotRunning)
@@ -1500,25 +1508,25 @@ namespace TowerDefense.UI
                 });
 
             var levelsLabel = CreateText("DevLevelsTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(levelsLabel.GetComponent<RectTransform>(), new Vector2(0f, -402f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(levelsLabel.GetComponent<RectTransform>(), new Vector2(0f, -430f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             levelsLabel.text = "LEVEL MAPS";
-            CreateButton("DevLoadLevel1", content.transform, "LEVEL 1", new Vector2(-46f, -428f), new Vector2(86f, 24f), 11)
+            CreateButton("DevLoadLevel1", content.transform, "LEVEL 1", new Vector2(-46f, -456f), new Vector2(86f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_01"));
-            CreateButton("DevLoadLevel2", content.transform, "LEVEL 2", new Vector2(46f, -428f), new Vector2(86f, 24f), 11)
+            CreateButton("DevLoadLevel2", content.transform, "LEVEL 2", new Vector2(46f, -456f), new Vector2(86f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_02"));
-            CreateButton("DevLoadLevel3", content.transform, "LEVEL 3", new Vector2(-46f, -456f), new Vector2(86f, 24f), 11)
+            CreateButton("DevLoadLevel3", content.transform, "LEVEL 3", new Vector2(-46f, -484f), new Vector2(86f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_03"));
-            CreateButton("DevLoadLevel4", content.transform, "10K TEST", new Vector2(46f, -456f), new Vector2(86f, 24f), 11)
+            CreateButton("DevLoadLevel4", content.transform, "10K TEST", new Vector2(46f, -484f), new Vector2(86f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_04"));
 
             var saveLabel = CreateText("DevSaveTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -494f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -522f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             saveLabel.text = "DEV SAVES";
 
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                var rowY = -494f - slot * 26f;
+                var rowY = -522f - slot * 26f;
                 var status = CreateText($"DevSaveSlotStatus{slot}", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 9);
                 ConfigureCenteredRect(status.GetComponent<RectTransform>(), new Vector2(0f, rowY), new Vector2(46f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
                 devSaveSlotStatusTexts[slot] = status;
@@ -1538,18 +1546,18 @@ namespace TowerDefense.UI
                 });
             }
 
-            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -604f), new Vector2(178f, 24f), 12)
+            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -632f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -632f), new Vector2(178f, 24f), 12)
+            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -660f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.ClearCurrencies());
-            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -660f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -688f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
-            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -688f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -716f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ResetBalanceTestProgress());
-            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -716f), new Vector2(178f, 24f), 11)
+            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -744f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.AutoResolveRun());
             var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
-            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -742f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -770f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
             autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
 
@@ -2038,6 +2046,12 @@ namespace TowerDefense.UI
                 devBestBotRunAllButton.GetComponentInChildren<Text>().text = session.DevBestBotRunAll ? "RUNNING ALL" : "RUN ALL 5";
                 HighlightSpeedButton(devBestBotRunAllButton, session.DevBestBotRunAll);
                 devBestBotRunAllButton.interactable = !session.DevBestBotRunning;
+            }
+            if (devBestBotModeButton != null)
+            {
+                devBestBotModeButton.GetComponentInChildren<Text>().text = $"{session.DevBestBotRunModeName.ToUpperInvariant()} → {session.DevBestBotTargetLevelName.ToUpperInvariant()}";
+                devBestBotModeButton.interactable = !session.DevBestBotRunning;
+                HighlightSpeedButton(devBestBotModeButton, session.DevBestBotRunModeName == "Campaign");
             }
             if (devBestBotProfileText != null)
             {

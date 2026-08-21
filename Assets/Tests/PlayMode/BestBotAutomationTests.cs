@@ -23,6 +23,11 @@ namespace TowerDefense.Tests
             var originalLevel = session.Level;
             var originalTimeScale = Time.timeScale;
 
+            Assert.That(session.DevBestBotRunModeName, Is.EqualTo("Campaign"));
+            session.ToggleDevBestBotRunMode();
+            Assert.That(session.DevBestBotRunModeName, Is.EqualTo("Snapshot"));
+            session.ToggleDevBestBotRunMode();
+
             var expectedProfiles = new[] { "Best", "Skilled", "Average", "Casual", "Novice" };
             for (var i = 0; i < expectedProfiles.Length; i++)
             {
@@ -52,6 +57,11 @@ namespace TowerDefense.Tests
                 session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, "archer") +
                 session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, "archer"),
                 Is.GreaterThan(0f));
+            var entitlementMethod = typeof(GameSession).GetMethod("ApplyDevBestBotClearEntitlements", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(entitlementMethod, Is.Not.Null);
+            entitlementMethod.Invoke(session, null);
+            Assert.That(session.Profile.GetCurrency(CurrencyType.PerfectSigil), Is.EqualTo(1));
+            Assert.That(session.Profile.GetCurrency(CurrencyType.ChallengeToken), Is.EqualTo(1));
 
             yield return new WaitForSecondsRealtime(0.35f);
 
@@ -77,6 +87,9 @@ namespace TowerDefense.Tests
             var activeWeapon = Object.FindFirstObjectByType<ActiveWeaponController>();
             Assert.That(activeWeapon, Is.Not.Null);
             Assert.That(activeWeapon.DevAutoEfficiency, Is.EqualTo(0.85f).Within(0.001f));
+            entitlementMethod.Invoke(session, null);
+            Assert.That(session.Profile.GetCurrency(CurrencyType.PerfectSigil), Is.Zero);
+            Assert.That(session.Profile.GetCurrency(CurrencyType.ChallengeToken), Is.Zero);
             session.AddCurrency(CurrencyType.KillEssence, 100);
             purchaseMethod.Invoke(session, null);
             foreach (var node in session.UpgradeNodes)

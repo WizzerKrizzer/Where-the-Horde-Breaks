@@ -11,6 +11,12 @@ using UnityEngine;
 
 namespace TowerDefense.Runtime
 {
+    public enum DevBestBotRunMode
+    {
+        Campaign,
+        Snapshot
+    }
+
     public sealed class GameSession : MonoBehaviour
     {
         private readonly RewardService rewards = new();
@@ -53,6 +59,8 @@ namespace TowerDefense.Runtime
         private float devBestBotStartTimer;
         private float devBestBotGameSeconds;
         private float devBestBotRealSeconds;
+        private float devBestBotLevelGameSeconds;
+        private float devBestBotLevelRealSeconds;
         private float devBestBotCurrentAttemptSeconds;
         private int devBestBotAttemptCount;
         private int devBestBotCurrentSeed;
@@ -69,9 +77,14 @@ namespace TowerDefense.Runtime
         private bool devBestBotRunAll;
         private bool devBestBotPendingNextProfile;
         private float devBestBotNextProfileTimer;
+        private DevBestBotRunMode devBestBotRunMode = DevBestBotRunMode.Campaign;
+        private LevelDefinition devBestBotTargetLevel;
+        private int devBestBotTargetLevelIndex;
+        private int devBestBotCurrentLevelIndex;
         private readonly List<BestBotComparisonRecord> devBestBotComparisons = new();
         private readonly List<BestBotPurchaseRecord> devBestBotPurchases = new();
         private readonly List<BestBotAttemptRecord> devBestBotAttempts = new();
+        private readonly List<BestBotLevelRecord> devBestBotLevels = new();
         private ProfileStore devBestBotOriginalProfileStore;
         private PlayerProfile devBestBotOriginalProfile;
         private LevelDefinition devBestBotOriginalLevel;
@@ -86,11 +99,11 @@ namespace TowerDefense.Runtime
         private const int DevBestBotSeedBase = 73001;
         private static readonly BestBotSkillProfile[] DevBestBotSkillProfiles =
         {
-            new("Best", 0.60f, 0.00f, 1.00f, 1.00f, 1.00f, 2, false),
-            new("Skilled", 0.58f, 0.03f, 0.98f, 0.96f, 0.96f, 2, true),
-            new("Average", 0.56f, 0.07f, 0.94f, 0.88f, 0.90f, 1, true),
-            new("Casual", 0.53f, 0.12f, 0.85f, 0.76f, 0.80f, 1, true),
-            new("Novice", 0.51f, 0.15f, 0.65f, 0.72f, 0.76f, 1, true)
+            new("Best", 0.60f, 0.00f, 1.00f, 1.00f, 1.00f, 2, false, true, true),
+            new("Skilled", 0.58f, 0.03f, 0.98f, 0.96f, 0.96f, 2, true, true, false),
+            new("Average", 0.56f, 0.07f, 0.94f, 0.88f, 0.90f, 1, true, true, false),
+            new("Casual", 0.53f, 0.12f, 0.85f, 0.76f, 0.80f, 1, true, false, false),
+            new("Novice", 0.51f, 0.15f, 0.65f, 0.72f, 0.76f, 1, true, false, false)
         };
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
@@ -156,6 +169,8 @@ namespace TowerDefense.Runtime
         public string DevBestBotSelectedProfileName => DevBestBotSkillProfiles[devBestBotSelectedProfileIndex].Name;
         public float DevBestBotSelectedTimeScale => devBestBotSelectedTimeScale;
         public bool DevBestBotRunAll => devBestBotRunAll;
+        public string DevBestBotRunModeName => devBestBotRunMode == DevBestBotRunMode.Campaign ? "Campaign" : "Snapshot";
+        public string DevBestBotTargetLevelName => DevBestBotRunning && devBestBotTargetLevel != null ? devBestBotTargetLevel.displayName : level?.displayName ?? "Unknown";
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -334,6 +349,16 @@ namespace TowerDefense.Runtime
             if (!devBestBotRunning && !devBestBotPendingNextProfile)
             {
                 devBestBotSelectedTimeScale = Mathf.Clamp(speed, 20f, 50f);
+            }
+        }
+
+        public void ToggleDevBestBotRunMode()
+        {
+            if (!devBestBotRunning && !devBestBotPendingNextProfile)
+            {
+                devBestBotRunMode = devBestBotRunMode == DevBestBotRunMode.Campaign
+                    ? DevBestBotRunMode.Snapshot
+                    : DevBestBotRunMode.Campaign;
             }
         }
 
@@ -612,6 +637,24 @@ namespace TowerDefense.Runtime
             return null;
         }
 
+        private int FindLevelIndex(string levelId)
+        {
+            if (string.IsNullOrEmpty(levelId) || allLevels == null)
+            {
+                return -1;
+            }
+
+            for (var i = 0; i < allLevels.Count; i++)
+            {
+                if (allLevels[i] != null && allLevels[i].id == levelId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
         private void Update()
         {
             if (input == null)
@@ -718,10 +761,30 @@ namespace TowerDefense.Runtime
         private void StartDevBestBot()
         {
             var levelOne = FindLevel("level_01");
-            if (levelOne == null || profileStore == null || enemies == null || towers == null || activeWeapon == null)
+            var requestedTarget = level ?? levelOne;
+            var requestedTargetIndex = FindLevelIndex(requestedTarget?.id);
+            if (levelOne == null || requestedTarget == null || requestedTargetIndex < 0 || profileStore == null || enemies == null || towers == null || activeWeapon == null)
             {
-                devBestBotStatus = "Cannot start: Level 1 is unavailable";
+                devBestBotStatus = "Cannot start: selected level is unavailable";
                 return;
+            }
+
+            PlayerProfile snapshotProfile = null;
+            if (devBestBotRunMode == DevBestBotRunMode.Snapshot && requestedTargetIndex > 0)
+            {
+                var previousLevel = allLevels[requestedTargetIndex - 1];
+                if (!profileStore.TryLoadBalanceBotSnapshot(DevBestBotSkillProfiles[devBestBotSelectedProfileIndex].Name, previousLevel.id, out snapshotProfile))
+                {
+                    devBestBotStatus = $"Missing {DevBestBotSkillProfiles[devBestBotSelectedProfileIndex].Name} snapshot after {previousLevel.displayName}. Run Campaign first.";
+                    if (devBestBotComparisons.Count > 0)
+                    {
+                        devBestBotReport = BuildDevBestBotComparisonReport();
+                        devBestBotPurchaseHistory = BuildDevBestBotComparisonPurchaseHistory();
+                    }
+                    devBestBotRunAll = false;
+                    devBestBotPendingNextProfile = false;
+                    return;
+                }
             }
 
             SaveLayout();
@@ -741,12 +804,20 @@ namespace TowerDefense.Runtime
             devBestBotOriginalAutoEfficiency = activeWeapon.DevAutoEfficiency;
             devBestBotOriginalRewardMultiplier = rewardTestMultiplier;
             devBestBotRunningProfileIndex = devBestBotSelectedProfileIndex;
+            devBestBotTargetLevel = requestedTarget;
+            devBestBotTargetLevelIndex = requestedTargetIndex;
+            devBestBotCurrentLevelIndex = devBestBotRunMode == DevBestBotRunMode.Campaign ? 0 : requestedTargetIndex;
 
             profileStore = new ProfileStore("best_bot_test_profile.json");
-            profile = new PlayerProfile { selectedLevelId = levelOne.id };
-            profile.unlockedLevelIds.Add(levelOne.id);
+            profile = snapshotProfile ?? new PlayerProfile();
+            var startingLevel = allLevels[devBestBotCurrentLevelIndex];
+            profile.selectedLevelId = startingLevel.id;
+            if (!profile.unlockedLevelIds.Contains(startingLevel.id))
+            {
+                profile.unlockedLevelIds.Add(startingLevel.id);
+            }
             progression = new ProgressionService(skillTree, profile);
-            level = levelOne;
+            level = startingLevel;
             path = loadLevelMap != null ? loadLevelMap(level) : path;
             enemies.SetLevelRoute(path);
             towers.Initialize(enemies, path, GetUnlockedTowers());
@@ -768,11 +839,14 @@ namespace TowerDefense.Runtime
             devBestBotAttemptCount = 0;
             devBestBotGameSeconds = 0f;
             devBestBotRealSeconds = 0f;
+            devBestBotLevelGameSeconds = 0f;
+            devBestBotLevelRealSeconds = 0f;
             devBestBotCurrentAttemptSeconds = 0f;
             devBestBotCurrentSeed = 0;
             devBestBotLastBaseDamage = 0;
             devBestBotPurchases.Clear();
             devBestBotAttempts.Clear();
+            devBestBotLevels.Clear();
             devBestBotTowerUpgradeSpend = 0f;
             devBestBotActiveUpgradeSpend = 0f;
             devBestBotOtherUpgradeSpend = 0f;
@@ -781,18 +855,27 @@ namespace TowerDefense.Runtime
             devBestBotRunning = true;
             devBestBotWaitingToStart = true;
             devBestBotStartTimer = DevBestBotPlanningDelay;
-            devBestBotStatus = $"Preparing {RunningDevBestBotProfile.Name} on a fresh Level 1 profile";
+            if (snapshotProfile != null)
+            {
+                TryBuyBestBotUpgrades();
+                RebuildBestBotTowerLayout();
+            }
+            devBestBotStatus = devBestBotRunMode == DevBestBotRunMode.Campaign
+                ? $"Preparing {RunningDevBestBotProfile.Name} campaign to {devBestBotTargetLevel.displayName}"
+                : $"Preparing {RunningDevBestBotProfile.Name} snapshot on {devBestBotTargetLevel.displayName}";
             Time.timeScale = devBestBotSelectedTimeScale;
         }
 
         private void UpdateDevBestBot()
         {
             devBestBotRealSeconds += Time.unscaledDeltaTime;
+            devBestBotLevelRealSeconds += Time.unscaledDeltaTime;
             if (running)
             {
                 devBestBotGameSeconds += Time.deltaTime;
+                devBestBotLevelGameSeconds += Time.deltaTime;
                 devBestBotCurrentAttemptSeconds += Time.deltaTime;
-                devBestBotStatus = $"Attempt {devBestBotAttemptCount} running | {FormatBotDuration(devBestBotCurrentAttemptSeconds)} | seed {devBestBotCurrentSeed}";
+                devBestBotStatus = $"{level.displayName} | attempt {devBestBotAttemptCount} | {FormatBotDuration(devBestBotCurrentAttemptSeconds)} | seed {devBestBotCurrentSeed}";
                 return;
             }
 
@@ -836,16 +919,27 @@ namespace TowerDefense.Runtime
             devBestBotWaitingToStart = false;
             devBestBotAttemptCount++;
             devBestBotCurrentAttemptSeconds = 0f;
-            devBestBotCurrentSeed = DevBestBotSeedBase + devBestBotAttemptCount * 7919;
+            devBestBotCurrentSeed = DevBestBotSeedBase + devBestBotCurrentLevelIndex * 104729 + devBestBotAttemptCount * 7919;
             UnityEngine.Random.InitState(devBestBotCurrentSeed);
             StartLevel();
         }
 
         private void CompleteDevBestBotVictory()
         {
+            ApplyDevBestBotClearEntitlements();
+            CaptureDevBestBotLevelRecord();
+            profileStore.SaveBalanceBotSnapshot(profile, RunningDevBestBotProfile.Name, level.id);
+            profileStore.Save(profile);
+
+            if (devBestBotRunMode == DevBestBotRunMode.Campaign && devBestBotCurrentLevelIndex < devBestBotTargetLevelIndex)
+            {
+                AdvanceDevBestBotCampaignLevel();
+                return;
+            }
+
             if (!devBestBotRunAll)
             {
-                devBestBotReport = BuildDevBestBotReport(true, "Level 1 cleared");
+                devBestBotReport = BuildDevBestBotReport(true, $"{devBestBotTargetLevel.displayName} cleared");
                 RestoreProfileAfterDevBestBot();
                 return;
             }
@@ -870,41 +964,145 @@ namespace TowerDefense.Runtime
             devBestBotStatus = "All five bot profiles finished";
         }
 
-        private BestBotComparisonRecord CreateDevBestBotComparisonRecord()
+        private void ApplyDevBestBotClearEntitlements()
+        {
+            var progress = profile.GetOrCreateLevelProgress(level.id);
+            var receivesPerfect = RunningDevBestBotProfile.ReceivesPerfectReward;
+            var receivesChallenge = RunningDevBestBotProfile.ReceivesChallengeReward;
+            if (receivesPerfect && !progress.perfectClearClaimed)
+            {
+                progress.perfectClearClaimed = true;
+                if (!profile.perfectClearedLevelIds.Contains(level.id))
+                {
+                    profile.perfectClearedLevelIds.Add(level.id);
+                }
+                profile.AddCurrency(level.perfectClearReward.currency, level.perfectClearReward.amount);
+            }
+
+            if (receivesChallenge && !progress.challengeClaimed)
+            {
+                progress.challengeClaimed = true;
+                profile.AddCurrency(level.challengeReward.currency, level.challengeReward.amount);
+            }
+        }
+
+        private void CaptureDevBestBotLevelRecord()
         {
             var towerDamage = 0f;
             var activeDamage = 0f;
+            var kills = 0;
             for (var i = 0; i < devBestBotAttempts.Count; i++)
             {
                 towerDamage += devBestBotAttempts[i].TowerDamage;
                 activeDamage += devBestBotAttempts[i].ActiveWeaponDamage;
+                kills += devBestBotAttempts[i].Kills;
             }
 
             var finalAttempt = devBestBotAttempts.Count > 0 ? devBestBotAttempts[devBestBotAttempts.Count - 1] : null;
+            devBestBotLevels.Add(new BestBotLevelRecord
+            {
+                LevelId = level.id,
+                LevelName = level.displayName,
+                Attempts = devBestBotAttemptCount,
+                GameSeconds = devBestBotLevelGameSeconds,
+                RealSeconds = devBestBotLevelRealSeconds,
+                WinningRunSeconds = finalAttempt?.GameSeconds ?? 0f,
+                LivesRemaining = finalAttempt?.LivesRemaining ?? lives,
+                Kills = kills,
+                TowerDamage = towerDamage,
+                ActiveDamage = activeDamage,
+                Currencies = FormatBestBotCurrencies()
+            });
+        }
+
+        private void AdvanceDevBestBotCampaignLevel()
+        {
+            devBestBotCurrentLevelIndex++;
+            var nextLevel = allLevels[devBestBotCurrentLevelIndex];
+            towers.RemoveAll();
+            level = nextLevel;
+            profile.selectedLevelId = nextLevel.id;
+            if (!profile.unlockedLevelIds.Contains(nextLevel.id))
+            {
+                profile.unlockedLevelIds.Add(nextLevel.id);
+            }
+
+            progression = new ProgressionService(skillTree, profile);
+            path = loadLevelMap != null ? loadLevelMap(level) : path;
+            enemies.SetLevelRoute(path);
+            towers.Initialize(enemies, path, GetUnlockedTowers());
+            ApplyProgressionStats();
+            lives = maxLivesForRun;
+            enemiesKilled = 0;
+            killRewardMassProgress = 0f;
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+            lastRunCurrencyDeltas.Clear();
+
+            devBestBotAttemptCount = 0;
+            devBestBotLevelGameSeconds = 0f;
+            devBestBotLevelRealSeconds = 0f;
+            devBestBotCurrentAttemptSeconds = 0f;
+            devBestBotCurrentSeed = 0;
+            devBestBotLastBaseDamage = 0;
+            devBestBotAttempts.Clear();
+            var purchases = TryBuyBestBotUpgrades();
+            RebuildBestBotTowerLayout();
+            devBestBotWaitingToStart = true;
+            devBestBotStartTimer = DevBestBotPlanningDelay;
+            devBestBotStatus = $"Advanced to {nextLevel.displayName} | bought {purchases} rank(s)";
+            profileStore.Save(profile);
+        }
+
+        private BestBotComparisonRecord CreateDevBestBotComparisonRecord()
+        {
+            var attempts = 0;
+            var towerDamage = 0f;
+            var activeDamage = 0f;
+            for (var i = 0; i < devBestBotLevels.Count; i++)
+            {
+                attempts += devBestBotLevels[i].Attempts;
+                towerDamage += devBestBotLevels[i].TowerDamage;
+                activeDamage += devBestBotLevels[i].ActiveDamage;
+            }
+
+            var finalLevel = devBestBotLevels.Count > 0 ? devBestBotLevels[devBestBotLevels.Count - 1] : null;
             return new BestBotComparisonRecord
             {
                 Name = RunningDevBestBotProfile.Name,
-                Attempts = devBestBotAttemptCount,
+                Attempts = attempts,
                 GameSeconds = devBestBotGameSeconds,
                 RealSeconds = devBestBotRealSeconds,
-                WinningRunSeconds = finalAttempt?.GameSeconds ?? 0f,
-                LivesRemaining = finalAttempt?.LivesRemaining ?? 0,
+                WinningRunSeconds = finalLevel?.WinningRunSeconds ?? 0f,
+                LivesRemaining = finalLevel?.LivesRemaining ?? 0,
                 TowerDamage = towerDamage,
                 ActiveDamage = activeDamage,
-                PurchaseHistory = BuildDevBestBotPurchaseHistory()
+                PurchaseHistory = BuildDevBestBotPurchaseHistory(),
+                LevelSummary = BuildDevBestBotLevelSummary()
             };
         }
 
         private string BuildDevBestBotComparisonReport()
         {
             var text = new StringBuilder();
-            text.AppendLine("ALL 5 BOTS — LEVEL 1 COMPARISON");
-            text.AppendLine($"Speed: {devBestBotSelectedTimeScale:0}x   Same deterministic seed sequence");
+            text.AppendLine($"ALL 5 BOTS — {devBestBotRunMode.ToString().ToUpperInvariant()} TO {devBestBotTargetLevel?.displayName?.ToUpperInvariant()}");
+            text.AppendLine($"Speed: {devBestBotSelectedTimeScale:0}x   Deterministic seeds per level");
             text.AppendLine("Profile      Runs   Game    Real    Win     HP    Tower dmg   Active dmg");
             for (var i = 0; i < devBestBotComparisons.Count; i++)
             {
                 var result = devBestBotComparisons[i];
                 text.AppendLine($"{result.Name,-10} {result.Attempts,4}   {FormatBotDuration(result.GameSeconds),5}   {FormatBotDuration(result.RealSeconds),5}   {FormatBotDuration(result.WinningRunSeconds),5}   {result.LivesRemaining,3}   {result.TowerDamage,9:0}   {result.ActiveDamage,10:0}");
+            }
+
+            text.AppendLine();
+            text.AppendLine("PER-LEVEL RESULTS");
+            for (var i = 0; i < devBestBotComparisons.Count; i++)
+            {
+                text.AppendLine();
+                text.AppendLine(devBestBotComparisons[i].Name.ToUpperInvariant());
+                text.AppendLine(devBestBotComparisons[i].LevelSummary);
             }
 
             return text.ToString().TrimEnd();
@@ -924,6 +1122,24 @@ namespace TowerDefense.Runtime
 
                 text.AppendLine($"{devBestBotComparisons[i].Name.ToUpperInvariant()} BOT");
                 text.AppendLine(devBestBotComparisons[i].PurchaseHistory);
+            }
+
+            return text.ToString().TrimEnd();
+        }
+
+        private string BuildDevBestBotLevelSummary()
+        {
+            if (devBestBotLevels.Count == 0)
+            {
+                return "No completed levels";
+            }
+
+            var text = new StringBuilder();
+            text.AppendLine("Level             Runs   Game    Real    Win     HP    Tower dmg   Active dmg   Final currencies");
+            for (var i = 0; i < devBestBotLevels.Count; i++)
+            {
+                var result = devBestBotLevels[i];
+                text.AppendLine($"{result.LevelName,-17} {result.Attempts,4}   {FormatBotDuration(result.GameSeconds),5}   {FormatBotDuration(result.RealSeconds),5}   {FormatBotDuration(result.WinningRunSeconds),5}   {result.LivesRemaining,3}   {result.TowerDamage,9:0}   {result.ActiveDamage,10:0}   {result.Currencies}");
             }
 
             return text.ToString().TrimEnd();
@@ -1264,6 +1480,8 @@ namespace TowerDefense.Runtime
                 bought++;
                 devBestBotPurchases.Add(new BestBotPurchaseRecord
                 {
+                    LevelId = level.id,
+                    LevelName = level.displayName,
                     Attempt = devBestBotAttemptCount + 1,
                     DisplayName = bestNode.displayName,
                     Rank = progression.GetPurchasedRank(bestNode.id),
@@ -1678,7 +1896,7 @@ namespace TowerDefense.Runtime
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
                     return 8f;
                 case UpgradeEffectType.BaseLivesFlat:
-                    return float.MinValue;
+                    return RunningDevBestBotProfile.AllowBaseLives ? Mathf.Max(0.25f, effect.value * 0.25f) : float.MinValue;
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
                     return 12f * effect.value;
                 case UpgradeEffectType.UnlockEra:
@@ -1786,7 +2004,7 @@ namespace TowerDefense.Runtime
         {
             if (definition.behavior == TowerBehavior.Barrier)
             {
-                var barrierScore = 80f + pathFraction * 20f;
+                var barrierScore = 80f + pathFraction * 20f + GetPathTurnStrength(pathFraction) * 14f;
                 for (var i = 0; i < towers.Towers.Count; i++)
                 {
                     var distance = Vector3.Distance(towers.Towers[i].transform.position, candidate);
@@ -1818,7 +2036,23 @@ namespace TowerDefense.Runtime
                 coverageScore -= Mathf.Max(0f, 5.5f - distance) * 3.5f;
             }
 
-            return ApplyDevBestBotPlacementQuality(definition, candidate, coverageScore + pathFraction * 2f);
+            var turnStrength = GetPathTurnStrength(pathFraction);
+            var cornerAndChokeControl = turnStrength * (12f + Mathf.Max(0f, definition.splashRadius) * 5f);
+            return ApplyDevBestBotPlacementQuality(definition, candidate, coverageScore + cornerAndChokeControl + pathFraction * 2f);
+        }
+
+        private float GetPathTurnStrength(float pathFraction)
+        {
+            if (path == null || path.TotalLength <= 0.01f)
+            {
+                return 0f;
+            }
+
+            var centerDistance = Mathf.Clamp01(pathFraction) * path.TotalLength;
+            var sampleOffset = Mathf.Clamp(path.TotalLength * 0.035f, 1.5f, 4f);
+            var before = GetPathTangent(Mathf.Max(0f, centerDistance - sampleOffset));
+            var after = GetPathTangent(Mathf.Min(path.TotalLength, centerDistance + sampleOffset));
+            return Mathf.Clamp01((1f - Vector3.Dot(before, after)) * 0.5f);
         }
 
         private float ApplyDevBestBotPlacementQuality(TowerDefinition definition, Vector3 candidate, float idealScore)
@@ -1943,7 +2177,8 @@ namespace TowerDefense.Runtime
             this.won = won;
             activeWeapon.CanFire = false;
             enemies.StopWave();
-            rewards.ApplyLevelRewards(profile, level, won, won && lives == maxLivesForRun, rewardTestMultiplier);
+            var perfectClear = won && lives == maxLivesForRun && !devBestBotRunning;
+            rewards.ApplyLevelRewards(profile, level, won, perfectClear, rewardTestMultiplier);
             var progress = profile.GetOrCreateLevelProgress(level.id);
             if (won)
             {
@@ -2006,10 +2241,27 @@ namespace TowerDefense.Runtime
         {
             devBestBotPurchaseHistory = BuildDevBestBotPurchaseHistory();
             var text = new StringBuilder();
-            text.AppendLine(victory ? $"{RunningDevBestBotProfile.Name.ToUpperInvariant()} BOT — LEVEL 1 CLEARED" : $"{RunningDevBestBotProfile.Name.ToUpperInvariant()} BOT — TEST STOPPED");
+            text.AppendLine(victory ? $"{RunningDevBestBotProfile.Name.ToUpperInvariant()} BOT — {devBestBotTargetLevel?.displayName?.ToUpperInvariant()} CLEARED" : $"{RunningDevBestBotProfile.Name.ToUpperInvariant()} BOT — TEST STOPPED");
             text.AppendLine(reason);
-            text.AppendLine($"Skill: {RunningDevBestBotProfile.Name}   Speed: {devBestBotSelectedTimeScale:0}x");
-            text.AppendLine($"Attempts: {devBestBotAttemptCount}   Game time: {FormatBotDuration(devBestBotGameSeconds)}   Real time: {FormatBotDuration(devBestBotRealSeconds)}");
+            text.AppendLine($"Mode: {devBestBotRunMode}   Skill: {RunningDevBestBotProfile.Name}   Speed: {devBestBotSelectedTimeScale:0}x");
+            text.AppendLine($"Clear rewards: {FormatDevBestBotRewardAccess()}");
+            var totalAttempts = 0;
+            for (var i = 0; i < devBestBotLevels.Count; i++)
+            {
+                totalAttempts += devBestBotLevels[i].Attempts;
+            }
+            if (!victory)
+            {
+                totalAttempts += devBestBotAttemptCount;
+            }
+            text.AppendLine($"Attempts: {totalAttempts}   Game time: {FormatBotDuration(devBestBotGameSeconds)}   Real time: {FormatBotDuration(devBestBotRealSeconds)}");
+            if (devBestBotLevels.Count > 0)
+            {
+                text.AppendLine();
+                text.AppendLine("PER-LEVEL RESULTS");
+                text.AppendLine(BuildDevBestBotLevelSummary());
+                text.AppendLine();
+            }
 
             BestBotAttemptRecord finalAttempt = null;
             if (devBestBotAttempts.Count > 0)
@@ -2072,15 +2324,36 @@ namespace TowerDefense.Runtime
         private string BuildDevBestBotPurchaseHistory()
         {
             var text = new StringBuilder();
-            var lastAttempt = Mathf.Max(1, devBestBotAttemptCount);
-            for (var attempt = 1; attempt <= lastAttempt; attempt++)
+            for (var levelIndex = 0; levelIndex < devBestBotLevels.Count; levelIndex++)
+            {
+                var levelResult = devBestBotLevels[levelIndex];
+                AppendDevBestBotLevelPurchaseHistory(text, levelResult.LevelId, levelResult.LevelName, levelResult.Attempts);
+            }
+
+            var currentAlreadyCompleted = devBestBotLevels.Count > 0 && devBestBotLevels[devBestBotLevels.Count - 1].LevelId == level.id;
+            if (!currentAlreadyCompleted)
+            {
+                AppendDevBestBotLevelPurchaseHistory(text, level.id, level.displayName, Mathf.Max(1, devBestBotAttemptCount));
+            }
+
+            return text.ToString().TrimEnd();
+        }
+
+        private void AppendDevBestBotLevelPurchaseHistory(StringBuilder text, string levelId, string levelName, int attempts)
+        {
+            if (text.Length > 0)
+            {
+                text.AppendLine("────────────────────────");
+            }
+            text.AppendLine(levelName.ToUpperInvariant());
+            for (var attempt = 1; attempt <= Mathf.Max(1, attempts); attempt++)
             {
                 text.AppendLine($"BEFORE ATTEMPT #{attempt}");
                 var purchaseCount = 0;
                 for (var i = 0; i < devBestBotPurchases.Count; i++)
                 {
                     var purchase = devBestBotPurchases[i];
-                    if (purchase.Attempt != attempt)
+                    if (purchase.LevelId != levelId || purchase.Attempt != attempt)
                     {
                         continue;
                     }
@@ -2092,13 +2365,10 @@ namespace TowerDefense.Runtime
 
                 if (purchaseCount == 0)
                 {
-                    text.AppendLine(attempt == 1 ? "  Fresh profile — no purchases" : "  No affordable purchases");
+                    text.AppendLine(attempt == 1 && levelId == "level_01" ? "  Fresh profile — no purchases" : "  No affordable purchases");
                 }
-
                 text.AppendLine();
             }
-
-            return text.ToString().TrimEnd();
         }
 
         private string FormatBestBotCurrencies()
@@ -2114,6 +2384,20 @@ namespace TowerDefense.Runtime
             }
 
             return parts.Count == 0 ? "none" : string.Join(", ", parts);
+        }
+
+        private string FormatDevBestBotRewardAccess()
+        {
+            var rewardsText = "normal";
+            if (RunningDevBestBotProfile.ReceivesPerfectReward)
+            {
+                rewardsText += " + perfect";
+            }
+            if (RunningDevBestBotProfile.ReceivesChallengeReward)
+            {
+                rewardsText += " + challenge";
+            }
+            return rewardsText;
         }
 
         private void RestoreProfileAfterDevBestBot()
@@ -2547,6 +2831,8 @@ namespace TowerDefense.Runtime
 
         private sealed class BestBotPurchaseRecord
         {
+            public string LevelId;
+            public string LevelName;
             public int Attempt;
             public string DisplayName;
             public int Rank;
@@ -2565,6 +2851,22 @@ namespace TowerDefense.Runtime
             public float TowerDamage;
             public float ActiveDamage;
             public string PurchaseHistory;
+            public string LevelSummary;
+        }
+
+        private sealed class BestBotLevelRecord
+        {
+            public string LevelId;
+            public string LevelName;
+            public int Attempts;
+            public float GameSeconds;
+            public float RealSeconds;
+            public float WinningRunSeconds;
+            public int LivesRemaining;
+            public int Kills;
+            public float TowerDamage;
+            public float ActiveDamage;
+            public string Currencies;
         }
 
         private enum BestBotUpgradeCategory
@@ -2584,6 +2886,8 @@ namespace TowerDefense.Runtime
             public readonly float PlacementQuality;
             public readonly int IncomePolicy;
             public readonly bool AllowBaseLives;
+            public readonly bool ReceivesPerfectReward;
+            public readonly bool ReceivesChallengeReward;
 
             public BestBotSkillProfile(
                 string name,
@@ -2593,7 +2897,9 @@ namespace TowerDefense.Runtime
                 float decisionQuality,
                 float placementQuality,
                 int incomePolicy,
-                bool allowBaseLives)
+                bool allowBaseLives,
+                bool receivesPerfectReward,
+                bool receivesChallengeReward)
             {
                 Name = name;
                 TowerSpendTarget = Mathf.Clamp01(towerSpendTarget);
@@ -2603,6 +2909,8 @@ namespace TowerDefense.Runtime
                 PlacementQuality = Mathf.Clamp01(placementQuality);
                 IncomePolicy = Mathf.Clamp(incomePolicy, 0, 2);
                 AllowBaseLives = allowBaseLives;
+                ReceivesPerfectReward = receivesPerfectReward;
+                ReceivesChallengeReward = receivesChallengeReward;
             }
         }
     }
