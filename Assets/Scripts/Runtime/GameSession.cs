@@ -90,7 +90,7 @@ namespace TowerDefense.Runtime
             new("Skilled", 0.58f, 0.03f, 0.98f, 0.96f, 0.96f, 2, true),
             new("Average", 0.56f, 0.07f, 0.94f, 0.88f, 0.90f, 1, true),
             new("Casual", 0.53f, 0.12f, 0.85f, 0.76f, 0.80f, 1, true),
-            new("Novice", 0.50f, 0.18f, 0.30f, 0.62f, 0.70f, 0, true)
+            new("Novice", 0.51f, 0.15f, 0.65f, 0.72f, 0.76f, 1, true)
         };
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {

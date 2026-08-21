@@ -86,6 +86,11 @@ namespace TowerDefense.Tests
             session.StopDevBestBot();
 
             session.SelectNextDevBestBotProfile();
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Novice"));
+            session.ToggleDevBestBot();
+            Assert.That(activeWeapon.DevAutoEfficiency, Is.EqualTo(0.65f).Within(0.001f));
+            session.StopDevBestBot();
+
             session.SelectNextDevBestBotProfile();
             Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Best"));
             session.StartAllDevBestBots();
