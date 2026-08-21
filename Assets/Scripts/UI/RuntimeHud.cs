@@ -52,7 +52,7 @@ namespace TowerDefense.UI
         private Button devSpeed10Button;
         private Button devRewardTestingButton;
         private Button devAutoActiveButton;
-        private Button devAutoTestLoopButton;
+        private Button devBestBotButton;
         private readonly Button[] devLoadSlotButtons = new Button[4];
         private readonly Text[] devSaveSlotStatusTexts = new Text[4];
         private Button devToggleButton;
@@ -61,7 +61,10 @@ namespace TowerDefense.UI
         private Text resultTitle;
         private Text resultBody;
         private GameObject devAutoPurchasePanel;
+        private Text devAutoPurchaseTitle;
         private Text devAutoPurchaseBody;
+        private GameObject devBestBotReportPanel;
+        private Text devBestBotReportBody;
         private GameObject pausePanel;
         private bool pausePanelVisible;
         private float timeScaleBeforePause = 1f;
@@ -154,6 +157,7 @@ namespace TowerDefense.UI
             CreateStartBattleButton(parent);
             CreateResultPanel(parent);
             CreateDevAutoPurchasePanel(parent);
+            CreateDevBestBotReportPanel(parent);
             CreatePausePanel(parent);
             CreateUpgradePanel(parent);
             CreateStatsPanel(parent);
@@ -206,6 +210,7 @@ namespace TowerDefense.UI
             UpdateDevSpeedButtons();
             UpdateResultPanel();
             UpdateDevAutoPurchasePanel();
+            UpdateDevBestBotReportPanel();
             UpdateStartBattleButton();
             UpdateUpgradeShortcutButton();
             UpdateUpgradePanel();
@@ -484,13 +489,30 @@ namespace TowerDefense.UI
         private void CreateDevAutoPurchasePanel(Transform parent)
         {
             devAutoPurchasePanel = CreatePanel("DevAutoPurchasePanel", parent, new Vector2(0f, 82f), new Vector2(470f, 170f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
-            var title = CreateText("DevAutoPurchaseTitle", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 16);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 140f), new Vector2(410f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
-            title.text = "AUTO LOOP PURCHASES";
-            title.color = new Color(0.74f, 0.95f, 1f, 1f);
+            devAutoPurchaseTitle = CreateText("DevAutoPurchaseTitle", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 16);
+            ConfigureCenteredRect(devAutoPurchaseTitle.GetComponent<RectTransform>(), new Vector2(0f, 140f), new Vector2(410f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            devAutoPurchaseTitle.text = "AUTO LOOP PURCHASES";
+            devAutoPurchaseTitle.color = new Color(0.74f, 0.95f, 1f, 1f);
             devAutoPurchaseBody = CreateText("DevAutoPurchaseBody", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(devAutoPurchaseBody.GetComponent<RectTransform>(), new Vector2(0f, 70f), new Vector2(420f, 110f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             devAutoPurchasePanel.SetActive(false);
+        }
+
+        private void CreateDevBestBotReportPanel(Transform parent)
+        {
+            devBestBotReportPanel = CreatePanel("DevBestBotReportPanel", parent, Vector2.zero, new Vector2(640f, 400f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            input.RegisterBlockingUiRect(devBestBotReportPanel.GetComponent<RectTransform>());
+            var title = CreateText("DevBestBotReportTitle", devBestBotReportPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 20);
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 368f), new Vector2(590f, 30f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            title.text = "BEST BOT REPORT";
+            title.color = new Color(0.72f, 1f, 0.66f, 1f);
+            devBestBotReportBody = CreateText("DevBestBotReportBody", devBestBotReportPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 12);
+            ConfigureCenteredRect(devBestBotReportBody.GetComponent<RectTransform>(), new Vector2(0f, 198f), new Vector2(590f, 310f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            devBestBotReportBody.horizontalOverflow = HorizontalWrapMode.Wrap;
+            devBestBotReportBody.verticalOverflow = VerticalWrapMode.Truncate;
+            CreateButton("CloseDevBestBotReport", devBestBotReportPanel.transform, "CLOSE", new Vector2(0f, 24f), new Vector2(130f, 28f), 12)
+                .onClick.AddListener(() => session.DismissDevBestBotReport());
+            devBestBotReportPanel.SetActive(false);
         }
 
         private void CreatePausePanel(Transform parent)
@@ -1305,7 +1327,7 @@ namespace TowerDefense.UI
                 return;
             }
 
-            startBattleButton.gameObject.SetActive(session.IsPlanning);
+            startBattleButton.gameObject.SetActive(session.IsPlanning && !session.DevBestBotRunning);
         }
 
         private void CreateDevPanel(Transform parent)
@@ -1377,14 +1399,24 @@ namespace TowerDefense.UI
                 session.ToggleDevAutoActive();
                 UpdateDevSpeedButtons();
             });
-            devAutoTestLoopButton = CreateButton("DevAutoTestLoop", content.transform, "AUTO LOOP: OFF", new Vector2(0f, -290f), new Vector2(178f, 24f), 11);
-            devAutoTestLoopButton.onClick.AddListener(() =>
+            devBestBotButton = CreateButton("DevBestBot", content.transform, "BEST BOT: START", new Vector2(0f, -290f), new Vector2(178f, 24f), 11);
+            devBestBotButton.onClick.AddListener(() =>
             {
-                session.ToggleDevAutoTestLoop();
+                session.ToggleDevBestBot();
                 UpdateDevSpeedButtons();
             });
             CreateButton("DevStopRun", content.transform, "STOP RUN", new Vector2(0f, -318f), new Vector2(178f, 24f), 11)
-                .onClick.AddListener(() => session.ResetToPlanning());
+                .onClick.AddListener(() =>
+                {
+                    if (session.DevBestBotRunning)
+                    {
+                        session.StopDevBestBot();
+                    }
+                    else
+                    {
+                        session.ResetToPlanning();
+                    }
+                });
 
             var levelsLabel = CreateText("DevLevelsTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(levelsLabel.GetComponent<RectTransform>(), new Vector2(0f, -346f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -1765,8 +1797,8 @@ namespace TowerDefense.UI
                 return;
             }
 
-            resultPanel.SetActive(session.Finished);
-            if (!session.Finished)
+            resultPanel.SetActive(session.Finished && !session.DevBestBotRunning);
+            if (!session.Finished || session.DevBestBotRunning)
             {
                 return;
             }
@@ -1789,18 +1821,42 @@ namespace TowerDefense.UI
 
         private void UpdateDevAutoPurchasePanel()
         {
-            if (devAutoPurchasePanel == null || devAutoPurchaseBody == null)
+            if (devAutoPurchasePanel == null || devAutoPurchaseTitle == null || devAutoPurchaseBody == null)
             {
                 return;
             }
 
-            devAutoPurchasePanel.SetActive(session.DevAutoPurchaseWindowVisible && !IsUpgradePanelOpen());
+            var showBestBotPlanning = session.DevBestBotWaitingToStart;
+            devAutoPurchasePanel.SetActive((session.DevAutoPurchaseWindowVisible || showBestBotPlanning) && !IsUpgradePanelOpen());
             if (!devAutoPurchasePanel.activeSelf)
             {
                 return;
             }
 
-            devAutoPurchaseBody.text = $"Bought this run:\n{session.DevLastAutoPurchaseDetails}\nNext run starts in a moment.";
+            if (showBestBotPlanning)
+            {
+                devAutoPurchaseTitle.text = "BEST BOT PLANNING";
+                devAutoPurchaseBody.text = $"{session.DevBestBotStatus}\nThe test uses an isolated profile at 20x speed.";
+            }
+            else
+            {
+                devAutoPurchaseTitle.text = "AUTO LOOP PURCHASES";
+                devAutoPurchaseBody.text = $"Bought this run:\n{session.DevLastAutoPurchaseDetails}\nNext run starts in a moment.";
+            }
+        }
+
+        private void UpdateDevBestBotReportPanel()
+        {
+            if (devBestBotReportPanel == null || devBestBotReportBody == null)
+            {
+                return;
+            }
+
+            devBestBotReportPanel.SetActive(session.DevBestBotReportAvailable && !IsUpgradePanelOpen());
+            if (devBestBotReportPanel.activeSelf)
+            {
+                devBestBotReportBody.text = session.DevBestBotReport;
+            }
         }
 
         private string FormatRunCurrencyDeltas()
@@ -1858,10 +1914,12 @@ namespace TowerDefense.UI
                 devAutoActiveButton.GetComponentInChildren<Text>().text = session.DevAutoActiveEnabled ? "AUTO ACTIVE: ON" : "AUTO ACTIVE: OFF";
                 HighlightSpeedButton(devAutoActiveButton, session.DevAutoActiveEnabled);
             }
-            if (devAutoTestLoopButton != null)
+            if (devBestBotButton != null)
             {
-                devAutoTestLoopButton.GetComponentInChildren<Text>().text = session.DevAutoTestLoopEnabled ? $"AUTO LOOP: ON ({session.DevLastAutoPurchase})" : "AUTO LOOP: OFF";
-                HighlightSpeedButton(devAutoTestLoopButton, session.DevAutoTestLoopEnabled);
+                devBestBotButton.GetComponentInChildren<Text>().text = session.DevBestBotRunning
+                    ? $"BEST BOT: STOP ({session.DevBestBotAttemptCount})"
+                    : "BEST BOT: START";
+                HighlightSpeedButton(devBestBotButton, session.DevBestBotRunning);
             }
         }
 

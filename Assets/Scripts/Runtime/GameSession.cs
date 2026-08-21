@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using TowerDefense.Data;
 using TowerDefense.Input;
 using TowerDefense.Progression;
@@ -47,8 +48,31 @@ namespace TowerDefense.Runtime
         private float devAutoTestLoopTimer;
         private string devLastAutoPurchase = "None";
         private string devLastAutoPurchaseDetails = "None";
+        private bool devBestBotRunning;
+        private bool devBestBotWaitingToStart;
+        private float devBestBotStartTimer;
+        private float devBestBotGameSeconds;
+        private float devBestBotRealSeconds;
+        private float devBestBotCurrentAttemptSeconds;
+        private int devBestBotAttemptCount;
+        private int devBestBotCurrentSeed;
+        private int devBestBotLastBaseDamage;
+        private string devBestBotStatus = "Ready";
+        private string devBestBotReport = string.Empty;
+        private readonly List<string> devBestBotPurchases = new();
+        private readonly List<BestBotAttemptRecord> devBestBotAttempts = new();
+        private ProfileStore devBestBotOriginalProfileStore;
+        private PlayerProfile devBestBotOriginalProfile;
+        private LevelDefinition devBestBotOriginalLevel;
+        private UnityEngine.Random.State devBestBotOriginalRandomState;
+        private float devBestBotOriginalTimeScale = 1f;
+        private bool devBestBotOriginalAutoActive;
+        private int devBestBotOriginalRewardMultiplier = 1;
         private const float DevAutoTestLoopDelay = 0.65f;
         private const float DevAutoPurchaseWindowSeconds = 3f;
+        private const float DevBestBotTimeScale = 20f;
+        private const float DevBestBotPlanningDelay = 0.2f;
+        private const int DevBestBotSeedBase = 73001;
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
             new("steady_tithe_01", 3),
@@ -103,6 +127,12 @@ namespace TowerDefense.Runtime
         public bool DevAutoPurchaseWindowVisible => devAutoTestLoopEnabled && devAutoTestLoopWaitingToStart;
         public string DevLastAutoPurchase => devLastAutoPurchase;
         public string DevLastAutoPurchaseDetails => devLastAutoPurchaseDetails;
+        public bool DevBestBotRunning => devBestBotRunning;
+        public bool DevBestBotWaitingToStart => devBestBotRunning && devBestBotWaitingToStart;
+        public int DevBestBotAttemptCount => devBestBotAttemptCount;
+        public string DevBestBotStatus => devBestBotStatus;
+        public bool DevBestBotReportAvailable => !string.IsNullOrEmpty(devBestBotReport);
+        public string DevBestBotReport => devBestBotReport;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -247,6 +277,33 @@ namespace TowerDefense.Runtime
             {
                 activeWeapon.DevAutoActiveEnabled = true;
             }
+        }
+
+        public void ToggleDevBestBot()
+        {
+            if (devBestBotRunning)
+            {
+                StopDevBestBot();
+                return;
+            }
+
+            StartDevBestBot();
+        }
+
+        public void StopDevBestBot()
+        {
+            if (!devBestBotRunning)
+            {
+                return;
+            }
+
+            devBestBotReport = BuildDevBestBotReport(false, "Stopped manually");
+            RestoreProfileAfterDevBestBot();
+        }
+
+        public void DismissDevBestBotReport()
+        {
+            devBestBotReport = string.Empty;
         }
 
         public void ClearLevelRewardProgress()
@@ -489,6 +546,24 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (devBestBotRunning)
+            {
+                UpdateDevBestBot();
+                if (devBestBotRunning && running)
+                {
+                    if (lives <= 0)
+                    {
+                        Finish(false);
+                    }
+                    else if (enemies.IsWaveComplete)
+                    {
+                        Finish(true);
+                    }
+                }
+
+                return;
+            }
+
             UpdateDevAutoTestLoop();
 
             var state = input.Current;
@@ -553,6 +628,122 @@ namespace TowerDefense.Runtime
             {
                 Finish(true);
             }
+        }
+
+        private void StartDevBestBot()
+        {
+            var levelOne = FindLevel("level_01");
+            if (levelOne == null || profileStore == null || enemies == null || towers == null || activeWeapon == null)
+            {
+                devBestBotStatus = "Cannot start: Level 1 is unavailable";
+                return;
+            }
+
+            SaveLayout();
+            enemies.StopWave();
+            towers.RemoveAll();
+
+            devBestBotOriginalProfileStore = profileStore;
+            devBestBotOriginalProfile = profile;
+            devBestBotOriginalLevel = level;
+            devBestBotOriginalRandomState = UnityEngine.Random.state;
+            devBestBotOriginalTimeScale = Mathf.Approximately(Time.timeScale, 0f) ? 1f : Time.timeScale;
+            devBestBotOriginalAutoActive = activeWeapon.DevAutoActiveEnabled;
+            devBestBotOriginalRewardMultiplier = rewardTestMultiplier;
+
+            profileStore = new ProfileStore("best_bot_test_profile.json");
+            profile = new PlayerProfile { selectedLevelId = levelOne.id };
+            profile.unlockedLevelIds.Add(levelOne.id);
+            progression = new ProgressionService(skillTree, profile);
+            level = levelOne;
+            path = loadLevelMap != null ? loadLevelMap(level) : path;
+            enemies.SetLevelRoute(path);
+            towers.Initialize(enemies, path, GetUnlockedTowers());
+            ApplyProgressionStats();
+            lives = maxLivesForRun;
+            enemiesKilled = 0;
+            killRewardMassProgress = 0f;
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+            activeWeapon.DevAutoActiveEnabled = true;
+            rewardTestMultiplier = 1;
+            devAutoTestLoopEnabled = false;
+            lastRunCurrencyDeltas.Clear();
+            profileStore.Save(profile);
+
+            devBestBotAttemptCount = 0;
+            devBestBotGameSeconds = 0f;
+            devBestBotRealSeconds = 0f;
+            devBestBotCurrentAttemptSeconds = 0f;
+            devBestBotCurrentSeed = 0;
+            devBestBotLastBaseDamage = 0;
+            devBestBotPurchases.Clear();
+            devBestBotAttempts.Clear();
+            devBestBotReport = string.Empty;
+            devBestBotRunning = true;
+            devBestBotWaitingToStart = true;
+            devBestBotStartTimer = DevBestBotPlanningDelay;
+            devBestBotStatus = "Preparing fresh Level 1 profile";
+            Time.timeScale = DevBestBotTimeScale;
+        }
+
+        private void UpdateDevBestBot()
+        {
+            devBestBotRealSeconds += Time.unscaledDeltaTime;
+            if (running)
+            {
+                devBestBotGameSeconds += Time.deltaTime;
+                devBestBotCurrentAttemptSeconds += Time.deltaTime;
+                devBestBotStatus = $"Attempt {devBestBotAttemptCount} running | {FormatBotDuration(devBestBotCurrentAttemptSeconds)} | seed {devBestBotCurrentSeed}";
+                return;
+            }
+
+            if (finished)
+            {
+                CaptureDevBestBotAttempt();
+                if (won)
+                {
+                    devBestBotReport = BuildDevBestBotReport(true, "Level 1 cleared");
+                    RestoreProfileAfterDevBestBot();
+                    return;
+                }
+
+                ResetToPlanning();
+                var purchaseCount = TryBuyBestBotUpgrades();
+                RebuildBestBotTowerLayout();
+                devBestBotWaitingToStart = true;
+                devBestBotStartTimer = DevBestBotPlanningDelay;
+                devBestBotStatus = purchaseCount > 0
+                    ? $"Planning attempt {devBestBotAttemptCount + 1} | bought {purchaseCount} rank(s)"
+                    : $"Planning attempt {devBestBotAttemptCount + 1} | no affordable upgrades";
+                return;
+            }
+
+            if (!IsPlanning)
+            {
+                return;
+            }
+
+            if (!devBestBotWaitingToStart)
+            {
+                devBestBotWaitingToStart = true;
+                devBestBotStartTimer = DevBestBotPlanningDelay;
+            }
+
+            devBestBotStartTimer -= Time.unscaledDeltaTime;
+            if (devBestBotStartTimer > 0f)
+            {
+                return;
+            }
+
+            devBestBotWaitingToStart = false;
+            devBestBotAttemptCount++;
+            devBestBotCurrentAttemptSeconds = 0f;
+            devBestBotCurrentSeed = DevBestBotSeedBase + devBestBotAttemptCount * 7919;
+            UnityEngine.Random.InitState(devBestBotCurrentSeed);
+            StartLevel();
         }
 
         private void UpdateDevAutoTestLoop()
@@ -804,6 +995,294 @@ namespace TowerDefense.Runtime
             return tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector3.forward;
         }
 
+        private int TryBuyBestBotUpgrades()
+        {
+            var bought = 0;
+            var guard = 0;
+            while (guard++ < 200)
+            {
+                SkillNodeDefinition bestNode = null;
+                var bestScore = float.MinValue;
+                var nodes = progression.GetNodes();
+                for (var i = 0; i < nodes.Length; i++)
+                {
+                    var node = nodes[i];
+                    if (node == null || !progression.CanPurchase(node.id))
+                    {
+                        continue;
+                    }
+
+                    var score = ScoreBestBotUpgrade(node);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestNode = node;
+                    }
+                }
+
+                if (bestNode == null || !progression.TryPurchase(bestNode.id))
+                {
+                    break;
+                }
+
+                bought++;
+                devBestBotPurchases.Add($"Attempt {devBestBotAttemptCount + 1}: {bestNode.displayName} {progression.GetPurchasedRank(bestNode.id)}/{progression.GetMaxRank(bestNode.id)}");
+            }
+
+            if (bought > 0)
+            {
+                ApplyProgressionStats();
+                profileStore.Save(profile);
+            }
+
+            return bought;
+        }
+
+        private float ScoreBestBotUpgrade(SkillNodeDefinition node)
+        {
+            var score = 0f;
+            if (node.effects != null)
+            {
+                for (var i = 0; i < node.effects.Length; i++)
+                {
+                    score += ScoreBestBotEffect(node.effects[i]);
+                }
+            }
+
+            if (skillTree?.nodes != null)
+            {
+                for (var i = 0; i < skillTree.nodes.Length; i++)
+                {
+                    var candidate = skillTree.nodes[i];
+                    if (candidate?.prerequisiteNodeIds == null)
+                    {
+                        continue;
+                    }
+
+                    for (var j = 0; j < candidate.prerequisiteNodeIds.Length; j++)
+                    {
+                        if (candidate.prerequisiteNodeIds[j] == node.id)
+                        {
+                            score += candidate.isMajorUnlock ? 18f : 4f;
+                        }
+                    }
+                }
+            }
+
+            var weightedCost = 0f;
+            var costs = progression.GetCurrentCosts(node.id);
+            for (var i = 0; i < costs.Length; i++)
+            {
+                weightedCost += costs[i].amount * GetBestBotCurrencyWeight(costs[i].currency);
+            }
+
+            return score / Mathf.Max(1f, weightedCost);
+        }
+
+        private float ScoreBestBotEffect(UpgradeEffect effect)
+        {
+            var towerUnlocked = string.IsNullOrEmpty(effect.targetId) || progression.GetEffectTotal(UpgradeEffectType.UnlockTower, effect.targetId) > 0f;
+            var towerFactor = towerUnlocked ? 1f : 0.3f;
+            switch (effect.type)
+            {
+                case UpgradeEffectType.UnlockTower:
+                    return effect.targetId == "archer" ? 180f : 120f;
+                case UpgradeEffectType.PerTypeTowerLimitFlat:
+                    return 55f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerDamageFlat:
+                    return 18f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerDamagePercent:
+                case UpgradeEffectType.TowerFireRatePercent:
+                    return 2.4f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerFireRateFlat:
+                    return 24f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerPierceFlat:
+                    return 28f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerDoubleShotChancePercent:
+                    return 2.2f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerRangeFlat:
+                    return 16f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerProjectileSpeedPercent:
+                case UpgradeEffectType.TowerAimAssistPercent:
+                    return 0.7f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerSlowPercentFlat:
+                    return 1.8f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerSlowCapacityFlat:
+                    return 2.5f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerHealthFlat:
+                    return 0.45f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerThornsDamageFlat:
+                    return 8f * effect.value * towerFactor;
+                case UpgradeEffectType.BarracksUnitCapacityFlat:
+                    return 38f * effect.value * towerFactor;
+                case UpgradeEffectType.BarracksUnitDamagePercent:
+                case UpgradeEffectType.BarracksUnitHealthPercent:
+                case UpgradeEffectType.BarracksRespawnCooldownPercent:
+                    return 1.5f * effect.value * towerFactor;
+                case UpgradeEffectType.EnableTowerFire:
+                    return 70f * towerFactor;
+                case UpgradeEffectType.TowerFireDamagePerTickFlat:
+                    return 16f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerFireTicksPerSecondFlat:
+                    return 20f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerFireMaxStacksFlat:
+                    return 15f * effect.value * towerFactor;
+                case UpgradeEffectType.TowerFireDurationFlat:
+                    return 7f * effect.value * towerFactor;
+                case UpgradeEffectType.ActiveWeaponDamagePercent:
+                    return 3.2f * effect.value;
+                case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                    return 4f * effect.value;
+                case UpgradeEffectType.ActiveWeaponRadiusFlat:
+                    return 42f * effect.value;
+                case UpgradeEffectType.ActiveWeaponPierceFlat:
+                    return 20f * effect.value;
+                case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
+                    return 8f;
+                case UpgradeEffectType.BaseLivesFlat:
+                    return (devBestBotLastBaseDamage > 0 ? 30f : 10f) * effect.value;
+                case UpgradeEffectType.LevelEndKillEssenceFlat:
+                    return 12f * effect.value;
+                case UpgradeEffectType.UnlockEra:
+                    return 35f;
+                default:
+                    return Mathf.Max(1f, effect.value);
+            }
+        }
+
+        private static float GetBestBotCurrencyWeight(CurrencyType currency)
+        {
+            return currency switch
+            {
+                CurrencyType.KillEssence => 1f,
+                CurrencyType.VictorySigil => 20f,
+                CurrencyType.PerfectSigil => 24f,
+                CurrencyType.ChallengeToken => 24f,
+                CurrencyType.BossCore => 40f,
+                _ => 1f
+            };
+        }
+
+        private void RebuildBestBotTowerLayout()
+        {
+            towers.RemoveAll();
+            var available = new List<TowerDefinition>(towers.AvailableTowers ?? Array.Empty<TowerDefinition>());
+            available.Sort((left, right) => ScoreBestBotTowerDefinition(right).CompareTo(ScoreBestBotTowerDefinition(left)));
+            for (var i = 0; i < available.Count; i++)
+            {
+                var definition = available[i];
+                var limit = towers.GetPerTypeLimit(definition);
+                for (var count = 0; count < limit; count++)
+                {
+                    if (!TryPlaceBestBotTower(definition))
+                    {
+                        break;
+                    }
+                }
+            }
+
+            SaveLayout();
+        }
+
+        private static float ScoreBestBotTowerDefinition(TowerDefinition definition)
+        {
+            if (definition == null)
+            {
+                return 0f;
+            }
+
+            return definition.behavior switch
+            {
+                TowerBehavior.Projectile => definition.damage / Mathf.Max(0.05f, definition.fireInterval) * (1f + definition.pierce * 0.6f) + definition.splashRadius * 6f,
+                TowerBehavior.SlowAura => definition.slowPercent * definition.slowCapacity * 10f,
+                TowerBehavior.Barracks => definition.barracksCapacity * definition.alliedUnitDamage / Mathf.Max(0.05f, definition.alliedUnitAttackInterval),
+                TowerBehavior.Barrier => definition.health * 0.05f + definition.thornsDamage,
+                _ => 1f
+            };
+        }
+
+        private bool TryPlaceBestBotTower(TowerDefinition definition)
+        {
+            if (definition == null || path == null || path.TotalLength <= 0f)
+            {
+                return false;
+            }
+
+            var isBarrier = definition.behavior == TowerBehavior.Barrier;
+            var sideDistances = isBarrier
+                ? new[] { 0f, 0.65f, -0.65f }
+                : new[] { 3.35f, -3.35f, 4.15f, -4.15f, 5.1f, -5.1f, 6.1f, -6.1f };
+            var bestScore = float.MinValue;
+            var bestPosition = Vector3.zero;
+            var found = false;
+            for (var step = 2; step <= 31; step++)
+            {
+                var fraction = step / 33f;
+                var distance = path.TotalLength * fraction;
+                var center = path.Sample(distance);
+                var tangent = GetPathTangent(distance);
+                var side = new Vector3(-tangent.z, 0f, tangent.x).normalized;
+                for (var sideIndex = 0; sideIndex < sideDistances.Length; sideIndex++)
+                {
+                    var candidate = center + side * sideDistances[sideIndex];
+                    candidate.y = 0f;
+                    if (!towers.CanPlace(definition, candidate))
+                    {
+                        continue;
+                    }
+
+                    var score = ScoreBestBotTowerPosition(definition, candidate, fraction);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestPosition = candidate;
+                        found = true;
+                    }
+                }
+            }
+
+            return found && towers.TryPlace(definition, bestPosition);
+        }
+
+        private float ScoreBestBotTowerPosition(TowerDefinition definition, Vector3 candidate, float pathFraction)
+        {
+            if (definition.behavior == TowerBehavior.Barrier)
+            {
+                var barrierScore = 80f + pathFraction * 20f;
+                for (var i = 0; i < towers.Towers.Count; i++)
+                {
+                    var distance = Vector3.Distance(towers.Towers[i].transform.position, candidate);
+                    barrierScore -= Mathf.Max(0f, 9f - distance) * 9f;
+                }
+
+                return barrierScore;
+            }
+
+            var effectiveRange = definition.behavior == TowerBehavior.Barracks
+                ? Mathf.Max(definition.alliedUnitAggroRange, definition.range)
+                : Mathf.Max(1f, definition.range);
+            var coverageScore = 0f;
+            const int samples = 72;
+            for (var i = 0; i <= samples; i++)
+            {
+                var sampleFraction = i / (float)samples;
+                var sample = path.Sample(path.TotalLength * sampleFraction);
+                var distance = Vector3.Distance(candidate, sample);
+                if (distance <= effectiveRange)
+                {
+                    coverageScore += 1f + sampleFraction * 0.18f;
+                }
+            }
+
+            for (var i = 0; i < towers.Towers.Count; i++)
+            {
+                var distance = Vector3.Distance(towers.Towers[i].transform.position, candidate);
+                coverageScore -= Mathf.Max(0f, 5.5f - distance) * 3.5f;
+            }
+
+            return coverageScore + pathFraction * 2f;
+        }
+
         public void StartLevel()
         {
             if (!IsPlanning)
@@ -940,6 +1419,156 @@ namespace TowerDefense.Runtime
             SaveLayout();
             CaptureLastRunCurrencyDeltas();
             profileStore.Save(profile);
+        }
+
+        private void CaptureDevBestBotAttempt()
+        {
+            var towerDamage = new Dictionary<string, float>();
+            var totalTowerDamage = 0f;
+            for (var i = 0; i < towers.Towers.Count; i++)
+            {
+                var tower = towers.Towers[i];
+                if (tower?.Definition == null)
+                {
+                    continue;
+                }
+
+                var id = tower.Definition.id;
+                towerDamage.TryGetValue(id, out var accumulated);
+                towerDamage[id] = accumulated + tower.DamageDealt;
+                totalTowerDamage += tower.DamageDealt;
+            }
+
+            devBestBotLastBaseDamage = Mathf.Max(0, maxLivesForRun - lives);
+            devBestBotAttempts.Add(new BestBotAttemptRecord
+            {
+                Attempt = devBestBotAttemptCount,
+                Seed = devBestBotCurrentSeed,
+                Won = won,
+                GameSeconds = devBestBotCurrentAttemptSeconds,
+                Kills = enemiesKilled,
+                LivesRemaining = lives,
+                BaseDamage = devBestBotLastBaseDamage,
+                TowerCount = towers.TowerCount,
+                TowerDamage = totalTowerDamage,
+                ActiveWeaponDamage = activeWeapon.TotalDamageDealt,
+                TowerDamageById = towerDamage
+            });
+        }
+
+        private string BuildDevBestBotReport(bool victory, string reason)
+        {
+            var text = new StringBuilder();
+            text.AppendLine(victory ? "BEST BOT — LEVEL 1 CLEARED" : "BEST BOT — TEST STOPPED");
+            text.AppendLine(reason);
+            text.AppendLine($"Attempts: {devBestBotAttemptCount}   Game time: {FormatBotDuration(devBestBotGameSeconds)}   Real time: {FormatBotDuration(devBestBotRealSeconds)}");
+
+            BestBotAttemptRecord finalAttempt = null;
+            if (devBestBotAttempts.Count > 0)
+            {
+                finalAttempt = devBestBotAttempts[devBestBotAttempts.Count - 1];
+                text.AppendLine($"Final run: {FormatBotDuration(finalAttempt.GameSeconds)}   Seed: {finalAttempt.Seed}   Lives: {finalAttempt.LivesRemaining}");
+                text.AppendLine($"Final damage: towers {finalAttempt.TowerDamage:0}   active {finalAttempt.ActiveWeaponDamage:0}   kills {finalAttempt.Kills}");
+            }
+
+            var totalTowerDamage = 0f;
+            var totalActiveDamage = 0f;
+            var totalKills = 0;
+            var damageByTower = new Dictionary<string, float>();
+            for (var i = 0; i < devBestBotAttempts.Count; i++)
+            {
+                var attempt = devBestBotAttempts[i];
+                totalTowerDamage += attempt.TowerDamage;
+                totalActiveDamage += attempt.ActiveWeaponDamage;
+                totalKills += attempt.Kills;
+                foreach (var entry in attempt.TowerDamageById)
+                {
+                    damageByTower.TryGetValue(entry.Key, out var accumulated);
+                    damageByTower[entry.Key] = accumulated + entry.Value;
+                }
+            }
+
+            text.AppendLine($"All attempts: {totalKills} kills   tower damage {totalTowerDamage:0}   active damage {totalActiveDamage:0}");
+            if (damageByTower.Count > 0)
+            {
+                var towerParts = new List<string>();
+                foreach (var entry in damageByTower)
+                {
+                    var definition = GetTowerDefinition(entry.Key);
+                    towerParts.Add($"{(definition != null ? definition.displayName : entry.Key)} {entry.Value:0}");
+                }
+
+                text.AppendLine($"Tower split: {string.Join(" | ", towerParts)}");
+            }
+
+            text.AppendLine($"Purchased ranks: {devBestBotPurchases.Count}   Final currencies: {FormatBestBotCurrencies()}");
+            var recentStart = Mathf.Max(0, devBestBotAttempts.Count - 6);
+            if (devBestBotAttempts.Count > 0)
+            {
+                text.AppendLine("Recent attempts:");
+                for (var i = recentStart; i < devBestBotAttempts.Count; i++)
+                {
+                    var attempt = devBestBotAttempts[i];
+                    text.AppendLine($"#{attempt.Attempt} {(attempt.Won ? "WIN" : "loss")}  {FormatBotDuration(attempt.GameSeconds)}  kills {attempt.Kills}  base damage {attempt.BaseDamage}  towers {attempt.TowerCount}");
+                }
+            }
+
+            return text.ToString().TrimEnd();
+        }
+
+        private string FormatBestBotCurrencies()
+        {
+            var parts = new List<string>();
+            foreach (CurrencyType currency in Enum.GetValues(typeof(CurrencyType)))
+            {
+                var amount = profile.GetCurrency(currency);
+                if (amount > 0)
+                {
+                    parts.Add($"{currency} {amount}");
+                }
+            }
+
+            return parts.Count == 0 ? "none" : string.Join(", ", parts);
+        }
+
+        private void RestoreProfileAfterDevBestBot()
+        {
+            enemies.StopWave();
+            towers.RemoveAll();
+            profileStore = devBestBotOriginalProfileStore;
+            profile = devBestBotOriginalProfile;
+            level = devBestBotOriginalLevel;
+            progression = new ProgressionService(skillTree, profile);
+            path = loadLevelMap != null ? loadLevelMap(level) : path;
+            enemies.SetLevelRoute(path);
+            towers.Initialize(enemies, path, GetUnlockedTowers());
+            rewardTestMultiplier = devBestBotOriginalRewardMultiplier;
+            ApplyProgressionStats();
+            towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+            lives = maxLivesForRun;
+            enemiesKilled = 0;
+            killRewardMassProgress = 0f;
+            running = false;
+            finished = false;
+            won = false;
+            activeWeapon.CanFire = false;
+            activeWeapon.DevAutoActiveEnabled = devBestBotOriginalAutoActive;
+            lastRunCurrencyDeltas.Clear();
+            CaptureRunStartCurrencies();
+            UnityEngine.Random.state = devBestBotOriginalRandomState;
+            Time.timeScale = devBestBotOriginalTimeScale;
+            devBestBotRunning = false;
+            devBestBotWaitingToStart = false;
+            devBestBotStatus = "Finished — report ready";
+            devBestBotOriginalProfileStore = null;
+            devBestBotOriginalProfile = null;
+            devBestBotOriginalLevel = null;
+        }
+
+        private static string FormatBotDuration(float seconds)
+        {
+            var totalSeconds = Mathf.Max(0, Mathf.RoundToInt(seconds));
+            return $"{totalSeconds / 60:00}:{totalSeconds % 60:00}";
         }
 
         private void OnEnemyKilled(EnemyActor enemy)
@@ -1313,6 +1942,21 @@ namespace TowerDefense.Runtime
                 NodeId = nodeId;
                 TargetRank = Mathf.Max(1, targetRank);
             }
+        }
+
+        private sealed class BestBotAttemptRecord
+        {
+            public int Attempt;
+            public int Seed;
+            public bool Won;
+            public float GameSeconds;
+            public int Kills;
+            public int LivesRemaining;
+            public int BaseDamage;
+            public int TowerCount;
+            public float TowerDamage;
+            public float ActiveWeaponDamage;
+            public Dictionary<string, float> TowerDamageById;
         }
     }
 }

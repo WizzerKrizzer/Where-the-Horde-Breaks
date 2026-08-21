@@ -13,7 +13,7 @@ This repository currently contains an early Unity prototype focused on validatin
 - Persistent per-level tower layout.
 - Permanent currencies and profile save data.
 - Icon-based permanent skill tree with prerequisite links, delayed hover details, zoom, pan, rank indicators, and upgrade purchasing.
-- Dev wallet for testing currencies, upgrade reset, test speed, level loading, save snapshots, and automated balance runs.
+- Dev wallet for testing currencies, upgrade reset, test speed, level loading, save snapshots, and an isolated Best Bot balance run.
 - Enemy health bars, tower placement preview, range display, and placement error popups.
 - Three prototype levels:
   - Level 1: playable balance target and first progression slice.
@@ -72,6 +72,8 @@ Inside the skill tree:
 - `Tab` opens the single detailed damage-statistics view; there is no duplicate always-visible damage panel.
 - `Upgrades` opens the permanent skill tree. Nodes use compact icons and rank text; compact hover cards show the per-rank increase, the live value before and after purchase, and a centered currency cost. Affordable price numbers are white and unavailable price numbers are red, while currency symbols use a warm orange-yellow accent. Purchases happen directly on the node.
 - `Dev Wallet` is for testing only and lets the developer add currencies, reset upgrades, test speed, save/load dev snapshots, switch prototype levels, and run balance automation.
+- `BEST BOT: START` runs Level 1 repeatedly at `20x` on a separate fresh profile. Each attempt uses a reproducible spawn seed; after a loss the bot scores affordable upgrades by expected combat value per cost, rebuilds every unlocked tower type using route coverage and spacing, and retries until victory or manual stop.
+- The Best Bot restores the real player profile, selected level, layout, random state, auto-active setting, reward multiplier, and time scale when it finishes. Its report includes attempts, simulated and real time, winning seed, lives, kills, damage split, tower count, purchases, currencies, and recent failed runs.
 - The Breaker's Grimoire contains prototype entries for turrets, active weapons, enemies, bosses, and levels.
 
 ## Design Direction
