@@ -44,6 +44,7 @@ namespace TowerDefense.Runtime
         }
         public bool AutoFireEnabled { get; private set; }
         public bool DevAutoActiveEnabled { get; set; }
+        public float DevAutoEfficiency { get; set; } = 1f;
         public float CooldownRemaining => Mathf.Max(0f, cooldown);
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
         public bool IsReady => CanFire && CooldownRemaining <= 0f;
@@ -60,6 +61,7 @@ namespace TowerDefense.Runtime
             TotalDamageEvents = 0;
             TotalDamageDealt = 0f;
             AutoFireEnabled = false;
+            cooldown = 0f;
         }
 
         private void Update()
@@ -114,7 +116,7 @@ namespace TowerDefense.Runtime
             var appliedDamage = enemies.DamageInRadius(aimPoint, Radius, Damage, MaxTargets, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
-            cooldown = CooldownSeconds;
+            cooldown = CooldownSeconds / Mathf.Clamp(DevAutoEfficiency, 0.1f, 1f);
             SpawnImpactMarker(aimPoint);
         }
 

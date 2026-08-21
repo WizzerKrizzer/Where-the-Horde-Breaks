@@ -575,7 +575,14 @@ namespace TowerDefense.Runtime
             lastCheapFidelityCount = Mathf.Max(0, activeCount - lastFullFidelityCount);
             var movementStart = Stopwatch.GetTimestamp();
             gpuSimulation.SynchronizeDynamicTargets(combatTargets);
-            gpuSimulation.Dispatch(deltaTime, null, null);
+            const float maximumGpuStep = 0.05f;
+            const int maximumSubsteps = 8;
+            var substeps = Mathf.Clamp(Mathf.CeilToInt(deltaTime / maximumGpuStep), 1, maximumSubsteps);
+            var stepDelta = Mathf.Min(maximumGpuStep, deltaTime / substeps);
+            for (var step = 0; step < substeps; step++)
+            {
+                gpuSimulation.Dispatch(stepDelta, null, null, step == substeps - 1);
+            }
             lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
         }
 

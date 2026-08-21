@@ -23,12 +23,21 @@ namespace TowerDefense.Tests
             var originalLevel = session.Level;
             var originalTimeScale = Time.timeScale;
 
+            var expectedProfiles = new[] { "Best", "Skilled", "Average", "Casual", "Novice" };
+            for (var i = 0; i < expectedProfiles.Length; i++)
+            {
+                Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo(expectedProfiles[i]));
+                session.SelectNextDevBestBotProfile();
+            }
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Best"));
+            session.SetDevBestBotTimeScale(50f);
+
             session.ToggleDevBestBot();
 
             Assert.That(session.DevBestBotRunning, Is.True);
             Assert.That(session.Level.id, Is.EqualTo("level_01"));
             Assert.That(session.Profile, Is.Not.SameAs(originalProfile));
-            Assert.That(Time.timeScale, Is.EqualTo(20f).Within(0.01f));
+            Assert.That(Time.timeScale, Is.EqualTo(50f).Within(0.01f));
 
             session.AddCurrency(CurrencyType.KillEssence, 100);
             var purchaseMethod = typeof(GameSession).GetMethod("TryBuyBestBotUpgrades", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -58,6 +67,15 @@ namespace TowerDefense.Tests
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.01f));
+
+            session.DismissDevBestBotReport();
+            session.StartAllDevBestBots();
+            Assert.That(session.DevBestBotRunAll, Is.True);
+            Assert.That(session.DevBestBotRunning, Is.True);
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Best"));
+            session.StopDevBestBot();
+            Assert.That(session.DevBestBotRunAll, Is.False);
+            Assert.That(session.Profile, Is.SameAs(originalProfile));
 
             var cleanupScene = SceneManager.CreateScene("BestBotTestCleanup");
             SceneManager.SetActiveScene(cleanupScene);

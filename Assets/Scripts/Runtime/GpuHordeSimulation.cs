@@ -744,7 +744,7 @@ namespace TowerDefense.Runtime
             };
         }
 
-        public void Dispatch(float deltaTime, Vector4[] controlData, Vector2[] impulseData)
+        public void Dispatch(float deltaTime, Vector4[] controlData, Vector2[] impulseData, bool requestReadback = true)
         {
             if (disposed)
             {
@@ -786,8 +786,11 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(cullVisibleKernel, "_StatesInput", readStates);
             compute.Dispatch(clearVisibilityKernel, 1, 1, 1);
             compute.DispatchIndirect(cullVisibleKernel, activeDispatchArgs);
-            RequestDiagnosticsReadback();
-            RequestEventReadback();
+            if (requestReadback)
+            {
+                RequestDiagnosticsReadback();
+                RequestEventReadback();
+            }
         }
 
         private void DispatchDynamicTargetCommands()
