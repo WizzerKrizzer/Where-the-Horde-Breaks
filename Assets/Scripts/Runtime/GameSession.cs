@@ -62,6 +62,7 @@ namespace TowerDefense.Runtime
         private string devBestBotPurchaseHistory = string.Empty;
         private float devBestBotTowerUpgradeSpend;
         private float devBestBotActiveUpgradeSpend;
+        private float devBestBotOtherUpgradeSpend;
         private int devBestBotSelectedProfileIndex;
         private int devBestBotRunningProfileIndex;
         private float devBestBotSelectedTimeScale = 30f;
@@ -85,11 +86,11 @@ namespace TowerDefense.Runtime
         private const int DevBestBotSeedBase = 73001;
         private static readonly BestBotSkillProfile[] DevBestBotSkillProfiles =
         {
-            new("Best", 0.60f, 1.00f, 1.00f, 1.00f, 2),
-            new("Skilled", 0.58f, 0.86f, 0.88f, 0.88f, 2),
-            new("Average", 0.52f, 0.70f, 0.70f, 0.72f, 1),
-            new("Casual", 0.45f, 0.50f, 0.50f, 0.54f, 0),
-            new("Novice", 0.35f, 0.32f, 0.30f, 0.34f, 0)
+            new("Best", 0.60f, 0.00f, 1.00f, 1.00f, 1.00f, 2, false),
+            new("Skilled", 0.58f, 0.03f, 0.98f, 0.96f, 0.96f, 2, true),
+            new("Average", 0.56f, 0.07f, 0.94f, 0.88f, 0.90f, 1, true),
+            new("Casual", 0.53f, 0.12f, 0.85f, 0.76f, 0.80f, 1, true),
+            new("Novice", 0.50f, 0.18f, 0.30f, 0.62f, 0.70f, 0, true)
         };
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
@@ -774,6 +775,7 @@ namespace TowerDefense.Runtime
             devBestBotAttempts.Clear();
             devBestBotTowerUpgradeSpend = 0f;
             devBestBotActiveUpgradeSpend = 0f;
+            devBestBotOtherUpgradeSpend = 0f;
             devBestBotReport = string.Empty;
             devBestBotPurchaseHistory = string.Empty;
             devBestBotRunning = true;
@@ -1199,7 +1201,12 @@ namespace TowerDefense.Runtime
                 for (var i = 0; i < nodes.Length; i++)
                 {
                     var node = nodes[i];
-                    if (bestNode != null || node == null || HasUpgradeEffect(node, UpgradeEffectType.BaseLivesFlat) || !progression.CanPurchase(node.id))
+                    if (bestNode != null || node == null || !progression.CanPurchase(node.id))
+                    {
+                        continue;
+                    }
+
+                    if (!RunningDevBestBotProfile.AllowBaseLives && HasUpgradeEffect(node, UpgradeEffectType.BaseLivesFlat))
                     {
                         continue;
                     }
@@ -1249,6 +1256,10 @@ namespace TowerDefense.Runtime
                 {
                     devBestBotActiveUpgradeSpend += purchaseSpend;
                 }
+                else
+                {
+                    devBestBotOtherUpgradeSpend += purchaseSpend;
+                }
 
                 bought++;
                 devBestBotPurchases.Add(new BestBotPurchaseRecord
@@ -1275,14 +1286,19 @@ namespace TowerDefense.Runtime
             SkillNodeDefinition activeNode,
             SkillNodeDefinition otherNode)
         {
-            if (towerNode != null && activeNode != null)
+            var totalSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend + devBestBotOtherUpgradeSpend;
+            var profile = RunningDevBestBotProfile;
+            var activeTarget = Mathf.Max(0f, 1f - profile.TowerSpendTarget - profile.OtherSpendTarget);
+            var towerDeficit = towerNode == null ? float.MinValue : profile.TowerSpendTarget * (totalSpend + 1f) - devBestBotTowerUpgradeSpend;
+            var activeDeficit = activeNode == null ? float.MinValue : activeTarget * (totalSpend + 1f) - devBestBotActiveUpgradeSpend;
+            var otherDeficit = otherNode == null ? float.MinValue : profile.OtherSpendTarget * (totalSpend + 1f) - devBestBotOtherUpgradeSpend;
+
+            if (towerDeficit >= activeDeficit && towerDeficit >= otherDeficit)
             {
-                var totalCombatSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend;
-                var towerShare = totalCombatSpend <= 0f ? 0f : devBestBotTowerUpgradeSpend / totalCombatSpend;
-                return towerShare < RunningDevBestBotProfile.TowerSpendTarget ? towerNode : activeNode;
+                return towerNode;
             }
 
-            return towerNode ?? activeNode ?? otherNode;
+            return activeDeficit >= otherDeficit ? activeNode : otherNode;
         }
 
         private BestBotSkillProfile RunningDevBestBotProfile => DevBestBotSkillProfiles[Mathf.Clamp(devBestBotRunningProfileIndex, 0, DevBestBotSkillProfiles.Length - 1)];
@@ -2034,10 +2050,11 @@ namespace TowerDefense.Runtime
             }
 
             text.AppendLine($"Purchased ranks: {devBestBotPurchases.Count}   Final currencies: {FormatBestBotCurrencies()}");
-            var combatSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend;
-            var towerSpendPercent = combatSpend <= 0f ? 0f : devBestBotTowerUpgradeSpend / combatSpend * 100f;
-            var activeSpendPercent = combatSpend <= 0f ? 0f : devBestBotActiveUpgradeSpend / combatSpend * 100f;
-            text.AppendLine($"Combat upgrade spend: towers {devBestBotTowerUpgradeSpend:0} ({towerSpendPercent:0}%)   active {devBestBotActiveUpgradeSpend:0} ({activeSpendPercent:0}%)");
+            var upgradeSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend + devBestBotOtherUpgradeSpend;
+            var towerSpendPercent = upgradeSpend <= 0f ? 0f : devBestBotTowerUpgradeSpend / upgradeSpend * 100f;
+            var activeSpendPercent = upgradeSpend <= 0f ? 0f : devBestBotActiveUpgradeSpend / upgradeSpend * 100f;
+            var otherSpendPercent = upgradeSpend <= 0f ? 0f : devBestBotOtherUpgradeSpend / upgradeSpend * 100f;
+            text.AppendLine($"Upgrade spend: towers {devBestBotTowerUpgradeSpend:0} ({towerSpendPercent:0}%)   active {devBestBotActiveUpgradeSpend:0} ({activeSpendPercent:0}%)   utility {devBestBotOtherUpgradeSpend:0} ({otherSpendPercent:0}%)");
             var recentStart = Mathf.Max(0, devBestBotAttempts.Count - 6);
             if (devBestBotAttempts.Count > 0)
             {
@@ -2561,25 +2578,31 @@ namespace TowerDefense.Runtime
         {
             public readonly string Name;
             public readonly float TowerSpendTarget;
+            public readonly float OtherSpendTarget;
             public readonly float ActiveWeaponEfficiency;
             public readonly float DecisionQuality;
             public readonly float PlacementQuality;
             public readonly int IncomePolicy;
+            public readonly bool AllowBaseLives;
 
             public BestBotSkillProfile(
                 string name,
                 float towerSpendTarget,
+                float otherSpendTarget,
                 float activeWeaponEfficiency,
                 float decisionQuality,
                 float placementQuality,
-                int incomePolicy)
+                int incomePolicy,
+                bool allowBaseLives)
             {
                 Name = name;
                 TowerSpendTarget = Mathf.Clamp01(towerSpendTarget);
+                OtherSpendTarget = Mathf.Clamp(otherSpendTarget, 0f, 1f - TowerSpendTarget);
                 ActiveWeaponEfficiency = Mathf.Clamp(activeWeaponEfficiency, 0.1f, 1f);
                 DecisionQuality = Mathf.Clamp01(decisionQuality);
                 PlacementQuality = Mathf.Clamp01(placementQuality);
                 IncomePolicy = Mathf.Clamp(incomePolicy, 0, 2);
+                AllowBaseLives = allowBaseLives;
             }
         }
     }

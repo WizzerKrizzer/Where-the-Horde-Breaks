@@ -63,12 +63,31 @@ namespace TowerDefense.Tests
             Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("Steady Tithe"));
             Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("+3 Kill Essence after each run"));
             Assert.That(session.DevBestBotPurchaseHistory, Does.Not.Contain("Reinforced Gate"));
-            Assert.That(session.DevBestBotReport, Does.Contain("Combat upgrade spend: towers"));
+            Assert.That(session.DevBestBotReport, Does.Contain("Upgrade spend: towers"));
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.01f));
 
             session.DismissDevBestBotReport();
+            session.SelectNextDevBestBotProfile();
+            session.SelectNextDevBestBotProfile();
+            session.SelectNextDevBestBotProfile();
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Casual"));
+            session.ToggleDevBestBot();
+            var activeWeapon = Object.FindFirstObjectByType<ActiveWeaponController>();
+            Assert.That(activeWeapon, Is.Not.Null);
+            Assert.That(activeWeapon.DevAutoEfficiency, Is.EqualTo(0.85f).Within(0.001f));
+            session.AddCurrency(CurrencyType.KillEssence, 100);
+            purchaseMethod.Invoke(session, null);
+            foreach (var node in session.UpgradeNodes)
+            {
+                Assert.That(session.CanPurchaseUpgrade(node.id), Is.False, $"Casual left affordable upgrade '{node.id}' unpurchased.");
+            }
+            session.StopDevBestBot();
+
+            session.SelectNextDevBestBotProfile();
+            session.SelectNextDevBestBotProfile();
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Best"));
             session.StartAllDevBestBots();
             Assert.That(session.DevBestBotRunAll, Is.True);
             Assert.That(session.DevBestBotRunning, Is.True);
