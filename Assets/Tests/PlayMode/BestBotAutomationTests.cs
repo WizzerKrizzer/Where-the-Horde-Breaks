@@ -1,5 +1,7 @@
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
+using TowerDefense.Data;
 using TowerDefense.Runtime;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -28,6 +30,13 @@ namespace TowerDefense.Tests
             Assert.That(session.Profile, Is.Not.SameAs(originalProfile));
             Assert.That(Time.timeScale, Is.EqualTo(20f).Within(0.01f));
 
+            session.AddCurrency(CurrencyType.KillEssence, 100);
+            var purchaseMethod = typeof(GameSession).GetMethod("TryBuyBestBotUpgrades", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(purchaseMethod, Is.Not.Null);
+            purchaseMethod.Invoke(session, null);
+            Assert.That(session.GetUpgradeRank("steady_tithe_01"), Is.EqualTo(session.GetUpgradeMaxRank("steady_tithe_01")));
+            Assert.That(session.GetUpgradeRank("base_health_01"), Is.Zero);
+
             yield return new WaitForSecondsRealtime(0.35f);
 
             Assert.That(session.DevBestBotAttemptCount, Is.GreaterThanOrEqualTo(1));
@@ -35,6 +44,8 @@ namespace TowerDefense.Tests
 
             Assert.That(session.DevBestBotRunning, Is.False);
             Assert.That(session.DevBestBotReportAvailable, Is.True);
+            Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("Steady Tithe"));
+            Assert.That(session.DevBestBotPurchaseHistory, Does.Not.Contain("Reinforced Gate"));
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.01f));

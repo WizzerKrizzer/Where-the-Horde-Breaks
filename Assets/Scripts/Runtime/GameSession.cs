@@ -59,7 +59,8 @@ namespace TowerDefense.Runtime
         private int devBestBotLastBaseDamage;
         private string devBestBotStatus = "Ready";
         private string devBestBotReport = string.Empty;
-        private readonly List<string> devBestBotPurchases = new();
+        private string devBestBotPurchaseHistory = string.Empty;
+        private readonly List<BestBotPurchaseRecord> devBestBotPurchases = new();
         private readonly List<BestBotAttemptRecord> devBestBotAttempts = new();
         private ProfileStore devBestBotOriginalProfileStore;
         private PlayerProfile devBestBotOriginalProfile;
@@ -133,6 +134,7 @@ namespace TowerDefense.Runtime
         public string DevBestBotStatus => devBestBotStatus;
         public bool DevBestBotReportAvailable => !string.IsNullOrEmpty(devBestBotReport);
         public string DevBestBotReport => devBestBotReport;
+        public string DevBestBotPurchaseHistory => devBestBotPurchaseHistory;
 
         public IReadOnlyList<EnemyDefinition> GetDebugSpawnableEnemies()
         {
@@ -304,6 +306,7 @@ namespace TowerDefense.Runtime
         public void DismissDevBestBotReport()
         {
             devBestBotReport = string.Empty;
+            devBestBotPurchaseHistory = string.Empty;
         }
 
         public void ClearLevelRewardProgress()
@@ -682,6 +685,7 @@ namespace TowerDefense.Runtime
             devBestBotPurchases.Clear();
             devBestBotAttempts.Clear();
             devBestBotReport = string.Empty;
+            devBestBotPurchaseHistory = string.Empty;
             devBestBotRunning = true;
             devBestBotWaitingToStart = true;
             devBestBotStartTimer = DevBestBotPlanningDelay;
@@ -1004,10 +1008,21 @@ namespace TowerDefense.Runtime
                 SkillNodeDefinition bestNode = null;
                 var bestScore = float.MinValue;
                 var nodes = progression.GetNodes();
+                var incomeNode = FindBestBotIncomeNode(nodes);
+                if (incomeNode != null && progression.CanPurchase(incomeNode.id))
+                {
+                    bestNode = incomeNode;
+                }
+
                 for (var i = 0; i < nodes.Length; i++)
                 {
                     var node = nodes[i];
-                    if (node == null || !progression.CanPurchase(node.id))
+                    if (bestNode != null || node == null || HasUpgradeEffect(node, UpgradeEffectType.BaseLivesFlat) || !progression.CanPurchase(node.id))
+                    {
+                        continue;
+                    }
+
+                    if (incomeNode != null && !CanBuyWithoutSpendingReservedIncomeCurrency(node, incomeNode))
                     {
                         continue;
                     }
@@ -1026,7 +1041,13 @@ namespace TowerDefense.Runtime
                 }
 
                 bought++;
-                devBestBotPurchases.Add($"Attempt {devBestBotAttemptCount + 1}: {bestNode.displayName} {progression.GetPurchasedRank(bestNode.id)}/{progression.GetMaxRank(bestNode.id)}");
+                devBestBotPurchases.Add(new BestBotPurchaseRecord
+                {
+                    Attempt = devBestBotAttemptCount + 1,
+                    DisplayName = bestNode.displayName,
+                    Rank = progression.GetPurchasedRank(bestNode.id),
+                    MaxRank = progression.GetMaxRank(bestNode.id)
+                });
             }
 
             if (bought > 0)
@@ -1036,6 +1057,85 @@ namespace TowerDefense.Runtime
             }
 
             return bought;
+        }
+
+        private SkillNodeDefinition FindBestBotIncomeNode(SkillNodeDefinition[] nodes)
+        {
+            for (var i = 0; i < nodes.Length; i++)
+            {
+                var node = nodes[i];
+                if (node == null || !HasUpgradeEffect(node, UpgradeEffectType.LevelEndKillEssenceFlat))
+                {
+                    continue;
+                }
+
+                if (progression.GetPurchasedRank(node.id) < progression.GetMaxRank(node.id) && AreUpgradePrerequisitesMet(node))
+                {
+                    return node;
+                }
+            }
+
+            return null;
+        }
+
+        private bool CanBuyWithoutSpendingReservedIncomeCurrency(SkillNodeDefinition candidate, SkillNodeDefinition incomeNode)
+        {
+            var candidateCosts = progression.GetCurrentCosts(candidate.id);
+            var reservedCosts = progression.GetCurrentCosts(incomeNode.id);
+            for (var i = 0; i < reservedCosts.Length; i++)
+            {
+                var candidateAmount = 0;
+                for (var j = 0; j < candidateCosts.Length; j++)
+                {
+                    if (candidateCosts[j].currency == reservedCosts[i].currency)
+                    {
+                        candidateAmount += candidateCosts[j].amount;
+                    }
+                }
+
+                if (profile.GetCurrency(reservedCosts[i].currency) - candidateAmount < reservedCosts[i].amount)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool AreUpgradePrerequisitesMet(SkillNodeDefinition node)
+        {
+            if (node?.prerequisiteNodeIds == null)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < node.prerequisiteNodeIds.Length; i++)
+            {
+                if (!progression.IsPurchased(node.prerequisiteNodeIds[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool HasUpgradeEffect(SkillNodeDefinition node, UpgradeEffectType effectType)
+        {
+            if (node?.effects == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                if (node.effects[i].type == effectType)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private float ScoreBestBotUpgrade(SkillNodeDefinition node)
@@ -1140,7 +1240,7 @@ namespace TowerDefense.Runtime
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock:
                     return 8f;
                 case UpgradeEffectType.BaseLivesFlat:
-                    return (devBestBotLastBaseDamage > 0 ? 30f : 10f) * effect.value;
+                    return float.MinValue;
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
                     return 12f * effect.value;
                 case UpgradeEffectType.UnlockEra:
@@ -1458,6 +1558,7 @@ namespace TowerDefense.Runtime
 
         private string BuildDevBestBotReport(bool victory, string reason)
         {
+            devBestBotPurchaseHistory = BuildDevBestBotPurchaseHistory();
             var text = new StringBuilder();
             text.AppendLine(victory ? "BEST BOT — LEVEL 1 CLEARED" : "BEST BOT — TEST STOPPED");
             text.AppendLine(reason);
@@ -1511,6 +1612,37 @@ namespace TowerDefense.Runtime
                     var attempt = devBestBotAttempts[i];
                     text.AppendLine($"#{attempt.Attempt} {(attempt.Won ? "WIN" : "loss")}  {FormatBotDuration(attempt.GameSeconds)}  kills {attempt.Kills}  base damage {attempt.BaseDamage}  towers {attempt.TowerCount}");
                 }
+            }
+
+            return text.ToString().TrimEnd();
+        }
+
+        private string BuildDevBestBotPurchaseHistory()
+        {
+            var text = new StringBuilder();
+            var lastAttempt = Mathf.Max(1, devBestBotAttemptCount);
+            for (var attempt = 1; attempt <= lastAttempt; attempt++)
+            {
+                text.AppendLine($"BEFORE ATTEMPT #{attempt}");
+                var purchaseCount = 0;
+                for (var i = 0; i < devBestBotPurchases.Count; i++)
+                {
+                    var purchase = devBestBotPurchases[i];
+                    if (purchase.Attempt != attempt)
+                    {
+                        continue;
+                    }
+
+                    text.AppendLine($"  • {purchase.DisplayName}  {purchase.Rank}/{purchase.MaxRank}");
+                    purchaseCount++;
+                }
+
+                if (purchaseCount == 0)
+                {
+                    text.AppendLine(attempt == 1 ? "  Fresh profile — no purchases" : "  No affordable purchases");
+                }
+
+                text.AppendLine();
             }
 
             return text.ToString().TrimEnd();
@@ -1957,6 +2089,14 @@ namespace TowerDefense.Runtime
             public float TowerDamage;
             public float ActiveWeaponDamage;
             public Dictionary<string, float> TowerDamageById;
+        }
+
+        private sealed class BestBotPurchaseRecord
+        {
+            public int Attempt;
+            public string DisplayName;
+            public int Rank;
+            public int MaxRank;
         }
     }
 }

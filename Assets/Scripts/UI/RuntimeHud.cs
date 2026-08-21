@@ -65,6 +65,11 @@ namespace TowerDefense.UI
         private Text devAutoPurchaseBody;
         private GameObject devBestBotReportPanel;
         private Text devBestBotReportBody;
+        private Button devBestBotPurchasesButton;
+        private GameObject devBestBotPurchasesDropdown;
+        private RectTransform devBestBotPurchasesContent;
+        private Text devBestBotPurchasesText;
+        private bool devBestBotPurchasesExpanded;
         private GameObject pausePanel;
         private bool pausePanelVisible;
         private float timeScaleBeforePause = 1f;
@@ -510,8 +515,56 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(devBestBotReportBody.GetComponent<RectTransform>(), new Vector2(0f, 198f), new Vector2(590f, 310f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             devBestBotReportBody.horizontalOverflow = HorizontalWrapMode.Wrap;
             devBestBotReportBody.verticalOverflow = VerticalWrapMode.Truncate;
-            CreateButton("CloseDevBestBotReport", devBestBotReportPanel.transform, "CLOSE", new Vector2(0f, 24f), new Vector2(130f, 28f), 12)
-                .onClick.AddListener(() => session.DismissDevBestBotReport());
+            devBestBotPurchasesButton = CreateAnchoredButton("ToggleDevBestBotPurchases", devBestBotReportPanel.transform, "PURCHASES ▼", new Vector2(-92f, 22f), new Vector2(158f, 28f), new Vector2(0.5f, 0f), 12);
+            devBestBotPurchasesButton.onClick.AddListener(ToggleDevBestBotPurchaseHistory);
+            CreateAnchoredButton("CloseDevBestBotReport", devBestBotReportPanel.transform, "CLOSE", new Vector2(92f, 22f), new Vector2(158f, 28f), new Vector2(0.5f, 0f), 12)
+                .onClick.AddListener(() =>
+                {
+                    devBestBotPurchasesExpanded = false;
+                    session.DismissDevBestBotReport();
+                });
+
+            devBestBotPurchasesDropdown = CreatePanel("DevBestBotPurchasesDropdown", devBestBotReportPanel.transform, new Vector2(0f, 48f), new Vector2(600f, 300f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            var purchaseTitle = CreateText("DevBestBotPurchasesTitle", devBestBotPurchasesDropdown.transform, Vector2.zero, TextAnchor.MiddleCenter, 14);
+            ConfigureCenteredRect(purchaseTitle.GetComponent<RectTransform>(), new Vector2(0f, 276f), new Vector2(560f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            purchaseTitle.text = "PURCHASE HISTORY BY ATTEMPT";
+            purchaseTitle.color = new Color(1f, 0.76f, 0.28f, 1f);
+
+            var viewport = new GameObject("DevBestBotPurchasesViewport");
+            viewport.transform.SetParent(devBestBotPurchasesDropdown.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            ConfigureCenteredRect(viewportRect, new Vector2(0f, 139f), new Vector2(560f, 242f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            viewport.AddComponent<RectMask2D>();
+            var viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = new Color(0.015f, 0.022f, 0.028f, 0.88f);
+
+            var contentObject = new GameObject("DevBestBotPurchasesContent");
+            contentObject.transform.SetParent(viewport.transform, false);
+            devBestBotPurchasesContent = contentObject.AddComponent<RectTransform>();
+            devBestBotPurchasesContent.anchorMin = new Vector2(0f, 1f);
+            devBestBotPurchasesContent.anchorMax = new Vector2(1f, 1f);
+            devBestBotPurchasesContent.pivot = new Vector2(0.5f, 1f);
+            devBestBotPurchasesContent.anchoredPosition = Vector2.zero;
+            devBestBotPurchasesContent.sizeDelta = new Vector2(0f, 242f);
+
+            devBestBotPurchasesText = CreateText("DevBestBotPurchasesText", devBestBotPurchasesContent, Vector2.zero, TextAnchor.UpperLeft, 11);
+            var purchaseTextRect = devBestBotPurchasesText.GetComponent<RectTransform>();
+            purchaseTextRect.anchorMin = new Vector2(0f, 1f);
+            purchaseTextRect.anchorMax = new Vector2(1f, 1f);
+            purchaseTextRect.pivot = new Vector2(0.5f, 1f);
+            purchaseTextRect.anchoredPosition = new Vector2(0f, -8f);
+            purchaseTextRect.sizeDelta = new Vector2(-20f, 226f);
+            devBestBotPurchasesText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            devBestBotPurchasesText.verticalOverflow = VerticalWrapMode.Overflow;
+
+            var purchaseScroll = devBestBotPurchasesDropdown.AddComponent<ScrollRect>();
+            purchaseScroll.viewport = viewportRect;
+            purchaseScroll.content = devBestBotPurchasesContent;
+            purchaseScroll.horizontal = false;
+            purchaseScroll.vertical = true;
+            purchaseScroll.movementType = ScrollRect.MovementType.Clamped;
+            purchaseScroll.scrollSensitivity = 28f;
+            devBestBotPurchasesDropdown.SetActive(false);
             devBestBotReportPanel.SetActive(false);
         }
 
@@ -1853,10 +1906,41 @@ namespace TowerDefense.UI
             }
 
             devBestBotReportPanel.SetActive(session.DevBestBotReportAvailable && !IsUpgradePanelOpen());
-            if (devBestBotReportPanel.activeSelf)
+            if (!devBestBotReportPanel.activeSelf)
             {
-                devBestBotReportBody.text = session.DevBestBotReport;
+                devBestBotPurchasesExpanded = false;
+                devBestBotPurchasesDropdown?.SetActive(false);
+                return;
             }
+
+            devBestBotReportBody.text = session.DevBestBotReport;
+            if (devBestBotPurchasesButton != null)
+            {
+                devBestBotPurchasesButton.GetComponentInChildren<Text>().text = devBestBotPurchasesExpanded ? "PURCHASES ▲" : "PURCHASES ▼";
+            }
+
+            if (devBestBotPurchasesDropdown != null)
+            {
+                devBestBotPurchasesDropdown.SetActive(devBestBotPurchasesExpanded);
+            }
+        }
+
+        private void ToggleDevBestBotPurchaseHistory()
+        {
+            devBestBotPurchasesExpanded = !devBestBotPurchasesExpanded;
+            if (!devBestBotPurchasesExpanded || devBestBotPurchasesDropdown == null || devBestBotPurchasesText == null || devBestBotPurchasesContent == null)
+            {
+                devBestBotPurchasesDropdown?.SetActive(false);
+                return;
+            }
+
+            devBestBotPurchasesDropdown.SetActive(true);
+            devBestBotPurchasesText.text = session.DevBestBotPurchaseHistory;
+            var preferredHeight = Mathf.Max(242f, devBestBotPurchasesText.preferredHeight + 20f);
+            devBestBotPurchasesContent.sizeDelta = new Vector2(0f, preferredHeight);
+            var textRect = devBestBotPurchasesText.GetComponent<RectTransform>();
+            textRect.sizeDelta = new Vector2(-20f, preferredHeight - 16f);
+            devBestBotPurchasesContent.anchoredPosition = Vector2.zero;
         }
 
         private string FormatRunCurrencyDeltas()
