@@ -60,6 +60,8 @@ namespace TowerDefense.Runtime
         private string devBestBotStatus = "Ready";
         private string devBestBotReport = string.Empty;
         private string devBestBotPurchaseHistory = string.Empty;
+        private float devBestBotTowerUpgradeSpend;
+        private float devBestBotActiveUpgradeSpend;
         private readonly List<BestBotPurchaseRecord> devBestBotPurchases = new();
         private readonly List<BestBotAttemptRecord> devBestBotAttempts = new();
         private ProfileStore devBestBotOriginalProfileStore;
@@ -684,6 +686,8 @@ namespace TowerDefense.Runtime
             devBestBotLastBaseDamage = 0;
             devBestBotPurchases.Clear();
             devBestBotAttempts.Clear();
+            devBestBotTowerUpgradeSpend = 0f;
+            devBestBotActiveUpgradeSpend = 0f;
             devBestBotReport = string.Empty;
             devBestBotPurchaseHistory = string.Empty;
             devBestBotRunning = true;
@@ -1006,7 +1010,12 @@ namespace TowerDefense.Runtime
             while (guard++ < 200)
             {
                 SkillNodeDefinition bestNode = null;
-                var bestScore = float.MinValue;
+                SkillNodeDefinition bestTowerNode = null;
+                SkillNodeDefinition bestActiveNode = null;
+                SkillNodeDefinition bestOtherNode = null;
+                var bestTowerScore = float.MinValue;
+                var bestActiveScore = float.MinValue;
+                var bestOtherScore = float.MinValue;
                 var nodes = progression.GetNodes();
                 var incomeNode = FindBestBotIncomeNode(nodes);
                 if (incomeNode != null && progression.CanPurchase(incomeNode.id))
@@ -1028,16 +1037,44 @@ namespace TowerDefense.Runtime
                     }
 
                     var score = ScoreBestBotUpgrade(node);
-                    if (score > bestScore)
+                    switch (GetBestBotUpgradeCategory(node))
                     {
-                        bestScore = score;
-                        bestNode = node;
+                        case BestBotUpgradeCategory.Tower when score > bestTowerScore:
+                            bestTowerScore = score;
+                            bestTowerNode = node;
+                            break;
+                        case BestBotUpgradeCategory.ActiveWeapon when score > bestActiveScore:
+                            bestActiveScore = score;
+                            bestActiveNode = node;
+                            break;
+                        case BestBotUpgradeCategory.Other when score > bestOtherScore:
+                            bestOtherScore = score;
+                            bestOtherNode = node;
+                            break;
                     }
                 }
 
-                if (bestNode == null || !progression.TryPurchase(bestNode.id))
+                bestNode ??= SelectBalancedBestBotCombatUpgrade(bestTowerNode, bestActiveNode, bestOtherNode);
+
+                if (bestNode == null)
                 {
                     break;
+                }
+
+                var category = GetBestBotUpgradeCategory(bestNode);
+                var purchaseSpend = GetBestBotWeightedUpgradeCost(bestNode);
+                if (!progression.TryPurchase(bestNode.id))
+                {
+                    break;
+                }
+
+                if (category == BestBotUpgradeCategory.Tower)
+                {
+                    devBestBotTowerUpgradeSpend += purchaseSpend;
+                }
+                else if (category == BestBotUpgradeCategory.ActiveWeapon)
+                {
+                    devBestBotActiveUpgradeSpend += purchaseSpend;
                 }
 
                 bought++;
@@ -1058,6 +1095,93 @@ namespace TowerDefense.Runtime
             }
 
             return bought;
+        }
+
+        private SkillNodeDefinition SelectBalancedBestBotCombatUpgrade(
+            SkillNodeDefinition towerNode,
+            SkillNodeDefinition activeNode,
+            SkillNodeDefinition otherNode)
+        {
+            if (towerNode != null && activeNode != null)
+            {
+                var totalCombatSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend;
+                var towerShare = totalCombatSpend <= 0f ? 0f : devBestBotTowerUpgradeSpend / totalCombatSpend;
+                return towerShare < 0.6f ? towerNode : activeNode;
+            }
+
+            return towerNode ?? activeNode ?? otherNode;
+        }
+
+        private float GetBestBotWeightedUpgradeCost(SkillNodeDefinition node)
+        {
+            var weightedCost = 0f;
+            var costs = progression.GetCurrentCosts(node.id);
+            for (var i = 0; i < costs.Length; i++)
+            {
+                weightedCost += costs[i].amount * GetBestBotCurrencyWeight(costs[i].currency);
+            }
+
+            return Mathf.Max(1f, weightedCost);
+        }
+
+        private static BestBotUpgradeCategory GetBestBotUpgradeCategory(SkillNodeDefinition node)
+        {
+            if (node?.effects == null)
+            {
+                return BestBotUpgradeCategory.Other;
+            }
+
+            for (var i = 0; i < node.effects.Length; i++)
+            {
+                if (IsTowerUpgradeEffect(node.effects[i].type))
+                {
+                    return BestBotUpgradeCategory.Tower;
+                }
+
+                if (IsActiveWeaponUpgradeEffect(node.effects[i].type))
+                {
+                    return BestBotUpgradeCategory.ActiveWeapon;
+                }
+            }
+
+            return BestBotUpgradeCategory.Other;
+        }
+
+        private static bool IsTowerUpgradeEffect(UpgradeEffectType type)
+        {
+            return type == UpgradeEffectType.UnlockTower ||
+                   type == UpgradeEffectType.PerTypeTowerLimitFlat ||
+                   type == UpgradeEffectType.TowerDamageFlat ||
+                   type == UpgradeEffectType.TowerDamagePercent ||
+                   type == UpgradeEffectType.TowerFireRateFlat ||
+                   type == UpgradeEffectType.TowerFireRatePercent ||
+                   type == UpgradeEffectType.TowerProjectileSpeedPercent ||
+                   type == UpgradeEffectType.TowerAimAssistPercent ||
+                   type == UpgradeEffectType.TowerPierceFlat ||
+                   type == UpgradeEffectType.TowerDoubleShotChancePercent ||
+                   type == UpgradeEffectType.TowerSlowPercentFlat ||
+                   type == UpgradeEffectType.TowerSlowCapacityFlat ||
+                   type == UpgradeEffectType.TowerRangeFlat ||
+                   type == UpgradeEffectType.TowerHealthFlat ||
+                   type == UpgradeEffectType.TowerThornsDamageFlat ||
+                   type == UpgradeEffectType.BarracksUnitCapacityFlat ||
+                   type == UpgradeEffectType.BarracksUnitDamagePercent ||
+                   type == UpgradeEffectType.BarracksUnitHealthPercent ||
+                   type == UpgradeEffectType.BarracksRespawnCooldownPercent ||
+                   type == UpgradeEffectType.EnableTowerFire ||
+                   type == UpgradeEffectType.TowerFireDamagePerTickFlat ||
+                   type == UpgradeEffectType.TowerFireTicksPerSecondFlat ||
+                   type == UpgradeEffectType.TowerFireMaxStacksFlat ||
+                   type == UpgradeEffectType.TowerFireDurationFlat;
+        }
+
+        private static bool IsActiveWeaponUpgradeEffect(UpgradeEffectType type)
+        {
+            return type == UpgradeEffectType.ActiveWeaponDamagePercent ||
+                   type == UpgradeEffectType.ActiveWeaponCooldownPercent ||
+                   type == UpgradeEffectType.ActiveWeaponRadiusFlat ||
+                   type == UpgradeEffectType.ActiveWeaponPierceFlat ||
+                   type == UpgradeEffectType.ActiveWeaponAutoFireUnlock;
         }
 
         private string FormatBestBotUpgradeEffects(SkillNodeDefinition node)
@@ -1705,6 +1829,10 @@ namespace TowerDefense.Runtime
             }
 
             text.AppendLine($"Purchased ranks: {devBestBotPurchases.Count}   Final currencies: {FormatBestBotCurrencies()}");
+            var combatSpend = devBestBotTowerUpgradeSpend + devBestBotActiveUpgradeSpend;
+            var towerSpendPercent = combatSpend <= 0f ? 0f : devBestBotTowerUpgradeSpend / combatSpend * 100f;
+            var activeSpendPercent = combatSpend <= 0f ? 0f : devBestBotActiveUpgradeSpend / combatSpend * 100f;
+            text.AppendLine($"Combat upgrade spend: towers {devBestBotTowerUpgradeSpend:0} ({towerSpendPercent:0}%)   active {devBestBotActiveUpgradeSpend:0} ({activeSpendPercent:0}%)");
             var recentStart = Mathf.Max(0, devBestBotAttempts.Count - 6);
             if (devBestBotAttempts.Count > 0)
             {
@@ -2201,6 +2329,13 @@ namespace TowerDefense.Runtime
             public int Rank;
             public int MaxRank;
             public string EffectSummary;
+        }
+
+        private enum BestBotUpgradeCategory
+        {
+            Tower,
+            ActiveWeapon,
+            Other
         }
     }
 }

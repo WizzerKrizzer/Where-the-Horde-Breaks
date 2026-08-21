@@ -36,6 +36,13 @@ namespace TowerDefense.Tests
             purchaseMethod.Invoke(session, null);
             Assert.That(session.GetUpgradeRank("steady_tithe_01"), Is.EqualTo(session.GetUpgradeMaxRank("steady_tithe_01")));
             Assert.That(session.GetUpgradeRank("base_health_01"), Is.Zero);
+            Assert.That(session.GetUpgradeRank("archer_unlock"), Is.EqualTo(1));
+            Assert.That(session.GetUpgradeEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent), Is.GreaterThan(0f));
+            Assert.That(
+                session.GetUpgradeEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, "archer") +
+                session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, "archer") +
+                session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, "archer"),
+                Is.GreaterThan(0f));
 
             yield return new WaitForSecondsRealtime(0.35f);
 
@@ -47,6 +54,7 @@ namespace TowerDefense.Tests
             Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("Steady Tithe"));
             Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("+3 Kill Essence after each run"));
             Assert.That(session.DevBestBotPurchaseHistory, Does.Not.Contain("Reinforced Gate"));
+            Assert.That(session.DevBestBotReport, Does.Contain("Combat upgrade spend: towers"));
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.01f));
