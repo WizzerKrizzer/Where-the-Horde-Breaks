@@ -160,6 +160,7 @@ namespace TowerDefense.Tests
             Assert.That(levelFive, Is.Not.Null);
             Assert.That(levelFive.wave.totalEnemyCount, Is.EqualTo(100000));
             Assert.That(levelFive.startingLives, Is.EqualTo(100000));
+            Assert.That(levelFive.wave.spawnInterval, Is.EqualTo(0.9f));
             Assert.That(levelFive.wave.randomSpawnBurstMin, Is.GreaterThanOrEqualTo(1000));
             Assert.That(levelFive.pathWaypoints.Length, Is.GreaterThanOrEqualTo(20));
             Assert.That(levelFive.groundSize.x, Is.GreaterThanOrEqualTo(300f));

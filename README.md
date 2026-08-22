@@ -20,7 +20,7 @@ This repository currently contains an early Unity prototype focused on validatin
   - Level 2: larger split-road map using the shared GPU flow-field horde simulation.
   - Level 3: foundation map with mixed undead/support/flying enemies for future design work.
   - Level 4: 10,000-enemy GPU stress field.
-  - Level 5: oversized rapid-spawn stress map with exactly 100,000 enemies.
+  - Level 5: oversized stress map that introduces exactly 100,000 enemies over roughly 40 seconds.
 
 ## Unity Version
 
