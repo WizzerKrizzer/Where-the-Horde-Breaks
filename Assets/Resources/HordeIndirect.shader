@@ -5,6 +5,7 @@ Shader "TowerDefense/HordeIndirect"
         _BaseColor ("Base Color", Color) = (0.1, 0.9, 0.18, 1)
         _SlowColor ("Slow Color", Color) = (0.2, 0.62, 1, 1)
         _RareColor ("One In A Thousand Color", Color) = (0.62, 0.16, 0.82, 1)
+        _PackingScale ("Dense Packing Silhouette Scale", Range(1, 1.1)) = 1.04
     }
     SubShader
     {
@@ -55,6 +56,7 @@ Shader "TowerDefense/HordeIndirect"
             float4 _BaseColor;
             float4 _SlowColor;
             float4 _RareColor;
+            float _PackingScale;
             float _LightingVariation;
 
             struct Attributes
@@ -81,7 +83,9 @@ Shader "TowerDefense/HordeIndirect"
                 Varyings output;
                 float active = state.status == 1 ? 1.0 : 0.0;
                 float rare = ((agentIndex + 1u) % 1000u) == 0u ? 1.0 : 0.0;
-                float3 world = input.vertex.xyz * state.scale + float3(state.position.x, 0.0, state.position.y);
+                float3 localVertex = input.vertex.xyz;
+                localVertex.xz *= _PackingScale;
+                float3 world = localVertex * state.scale + float3(state.position.x, 0.0, state.position.y);
                 world.y += (1.0 - active) * -100000.0;
                 output.position = UnityWorldToClipPos(world);
                 output.normal = input.normal;

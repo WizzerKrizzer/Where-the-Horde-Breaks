@@ -125,6 +125,40 @@ namespace TowerDefense.Tests
             Assert.That(manager.Performance.ShaderName, Does.Contain("GPU Compute"));
         }
 
+        [Test]
+        public void DataHordeSpawn_BurstCoversEntranceWithoutEmptyBands()
+        {
+            const int count = 64;
+            var route = CreateRoute(new[]
+            {
+                new Vector3(-20f, 0f, 0f),
+                new Vector3(20f, 0f, 0f)
+            });
+            var enemy = CreateEnemy(speed: 1f, health: 10f);
+            var wave = CreateWave(enemy, count, spawnInterval: 0.1f, spawnImmediately: true);
+            wave.roadHalfWidth = 10f;
+            var manager = CreateManager();
+
+            manager.BeginWave(wave, route);
+            var field = typeof(HordeEnemyManager).GetField(
+                "spawnLateralOffsets",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            var offsets = (float[])field.GetValue(manager);
+            Assert.That(offsets, Has.Length.EqualTo(count));
+            System.Array.Sort(offsets);
+
+            var largestGap = 0f;
+            for (var i = 1; i < offsets.Length; i++)
+            {
+                largestGap = Mathf.Max(largestGap, offsets[i] - offsets[i - 1]);
+            }
+
+            Assert.That(offsets[^1] - offsets[0], Is.GreaterThan(18.5f));
+            Assert.That(largestGap, Is.LessThan(0.65f),
+                $"A single spawn burst left a {largestGap:0.00} metre empty lateral band.");
+        }
+
         [UnityTest, Explicit("Allocates the complete 100K Level 5 GPU stress configuration.")]
         [Category("Performance")]
         public IEnumerator LevelFiveStressWave_AllocatesAndStartsOneHundredThousandAgents()
@@ -162,9 +196,9 @@ namespace TowerDefense.Tests
             Assert.That(levelFive, Is.Not.Null);
             Assert.That(levelFive.wave.totalEnemyCount, Is.EqualTo(100000));
             Assert.That(levelFive.startingLives, Is.EqualTo(100000));
-            Assert.That(levelFive.wave.spawnInterval, Is.EqualTo(0.1725f));
-            Assert.That(levelFive.wave.randomSpawnBurstMin, Is.EqualTo(40));
-            Assert.That(levelFive.wave.randomSpawnBurstMax, Is.EqualTo(60));
+            Assert.That(levelFive.wave.spawnInterval, Is.EqualTo(0.155f));
+            Assert.That(levelFive.wave.randomSpawnBurstMin, Is.EqualTo(55));
+            Assert.That(levelFive.wave.randomSpawnBurstMax, Is.EqualTo(70));
             Assert.That(levelFive.wave.roadHalfWidth, Is.EqualTo(26.5f));
             Assert.That(levelFive.roadWidth, Is.EqualTo(54f));
             Assert.That(levelFive.pathWaypoints.Length, Is.GreaterThanOrEqualTo(20));

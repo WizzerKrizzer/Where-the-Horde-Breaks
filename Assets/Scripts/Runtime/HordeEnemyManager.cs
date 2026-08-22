@@ -48,6 +48,7 @@ namespace TowerDefense.Runtime
         private float[] slowTimers;
         private float[] attackTimers;
         private float[] spawnTimes;
+        private float[] spawnLateralOffsets;
         private float[] health;
         private float[] burnDamagePerSecond;
         private float[] burnTimers;
@@ -150,6 +151,7 @@ namespace TowerDefense.Runtime
             slowTimers = new float[count];
             attackTimers = new float[count];
             spawnTimes = new float[count];
+            spawnLateralOffsets = new float[count];
             health = new float[count];
             burnDamagePerSecond = new float[count];
             burnTimers = new float[count];
@@ -173,9 +175,20 @@ namespace TowerDefense.Runtime
             while (burstIndex < count)
             {
                 var burst = Mathf.Min(count - burstIndex, UnityEngine.Random.Range(minBurst, maxBurst + 1));
+                var lateralPhase = UnityEngine.Random.value;
                 for (var i = 0; i < burst; i++)
                 {
                     spawnTimes[burstIndex + i] = cursor + UnityEngine.Random.Range(0f, packedSpawnSpan);
+                    // Cover the complete entrance cross-section in every burst.
+                    // A random phase and sub-stratum jitter avoid visible rows while
+                    // preventing pure random sampling from leaving large empty bands.
+                    var lateral01 = Mathf.Repeat(
+                        lateralPhase + (i + 0.5f + UnityEngine.Random.Range(-0.22f, 0.22f)) / burst,
+                        1f);
+                    spawnLateralOffsets[burstIndex + i] = Mathf.Lerp(
+                        -activeRoadHalfWidth + VisualRadius,
+                        activeRoadHalfWidth - VisualRadius,
+                        lateral01);
                 }
 
                 Array.Sort(spawnTimes, burstIndex, burst);
@@ -235,6 +248,7 @@ namespace TowerDefense.Runtime
             slowTimers = null;
             attackTimers = null;
             spawnTimes = null;
+            spawnLateralOffsets = null;
             health = null;
             burnDamagePerSecond = null;
             burnTimers = null;
@@ -334,7 +348,9 @@ namespace TowerDefense.Runtime
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
                 knockbackVelocities[totalSpawned] = Vector3.zero;
-                var lateral = UnityEngine.Random.Range(-activeRoadHalfWidth + VisualRadius, activeRoadHalfWidth - VisualRadius);
+                var lateral = spawnLateralOffsets != null && totalSpawned < spawnLateralOffsets.Length
+                    ? spawnLateralOffsets[totalSpawned]
+                    : UnityEngine.Random.Range(-activeRoadHalfWidth + VisualRadius, activeRoadHalfWidth - VisualRadius);
                 var position = flowField.GetSpawnPoint(lateral);
                 position += flowField.GetDirection(position) * UnityEngine.Random.Range(-0.35f, 0.15f);
                 position = flowField.ConstrainMove(flowField.GetSpawnPoint(lateral), position);

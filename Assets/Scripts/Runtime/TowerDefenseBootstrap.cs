@@ -888,12 +888,12 @@ namespace TowerDefense.Runtime
             var levelFiveWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelFiveWave.id = "wave_05_100k_stress_test";
             levelFiveWave.totalEnemyCount = 100000;
-            // Match Level 4's entrance throughput instead of forcing 100K bodies
-            // through one road ten times faster. Fifty agents every ~0.1s gives
-            // a smooth ~500 agents/second and a total spawn duration near 200s.
-            levelFiveWave.spawnInterval = 0.1725f;
-            levelFiveWave.randomSpawnBurstMin = 40;
-            levelFiveWave.randomSpawnBurstMax = 60;
+            // Keep the 54 metre entrance physically full without returning to the
+            // near-instant spawn that produced jelly and frame spikes. About 62
+            // agents every 0.09s yields ~700 agents/second and ~145s for all 100K.
+            levelFiveWave.spawnInterval = 0.155f;
+            levelFiveWave.randomSpawnBurstMin = 55;
+            levelFiveWave.randomSpawnBurstMax = 70;
             levelFiveWave.useEndpointSeeking = true;
             levelFiveWave.roadHalfWidth = 26.5f;
             levelFiveWave.entries = new[]

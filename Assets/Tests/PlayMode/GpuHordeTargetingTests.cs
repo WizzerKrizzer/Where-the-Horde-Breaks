@@ -219,6 +219,8 @@ namespace TowerDefense.Tests
             Assert.That(shader, Is.Not.Null);
             var material = new Material(shader);
             Assert.That(material.HasProperty("_RareColor"), Is.True);
+            Assert.That(material.HasProperty("_PackingScale"), Is.True);
+            Assert.That(material.GetFloat("_PackingScale"), Is.EqualTo(1.04f).Within(0.001f));
             Object.DestroyImmediate(material);
         }
 
