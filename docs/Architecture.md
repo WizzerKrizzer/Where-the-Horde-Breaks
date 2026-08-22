@@ -51,6 +51,8 @@ Enemy creation is also range-batched. A rapid spawn window prepares new records 
 
 Movement uses a fixed 60 Hz GPU tick independent of render frame rate and developer time scale. Camera distance never changes simulation frequency, so zooming out or switching between 1x and 10x cannot select a different crowd trajectory. Rendering remains split into near and far indirect lists entirely on the GPU; the rounded far mesh preserves the detailed mesh's footprint and lighting while using substantially fewer triangles. Hardware without compute-shader support cannot start a horde wave and reports a clear error instead of silently changing behavior.
 
+Rare visual variants are derived directly from the stable GPU agent index and require no extra state or upload. Every 1,000th spawned enemy is rendered purple in both LOD lists.
+
 ## Horde Movement Prototype
 
 `HordeEnemyManager` does not use path distance plus lane offsets for movement. At wave start it rasterizes the union of the level's primary and secondary road polylines into a walkable grid, computes wall clearance, and integrates a shared cost field back from the exit. A harmonic pressure potential between full-width entrance and exit cross-sections supplies the movement vectors, preventing shortest-path streamlines from collapsing at bends. Each enemy samples a smoothly interpolated local direction, retains velocity, slides against non-walkable cells, and applies short-range body separation from the existing spatial hash.

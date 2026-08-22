@@ -357,6 +357,7 @@ namespace TowerDefense.Runtime
             lowDetailMesh = EnemyManager.GetLowEnemyMesh();
             material.SetColor("_BaseColor", new Color(0.1f, 0.9f, 0.18f, 1f));
             material.SetColor("_SlowColor", new Color(0.2f, 0.62f, 1f, 1f));
+            material.SetColor("_RareColor", new Color(0.62f, 0.16f, 0.82f, 1f));
             properties.SetFloat("_LightingVariation", 1f);
             lodProperties.SetFloat("_LightingVariation", 1f);
             clearKernel = compute.FindKernel("ClearGrid");

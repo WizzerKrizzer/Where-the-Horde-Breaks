@@ -4,6 +4,7 @@ Shader "TowerDefense/HordeIndirect"
     {
         _BaseColor ("Base Color", Color) = (0.1, 0.9, 0.18, 1)
         _SlowColor ("Slow Color", Color) = (0.2, 0.62, 1, 1)
+        _RareColor ("One In A Thousand Color", Color) = (0.62, 0.16, 0.82, 1)
     }
     SubShader
     {
@@ -53,6 +54,7 @@ Shader "TowerDefense/HordeIndirect"
             StructuredBuffer<uint> _VisibleIndices;
             float4 _BaseColor;
             float4 _SlowColor;
+            float4 _RareColor;
             float _LightingVariation;
 
             struct Attributes
@@ -69,6 +71,7 @@ Shader "TowerDefense/HordeIndirect"
                 float tint : TEXCOORD1;
                 float active : TEXCOORD2;
                 float variation : TEXCOORD3;
+                float rare : TEXCOORD4;
             };
 
             Varyings Vert(Attributes input)
@@ -84,6 +87,7 @@ Shader "TowerDefense/HordeIndirect"
                 output.tint = state.tint;
                 output.active = active;
                 output.variation = frac(sin((float)agentIndex * 12.9898) * 43758.5453);
+                output.rare = ((agentIndex + 1u) % 1000u) == 0u ? 1.0 : 0.0;
                 return output;
             }
 
@@ -93,7 +97,9 @@ Shader "TowerDefense/HordeIndirect"
                 float directionalLight = 0.68 + saturate(dot(normalize(input.normal), normalize(float3(0.35, 0.8, 0.25)))) * 0.32;
                 float individualVariation = lerp(0.94, 1.06, input.variation);
                 float light = lerp(0.84, directionalLight, saturate(_LightingVariation)) * individualVariation;
-                return lerp(_BaseColor, _SlowColor, saturate(input.tint)) * light;
+                float4 enemyColor = lerp(_BaseColor, _SlowColor, saturate(input.tint));
+                enemyColor = lerp(enemyColor, _RareColor, input.rare);
+                return enemyColor * light;
             }
             ENDCG
         }

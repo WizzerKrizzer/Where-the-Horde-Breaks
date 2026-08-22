@@ -201,6 +201,16 @@ namespace TowerDefense.Tests
             Assert.That(outwardNormalScore, Is.GreaterThan(0f), "The far LOD mesh is inside-out and will look transparent with back-face culling.");
         }
 
+        [Test]
+        public void HordeShader_ExposesRareEnemyColor()
+        {
+            var shader = Resources.Load<Shader>("HordeIndirect");
+            Assert.That(shader, Is.Not.Null);
+            var material = new Material(shader);
+            Assert.That(material.HasProperty("_RareColor"), Is.True);
+            Object.DestroyImmediate(material);
+        }
+
         [UnityTest]
         public IEnumerator CameraDistance_DoesNotChangeSimulationResult()
         {
