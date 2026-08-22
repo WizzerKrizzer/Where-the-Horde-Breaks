@@ -87,6 +87,7 @@ namespace TowerDefense.Runtime
         private int lastCheapFidelityCount;
         private int lastNearCombatCount;
         private bool running;
+        private float activeRoadHalfWidth = RoadHalfWidth;
 
         public int TotalSpawned => totalSpawned;
         public int ActiveCount => activeCount;
@@ -157,7 +158,10 @@ namespace TowerDefense.Runtime
             gpuControls = new Vector4[count];
             gpuImpulses = new Vector2[count];
             gpuSpawnStates = new GpuHordeSimulation.AgentState[count];
-            flowField = new HordeFlowField(path.Waypoints, path.SecondaryWaypoints, RoadHalfWidth - VisualRadius, FlowCellSize);
+            activeRoadHalfWidth = wave.roadHalfWidth > VisualRadius
+                ? wave.roadHalfWidth
+                : RoadHalfWidth;
+            flowField = new HordeFlowField(path.Waypoints, path.SecondaryWaypoints, activeRoadHalfWidth - VisualRadius, FlowCellSize);
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
             var packedSpawnSpan = Mathf.Max(0.02f, windowDuration * 0.42f);
@@ -248,6 +252,7 @@ namespace TowerDefense.Runtime
             totalSpawned = 0;
             activeCount = 0;
             totalResolved = 0;
+            activeRoadHalfWidth = RoadHalfWidth;
         }
 
         private void Update()
@@ -309,7 +314,7 @@ namespace TowerDefense.Runtime
                 slowTimers[totalSpawned] = 0f;
                 attackTimers[totalSpawned] = 0f;
                 knockbackVelocities[totalSpawned] = Vector3.zero;
-                var lateral = UnityEngine.Random.Range(-RoadHalfWidth + VisualRadius, RoadHalfWidth - VisualRadius);
+                var lateral = UnityEngine.Random.Range(-activeRoadHalfWidth + VisualRadius, activeRoadHalfWidth - VisualRadius);
                 var position = flowField.GetSpawnPoint(lateral);
                 position += flowField.GetDirection(position) * UnityEngine.Random.Range(-0.35f, 0.15f);
                 position = flowField.ConstrainMove(flowField.GetSpawnPoint(lateral), position);

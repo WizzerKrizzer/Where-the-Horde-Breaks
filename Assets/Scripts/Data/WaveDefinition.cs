@@ -12,6 +12,7 @@ namespace TowerDefense.Data
         public int randomSpawnBurstMax;
         public int[] spawnBurstPattern;
         public bool useEndpointSeeking;
+        public float roadHalfWidth = 2.65f;
         public WaveEntry[] entries;
     }
 }

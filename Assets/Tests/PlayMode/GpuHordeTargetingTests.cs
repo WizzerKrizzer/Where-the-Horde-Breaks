@@ -64,6 +64,47 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator ContactProjection_SeparatesOverlappingAgents()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            var mesh = EnemyManager.GetDetailedEnemyMesh();
+            Assert.That(GpuHordeSimulation.TryCreate(2, field, mesh, out var simulation), Is.True);
+            var states = new[]
+            {
+                State(-5f, 10f, -15f, false),
+                State(-4.8f, 10f, -14.8f, false)
+            };
+            var controls = new[]
+            {
+                new Vector4(0f, 1f, 0f, 0f),
+                new Vector4(0f, 1f, 0f, 0f)
+            };
+
+            simulation.SpawnBatch(states, states.Length);
+            for (var frame = 0; frame < 8; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[2]);
+                yield return null;
+            }
+
+            simulation.ReadStatesSynchronous(states, states.Length);
+            simulation.Dispose();
+            Assert.That(
+                Vector2.Distance(states[0].Position, states[1].Position),
+                Is.GreaterThanOrEqualTo(0.68f),
+                "GPU contact projection left two enemy bodies visibly intersecting.");
+        }
+
+        [UnityTest]
         public IEnumerator ActiveCompaction_ExcludesKilledSlotsFromDispatchList()
         {
             if (!SystemInfo.supportsComputeShaders)

@@ -1054,6 +1054,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float2 separation = 0.0;
+    float2 contactCorrection = 0.0;
     float congestion = 0.0;
     float rawOccupancy = CellOccupancy(centerCell);
     float overflowRatio = saturate((rawOccupancy - (float)_CellCapacity) / max(1.0, (float)_CellCapacity));
@@ -1105,7 +1106,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 float pairDiameter = clamp(
                     (state.scale + otherScale) * 1.12,
                     _CollisionDiameter * 0.78,
-                    maximumCollisionDiameter) * lerp(1.0, 0.72, overflowRatio);
+                    maximumCollisionDiameter);
                 if (distanceSq >= pairDiameter * pairDiameter)
                 {
                     continue;
@@ -1125,6 +1126,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
                 float penetration = 1.0 - distance / pairDiameter;
                 separation += direction * penetration * 1.25;
+                contactCorrection += direction * (pairDiameter - distance) * 0.52;
                 congestion += dot(otherPosition - state.position, flow) > 0.0 ? penetration : 0.0;
             }
         }
@@ -1154,7 +1156,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float desiredSpeed = control.x * combatSpeed * max(0.05, state.slowMultiplier) * lerp(1.0, 0.64, saturate(congestion / 3.0));
     float2 desiredVelocity = flow * desiredSpeed;
     float2 flowForce = (desiredVelocity - state.velocity) * _FlowAcceleration;
-    float2 collisionForce = (separation * lerp(1.0, 0.58, overflowRatio) + crowdPressure) * _CollisionAcceleration;
+    float2 collisionForce = (separation + crowdPressure) * _CollisionAcceleration;
     float4 flowCell = _FlowVectors[centerIndex];
     float clearance = _FlowData[centerIndex].x;
     float wallPenetration = 1.0 - saturate(clearance / _WallInfluence);
@@ -1179,6 +1181,19 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     if (dot(state.position - desiredPosition, state.position - desiredPosition) > 0.000001)
     {
         state.velocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
+    }
+
+    contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
+        flow * max(0.0, dot(contactCorrection, flow));
+    float correctionLength = length(contactCorrection);
+    float maximumCorrection = _CollisionDiameter * 0.35;
+    if (correctionLength > maximumCorrection)
+    {
+        contactCorrection *= maximumCorrection / correctionLength;
+    }
+    if (correctionLength > 0.00001)
+    {
+        state.position = ConstrainMove(state.position, state.position + contactCorrection);
     }
 
     state.tint = state.slowTimer > 0.0 && state.slowMultiplier < 0.995 ? 1.0 : control.z;

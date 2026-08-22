@@ -163,8 +163,11 @@ namespace TowerDefense.Tests
             Assert.That(levelFive.wave.spawnInterval, Is.EqualTo(0.1725f));
             Assert.That(levelFive.wave.randomSpawnBurstMin, Is.EqualTo(40));
             Assert.That(levelFive.wave.randomSpawnBurstMax, Is.EqualTo(60));
+            Assert.That(levelFive.wave.roadHalfWidth, Is.EqualTo(26.5f));
+            Assert.That(levelFive.roadWidth, Is.EqualTo(54f));
             Assert.That(levelFive.pathWaypoints.Length, Is.GreaterThanOrEqualTo(20));
             Assert.That(levelFive.groundSize.x, Is.GreaterThanOrEqualTo(300f));
+            Assert.That(levelFive.groundSize.z, Is.GreaterThanOrEqualTo(350f));
 
             var route = CreateRoute(levelFive.pathWaypoints);
             var manager = CreateManager();
