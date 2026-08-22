@@ -143,6 +143,11 @@ namespace TowerDefense.Tests
             var field = new HordeFlowField(route, null, 2.31f, 0.62f, halfWidths);
             var position = field.GetSpawnPoint(1.8f);
 
+            Assert.That(field.IsWalkable(new Vector3(-10f, 0f, 14f)), Is.False,
+                "The empty ground beyond the first sharp turn must not become a shortcut.");
+            Assert.That(field.IsWalkable(new Vector3(8f, 0f, 14f)), Is.False,
+                "The top gap between disconnected road sections must remain blocked.");
+
             for (var step = 0; step < 3000 && !field.HasReachedExit(position); step++)
             {
                 var previous = position;

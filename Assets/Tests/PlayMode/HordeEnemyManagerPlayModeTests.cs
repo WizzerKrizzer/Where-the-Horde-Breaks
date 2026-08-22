@@ -16,6 +16,7 @@ namespace TowerDefense.Tests
         [UnityTearDown]
         public IEnumerator TearDown()
         {
+            Time.timeScale = 1f;
             foreach (var unityObject in cleanupObjects)
             {
                 if (unityObject != null)
@@ -26,6 +27,92 @@ namespace TowerDefense.Tests
 
             cleanupObjects.Clear();
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator LevelTwoRealSpawnLoop_KeepsEveryGpuAgentOnRoad()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var points = new[]
+            {
+                new Vector3(-56f, 0f, 14f), new Vector3(-34f, 0f, 14f),
+                new Vector3(-24f, 0f, 14f), new Vector3(-24f, 0f, -5f),
+                new Vector3(-24f, 0f, -17f), new Vector3(2f, 0f, -17f),
+                new Vector3(10f, 0f, -17f), new Vector3(18f, 0f, -17f),
+                new Vector3(36f, 0f, -17f), new Vector3(42f, 0f, -11f),
+                new Vector3(42f, 0f, 10f), new Vector3(56f, 0f, 10f)
+            };
+            var widths = new[] { 6f, 6f, 6f, 5f, 3f, 3f, 5f, 10f, 10f, 9f, 7f, 6f };
+            var route = CreateRoute(points);
+            route.SetWaypoints(points, widths);
+            var enemy = CreateEnemy(speed: 4.8f, health: 10f);
+            var wave = CreateWave(enemy, 500, 0.45f);
+            wave.randomSpawnBurstMin = 5;
+            wave.randomSpawnBurstMax = 12;
+            var manager = CreateManager();
+            manager.BeginWave(wave, route);
+            var simulationField = typeof(HordeEnemyManager).GetField("gpuSimulation",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var flowFieldField = typeof(HordeEnemyManager).GetField("flowField",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(simulationField, Is.Not.Null);
+            Assert.That(flowFieldField, Is.Not.Null);
+            var flow = (HordeFlowField)flowFieldField.GetValue(manager);
+            var states = new GpuHordeSimulation.AgentState[500];
+            Time.timeScale = 10f;
+
+            for (var frame = 0; frame < 180; frame++)
+            {
+                yield return null;
+                if (frame % 5 != 0 || manager.TotalSpawned == 0)
+                {
+                    continue;
+                }
+
+                var simulation = (GpuHordeSimulation)simulationField.GetValue(manager);
+                simulation.ReadStatesSynchronous(states, manager.TotalSpawned);
+                for (var i = 0; i < manager.TotalSpawned; i++)
+                {
+                    if (states[i].Status != 1)
+                    {
+                        continue;
+                    }
+
+                    var position = new Vector3(states[i].Position.x, 0f, states[i].Position.y);
+                    Assert.That(flow.IsWalkable(position), Is.True,
+                        $"Real Level 2 spawn-loop agent {i} is outside the road at frame {frame}: {position}.");
+                }
+            }
+        }
+
+        [Test]
+        public void LevelTwoContent_UsesGpuAuthoritativeHordeBackend()
+        {
+            var content = SampleContent.Create();
+            LevelDefinition levelTwo = null;
+            for (var i = 0; i < content.Levels.Count; i++)
+            {
+                var level = content.Levels[i];
+                cleanupObjects.Add(level);
+                cleanupObjects.Add(level.wave);
+                if (level.id == "level_02")
+                {
+                    levelTwo = level;
+                }
+            }
+            cleanupObjects.Add(content.SkillTree);
+            for (var i = 0; i < content.Towers.Count; i++)
+            {
+                cleanupObjects.Add(content.Towers[i]);
+            }
+
+            Assert.That(levelTwo, Is.Not.Null);
+            Assert.That(levelTwo.useDataHordePrototype, Is.True,
+                "Level 2 must not fall back to the legacy CPU path-distance enemy loop.");
         }
 
         [UnityTest]

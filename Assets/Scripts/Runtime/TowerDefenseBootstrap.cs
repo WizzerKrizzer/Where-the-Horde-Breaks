@@ -831,6 +831,7 @@ namespace TowerDefense.Runtime
             levelTwo.displayName = "Twin Serpent Road";
             levelTwo.startingLives = 12;
             levelTwo.wave = levelTwoWave;
+            levelTwo.useDataHordePrototype = true;
             levelTwo.pathWaypoints = CreateLevelTwoPath();
             levelTwo.pathWaypointWidths = CreateLevelTwoPathWidths();
             levelTwo.groundCenter = new Vector3(0f, -0.08f, 0f);
