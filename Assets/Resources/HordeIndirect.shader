@@ -53,6 +53,7 @@ Shader "TowerDefense/HordeIndirect"
             StructuredBuffer<uint> _VisibleIndices;
             float4 _BaseColor;
             float4 _SlowColor;
+            float _LightingVariation;
 
             struct Attributes
             {
@@ -86,7 +87,8 @@ Shader "TowerDefense/HordeIndirect"
             fixed4 Frag(Varyings input) : SV_Target
             {
                 clip(input.active - 0.5);
-                float light = 0.68 + saturate(dot(normalize(input.normal), normalize(float3(0.35, 0.8, 0.25)))) * 0.32;
+                float directionalLight = 0.68 + saturate(dot(normalize(input.normal), normalize(float3(0.35, 0.8, 0.25)))) * 0.32;
+                float light = lerp(0.84, directionalLight, saturate(_LightingVariation));
                 return lerp(_BaseColor, _SlowColor, saturate(input.tint)) * light;
             }
             ENDCG
