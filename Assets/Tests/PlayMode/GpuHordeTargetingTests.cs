@@ -174,6 +174,7 @@ namespace TowerDefense.Tests
             Object.DestroyImmediate(cameraObject);
             Assert.That(nearArgs[1], Is.EqualTo(1u));
             Assert.That(farArgs[1], Is.EqualTo(1u));
+            Assert.That(nearArgs[0], Is.EqualTo(farArgs[0]), "Near/far switching changes mesh topology and can visibly pop across the crowd.");
         }
 
         [Test]

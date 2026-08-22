@@ -293,6 +293,7 @@ namespace TowerDefense.Runtime
         private readonly MaterialPropertyBlock properties = new();
         private readonly MaterialPropertyBlock lodProperties = new();
         private readonly Mesh lowDetailMesh;
+        private readonly Mesh stableRenderMesh;
         private readonly Bounds drawBounds;
         private readonly uint[] drawArgs = new uint[5];
         private readonly uint[] lodDrawArgs = new uint[5];
@@ -355,6 +356,7 @@ namespace TowerDefense.Runtime
             compute = UnityEngine.Object.Instantiate(sourceCompute);
             material = new Material(shader) { enableInstancing = true };
             lowDetailMesh = EnemyManager.GetLowEnemyMesh();
+            stableRenderMesh = lowDetailMesh;
             material.SetColor("_BaseColor", new Color(0.1f, 0.9f, 0.18f, 1f));
             material.SetColor("_SlowColor", new Color(0.2f, 0.62f, 1f, 1f));
             material.SetColor("_RareColor", new Color(0.62f, 0.16f, 0.82f, 1f));
@@ -428,10 +430,10 @@ namespace TowerDefense.Runtime
             field.BuildGpuData(out var vectorData, out var scalarData);
             flowVectors.SetData(vectorData);
             flowData.SetData(scalarData);
-            drawArgs[0] = mesh.GetIndexCount(0);
+            drawArgs[0] = stableRenderMesh.GetIndexCount(0);
             drawArgs[1] = 0u;
-            drawArgs[2] = mesh.GetIndexStart(0);
-            drawArgs[3] = (uint)mesh.GetBaseVertex(0);
+            drawArgs[2] = stableRenderMesh.GetIndexStart(0);
+            drawArgs[3] = (uint)stableRenderMesh.GetBaseVertex(0);
             indirectArgs.SetData(drawArgs);
             lodDrawArgs[0] = lowDetailMesh.GetIndexCount(0);
             lodDrawArgs[1] = 0u;
@@ -1054,7 +1056,7 @@ namespace TowerDefense.Runtime
 
         public void Draw(Mesh mesh, int layer)
         {
-            if (disposed || mesh == null || material == null)
+            if (disposed || stableRenderMesh == null || material == null)
             {
                 return;
             }
@@ -1064,7 +1066,7 @@ namespace TowerDefense.Runtime
             lodProperties.SetBuffer("_AgentStates", readStates);
             lodProperties.SetBuffer("_VisibleIndices", lodVisibleIndices);
             Graphics.DrawMeshInstancedIndirect(
-                mesh,
+                stableRenderMesh,
                 0,
                 material,
                 drawBounds,

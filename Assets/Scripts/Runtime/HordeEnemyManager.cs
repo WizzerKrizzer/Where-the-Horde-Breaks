@@ -183,7 +183,7 @@ namespace TowerDefense.Runtime
                 cursor += packedSpawnStep;
             }
 
-            mesh = EnemyManager.GetDetailedEnemyMesh();
+            mesh = EnemyManager.GetLowEnemyMesh();
             material = BootstrapMaterials.Get(new Color(0.1f, 0.9f, 0.18f, 1f));
             material.enableInstancing = true;
             slowedMaterial = BootstrapMaterials.Get(new Color(0.2f, 0.62f, 1f, 1f));
