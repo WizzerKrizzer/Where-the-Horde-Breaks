@@ -234,69 +234,101 @@ namespace TowerDefense.Runtime
                 new Vector3(26.5f, 0f, 10.2f)
             };
 
-            route.SetWaypoints(points);
             var roadWidth = Mathf.Max(1f, level != null ? level.roadWidth : 5.4f);
-            CreatePathVisuals(parent, points, roadWidth);
+            var waypointWidths = ResolveWaypointWidths(points, level?.pathWaypointWidths, roadWidth);
+            route.SetWaypoints(points, waypointWidths);
+            CreatePathVisuals(parent, points, waypointWidths);
             if (level?.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
             {
-                route.SetSecondaryWaypoints(level.secondaryPathWaypoints);
-                CreatePathVisuals(parent, level.secondaryPathWaypoints, roadWidth);
+                var secondaryWidths = ResolveWaypointWidths(level.secondaryPathWaypoints, null, roadWidth);
+                route.SetSecondaryWaypoints(level.secondaryPathWaypoints, secondaryWidths);
+                CreatePathVisuals(parent, level.secondaryPathWaypoints, secondaryWidths);
             }
 
             return route;
         }
 
-        private static void CreatePathVisuals(Transform parent, Vector3[] points, float roadWidth)
+        private static float[] ResolveWaypointWidths(Vector3[] points, float[] authoredWidths, float fallbackWidth)
+        {
+            var widths = new float[points.Length];
+            for (var i = 0; i < widths.Length; i++)
+            {
+                widths[i] = authoredWidths != null && authoredWidths.Length == points.Length
+                    ? Mathf.Max(1f, authoredWidths[i])
+                    : fallbackWidth;
+            }
+
+            return widths;
+        }
+
+        private static void CreatePathVisuals(Transform parent, Vector3[] points, float[] waypointWidths)
         {
             for (var i = 1; i < points.Length; i++)
             {
-                CreatePathSegment(parent, points[i - 1], points[i], roadWidth);
+                CreatePathSegment(parent, points[i - 1], points[i], waypointWidths[i - 1], waypointWidths[i]);
             }
 
             for (var i = 1; i < points.Length - 1; i++)
             {
-                CreatePathCorner(parent, points[i], roadWidth);
+                CreatePathCorner(parent, points[i], waypointWidths[i]);
             }
 
-            CreatePathBoundary(parent, "PathBoundary_Left", points, 1f, roadWidth);
-            CreatePathBoundary(parent, "PathBoundary_Right", points, -1f, roadWidth);
+            CreatePathBoundary(parent, "PathBoundary_Left", points, 1f, waypointWidths);
+            CreatePathBoundary(parent, "PathBoundary_Right", points, -1f, waypointWidths);
         }
 
-        private static void CreatePathSegment(Transform parent, Vector3 from, Vector3 to, float roadWidth)
+        private static void CreatePathSegment(Transform parent, Vector3 from, Vector3 to, float fromWidth, float toWidth)
         {
             var midpoint = (from + to) * 0.5f + Vector3.up * 0.09f;
             var direction = to - from;
             var forward = direction.normalized;
+            var averageWidth = (fromWidth + toWidth) * 0.5f;
 
-            var shadow = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            shadow.name = "PathContactShadow";
-            shadow.transform.SetParent(parent, false);
-            shadow.transform.position = (from + to) * 0.5f + Vector3.up * 0.002f;
-            shadow.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            shadow.transform.localScale = new Vector3(roadWidth + 0.7f, 0.018f, direction.magnitude + 0.18f);
-            shadow.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f));
-            RemovePrimitiveCollider(shadow);
-
-            var segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            segment.name = "PathVisual";
-            segment.transform.SetParent(parent, false);
-            segment.transform.position = midpoint;
-            segment.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            segment.transform.localScale = new Vector3(roadWidth, 0.08f, direction.magnitude);
-            segment.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
-
-            var rut = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            rut.name = "PathWornCenter";
-            rut.transform.SetParent(parent, false);
-            rut.transform.position = midpoint + Vector3.up * 0.046f;
-            rut.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            rut.transform.localScale = new Vector3(roadWidth * 0.34f, 0.012f, direction.magnitude * 0.96f);
-            rut.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.42f, 0.31f, 0.2f));
-            RemovePrimitiveCollider(rut);
+            CreateTaperedPathSurface(parent, "PathContactShadow", from, to, fromWidth + 0.7f, toWidth + 0.7f, 0.002f,
+                BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f)));
+            CreateTaperedPathSurface(parent, "PathVisual", from, to, fromWidth, toWidth, 0.092f,
+                BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f)));
+            CreateTaperedPathSurface(parent, "PathWornCenter", from, to, fromWidth * 0.34f, toWidth * 0.34f, 0.138f,
+                BootstrapMaterials.Get(new Color(0.42f, 0.31f, 0.2f)));
 
             var side = Vector3.Cross(Vector3.up, forward);
-            CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, roadWidth, 1f);
-            CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, roadWidth, -1f);
+            if (Mathf.Abs(fromWidth - toWidth) < 0.01f)
+            {
+                CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, averageWidth, 1f);
+                CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, averageWidth, -1f);
+            }
+        }
+
+        private static void CreateTaperedPathSurface(
+            Transform parent,
+            string name,
+            Vector3 from,
+            Vector3 to,
+            float fromWidth,
+            float toWidth,
+            float height,
+            Material material)
+        {
+            var forward = (to - from).normalized;
+            var side = Vector3.Cross(Vector3.up, forward).normalized;
+            var gameObject = new GameObject(name);
+            gameObject.transform.SetParent(parent, false);
+            var mesh = new Mesh
+            {
+                name = $"{name}_Tapered",
+                vertices = new[]
+                {
+                    from + side * (fromWidth * 0.5f) + Vector3.up * height,
+                    from - side * (fromWidth * 0.5f) + Vector3.up * height,
+                    to + side * (toWidth * 0.5f) + Vector3.up * height,
+                    to - side * (toWidth * 0.5f) + Vector3.up * height
+                },
+                triangles = new[] { 0, 1, 2, 1, 3, 2 }
+            };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            gameObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+            gameObject.AddComponent<MeshRenderer>().sharedMaterial = material;
         }
 
         private static void CreatePathEdgeAO(Transform parent, Vector3 midpoint, Vector3 forward, Vector3 side, float length, float roadWidth, float sideSign)
@@ -321,9 +353,8 @@ namespace TowerDefense.Runtime
             corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
         }
 
-        private static void CreatePathBoundary(Transform parent, string name, Vector3[] points, float sideSign, float roadWidth)
+        private static void CreatePathBoundary(Transform parent, string name, Vector3[] points, float sideSign, float[] waypointWidths)
         {
-            var bankOffset = roadWidth * 0.5f + 0.28f;
             var boundary = new GameObject(name);
             boundary.transform.SetParent(parent, false);
             var line = boundary.AddComponent<LineRenderer>();
@@ -338,6 +369,7 @@ namespace TowerDefense.Runtime
 
             for (var i = 0; i < points.Length; i++)
             {
+                var bankOffset = waypointWidths[i] * 0.5f + 0.28f;
                 line.SetPosition(i, GetBoundaryPoint(points, i, sideSign, bankOffset) + Vector3.up * 0.165f);
             }
         }
@@ -703,7 +735,7 @@ namespace TowerDefense.Runtime
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
-                0, 1, 22f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 6.5f, 12f, 1.65f);
+                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
             var barrier = CreateTower("barrier", "Timber Barrier", TowerRole.BarrierLine,
                 "A physical barricade that can be placed on the path. It absorbs enemy attacks until destroyed.",
                 "Weak to enemies that specialize in breaking walls, especially orcs.",
@@ -800,7 +832,7 @@ namespace TowerDefense.Runtime
             levelTwo.startingLives = 12;
             levelTwo.wave = levelTwoWave;
             levelTwo.pathWaypoints = CreateLevelTwoPath();
-            levelTwo.secondaryPathWaypoints = CreateLevelTwoSecondaryPath();
+            levelTwo.pathWaypointWidths = CreateLevelTwoPathWidths();
             levelTwo.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelTwo.groundSize = new Vector3(126f, 0.1f, 70f);
             levelTwo.decorVariant = 2;
@@ -817,7 +849,7 @@ namespace TowerDefense.Runtime
             levelTwo.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 12);
             levelTwo.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             levelTwo.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
-            levelTwo.recommendedTactics = "A symmetrical split road. Defenses near the fork and the rejoin should cover both lanes, while long-range towers can exploit the broad middle stretch.";
+            levelTwo.recommendedTactics = "Horde validation road: observe the long straight, sharp corner, three-metre choke and ten-metre expansion before committing defenses.";
 
             var levelThreeWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelThreeWave.id = "wave_03_foundation";
@@ -1665,35 +1697,26 @@ namespace TowerDefense.Runtime
         {
             return new[]
             {
-                new Vector3(-48f, 0f, 0f),
-                new Vector3(-36f, 0f, 0f),
-                new Vector3(-25f, 0f, 5.2f),
-                new Vector3(-18f, 0f, 12.8f),
-                new Vector3(-6f, 0f, 16.6f),
-                new Vector3(6f, 0f, 16.6f),
-                new Vector3(15.8f, 0f, 12.8f),
-                new Vector3(13.6f, 0f, 3.6f),
-                new Vector3(25f, 0f, 5.2f),
-                new Vector3(36f, 0f, 0f),
-                new Vector3(48f, 0f, 0f)
+                new Vector3(-56f, 0f, 14f),
+                new Vector3(-34f, 0f, 14f),
+                new Vector3(-24f, 0f, 14f),
+                new Vector3(-24f, 0f, -5f),
+                new Vector3(-24f, 0f, -17f),
+                new Vector3(2f, 0f, -17f),
+                new Vector3(10f, 0f, -17f),
+                new Vector3(18f, 0f, -17f),
+                new Vector3(36f, 0f, -17f),
+                new Vector3(42f, 0f, -11f),
+                new Vector3(42f, 0f, 10f),
+                new Vector3(56f, 0f, 10f)
             };
         }
 
-        private static Vector3[] CreateLevelTwoSecondaryPath()
+        private static float[] CreateLevelTwoPathWidths()
         {
             return new[]
             {
-                new Vector3(-48f, 0f, 0f),
-                new Vector3(-36f, 0f, 0f),
-                new Vector3(-25f, 0f, -5.2f),
-                new Vector3(-18f, 0f, -12.8f),
-                new Vector3(-6f, 0f, -16.6f),
-                new Vector3(6f, 0f, -16.6f),
-                new Vector3(15.8f, 0f, -12.8f),
-                new Vector3(13.6f, 0f, -3.6f),
-                new Vector3(25f, 0f, -5.2f),
-                new Vector3(36f, 0f, 0f),
-                new Vector3(48f, 0f, 0f)
+                6f, 6f, 6f, 5f, 3f, 3f, 5f, 10f, 10f, 9f, 7f, 6f
             };
         }
 

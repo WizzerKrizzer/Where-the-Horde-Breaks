@@ -164,7 +164,13 @@ namespace TowerDefense.Runtime
             activeRoadHalfWidth = wave.roadHalfWidth > VisualRadius
                 ? wave.roadHalfWidth
                 : RoadHalfWidth;
-            flowField = new HordeFlowField(path.Waypoints, path.SecondaryWaypoints, activeRoadHalfWidth - VisualRadius, FlowCellSize);
+            flowField = new HordeFlowField(
+                path.Waypoints,
+                path.SecondaryWaypoints,
+                activeRoadHalfWidth - VisualRadius,
+                FlowCellSize,
+                ContractWaypointWidths(path.WaypointHalfWidths),
+                ContractWaypointWidths(path.SecondaryWaypointHalfWidths));
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
             var packedSpawnSpan = Mathf.Max(0.02f, windowDuration * 0.42f);
@@ -1458,6 +1464,22 @@ namespace TowerDefense.Runtime
             }
 
             return Mathf.Clamp(visualScales[index] * 0.78f, VisualRadius * 0.82f, VisualRadius * 1.45f);
+        }
+
+        private static float[] ContractWaypointWidths(IReadOnlyList<float> halfWidths)
+        {
+            if (halfWidths == null || halfWidths.Count == 0)
+            {
+                return null;
+            }
+
+            var contracted = new float[halfWidths.Count];
+            for (var i = 0; i < halfWidths.Count; i++)
+            {
+                contracted[i] = Mathf.Max(VisualRadius, halfWidths[i] - VisualRadius);
+            }
+
+            return contracted;
         }
 
         private static float TicksToMilliseconds(long ticks)

@@ -6,10 +6,14 @@ namespace TowerDefense.Simulation
     public sealed class PathRoute : MonoBehaviour
     {
         [SerializeField] private List<Vector3> waypoints = new();
+        [SerializeField] private List<float> waypointHalfWidths = new();
         [SerializeField] private List<Vector3> secondaryWaypoints = new();
+        [SerializeField] private List<float> secondaryWaypointHalfWidths = new();
 
         public IReadOnlyList<Vector3> Waypoints => waypoints;
+        public IReadOnlyList<float> WaypointHalfWidths => waypointHalfWidths;
         public IReadOnlyList<Vector3> SecondaryWaypoints => secondaryWaypoints;
+        public IReadOnlyList<float> SecondaryWaypointHalfWidths => secondaryWaypointHalfWidths;
         public float TotalLength { get; private set; }
         public bool HasUsableRoute => waypoints.Count > 1;
         public Vector3 StartPoint => waypoints.Count > 0 ? waypoints[0] : transform.position;
@@ -20,19 +24,35 @@ namespace TowerDefense.Simulation
             RecalculateLength();
         }
 
-        public void SetWaypoints(IEnumerable<Vector3> points)
+        public void SetWaypoints(IEnumerable<Vector3> points, IReadOnlyList<float> fullWidths = null)
         {
             waypoints.Clear();
             waypoints.AddRange(points);
+            SetHalfWidths(waypointHalfWidths, waypoints.Count, fullWidths);
             RecalculateLength();
         }
 
-        public void SetSecondaryWaypoints(IEnumerable<Vector3> points)
+        public void SetSecondaryWaypoints(IEnumerable<Vector3> points, IReadOnlyList<float> fullWidths = null)
         {
             secondaryWaypoints.Clear();
             if (points != null)
             {
                 secondaryWaypoints.AddRange(points);
+            }
+            SetHalfWidths(secondaryWaypointHalfWidths, secondaryWaypoints.Count, fullWidths);
+        }
+
+        private static void SetHalfWidths(List<float> destination, int count, IReadOnlyList<float> fullWidths)
+        {
+            destination.Clear();
+            if (fullWidths == null || fullWidths.Count != count)
+            {
+                return;
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                destination.Add(Mathf.Max(0.5f, fullWidths[i] * 0.5f));
             }
         }
 

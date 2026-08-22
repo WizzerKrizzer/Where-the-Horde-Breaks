@@ -32,6 +32,8 @@ namespace TowerDefense.Simulation
         private readonly Vector3 primaryStart;
         private readonly Vector3 startForward;
         private readonly Vector3 exitForward;
+        private readonly float startHalfWidth;
+        private readonly float exitHalfWidth;
 
         public Vector3 Exit { get; }
         public float CellSize => cellSize;
@@ -43,7 +45,9 @@ namespace TowerDefense.Simulation
             IReadOnlyList<Vector3> primaryRoute,
             IReadOnlyList<Vector3> secondaryRoute,
             float roadHalfWidth,
-            float requestedCellSize = 0.65f)
+            float requestedCellSize = 0.65f,
+            IReadOnlyList<float> primaryWaypointHalfWidths = null,
+            IReadOnlyList<float> secondaryWaypointHalfWidths = null)
         {
             if (primaryRoute == null || primaryRoute.Count < 2)
             {
@@ -51,16 +55,22 @@ namespace TowerDefense.Simulation
             }
 
             cellSize = Mathf.Max(0.25f, requestedCellSize);
-            corridorHalfWidth = Mathf.Max(cellSize, roadHalfWidth);
+            corridorHalfWidth = Mathf.Max(
+                cellSize,
+                Mathf.Max(
+                    GetMaximumHalfWidth(primaryWaypointHalfWidths, roadHalfWidth),
+                    GetMaximumHalfWidth(secondaryWaypointHalfWidths, roadHalfWidth)));
             primaryStart = primaryRoute[0];
             startForward = FlatDirection(primaryRoute[0], primaryRoute[1]);
+            startHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, 0, roadHalfWidth);
             Exit = primaryRoute[^1];
             exitForward = FlatDirection(primaryRoute[^2], primaryRoute[^1]);
+            exitHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, primaryRoute.Count - 1, roadHalfWidth);
             var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             IncludeBounds(primaryRoute, ref min, ref max);
             IncludeBounds(secondaryRoute, ref min, ref max);
-            var padding = roadHalfWidth + cellSize * 2f;
+            var padding = corridorHalfWidth + cellSize * 2f;
             min -= Vector2.one * padding;
             max += Vector2.one * padding;
             origin = new Vector3(min.x, 0f, min.y);
@@ -75,8 +85,8 @@ namespace TowerDefense.Simulation
             Array.Fill(corridorDirectionDistanceSq, float.PositiveInfinity);
             clearance = new byte[walkable.Length];
 
-            RasterizeRoute(primaryRoute, roadHalfWidth);
-            RasterizeRoute(secondaryRoute, roadHalfWidth);
+            RasterizeRoute(primaryRoute, roadHalfWidth, primaryWaypointHalfWidths);
+            RasterizeRoute(secondaryRoute, roadHalfWidth, secondaryWaypointHalfWidths);
             BuildClearance();
             BuildIntegration();
             BuildPotential();
@@ -280,14 +290,16 @@ namespace TowerDefense.Simulation
             return target;
         }
 
-        private void RasterizeRoute(IReadOnlyList<Vector3> route, float radius)
+        private void RasterizeRoute(
+            IReadOnlyList<Vector3> route,
+            float defaultRadius,
+            IReadOnlyList<float> waypointHalfWidths)
         {
             if (route == null || route.Count < 2)
             {
                 return;
             }
 
-            var radiusSq = radius * radius;
             for (var y = 0; y < height; y++)
             {
                 for (var x = 0; x < width; x++)
@@ -300,6 +312,11 @@ namespace TowerDefense.Simulation
                             route[segment - 1],
                             route[segment],
                             out var segmentT);
+                        var segmentRadius = Mathf.Lerp(
+                            GetWaypointHalfWidth(waypointHalfWidths, segment - 1, defaultRadius),
+                            GetWaypointHalfWidth(waypointHalfWidths, segment, defaultRadius),
+                            segmentT);
+                        var radiusSq = segmentRadius * segmentRadius;
                         if (distanceSq > radiusSq)
                         {
                             continue;
@@ -310,7 +327,7 @@ namespace TowerDefense.Simulation
                         if (distanceSq < corridorDirectionDistanceSq[index])
                         {
                             corridorDirectionDistanceSq[index] = distanceSq;
-                            corridorDirections[index] = GetBlendedRouteDirection(route, segment, segmentT, radius);
+                            corridorDirections[index] = GetBlendedRouteDirection(route, segment, segmentT, segmentRadius);
                         }
                     }
                 }
@@ -386,7 +403,7 @@ namespace TowerDefense.Simulation
                     var longitudinal = Vector3.Dot(fromExit, exitForward);
                     var lateral = fromExit - exitForward * longitudinal;
                     if (Mathf.Abs(longitudinal) > cellSize * 0.7f ||
-                        lateral.sqrMagnitude > corridorHalfWidth * corridorHalfWidth)
+                        lateral.sqrMagnitude > exitHalfWidth * exitHalfWidth)
                     {
                         continue;
                     }
@@ -564,7 +581,7 @@ namespace TowerDefense.Simulation
                     var longitudinal = Vector3.Dot(fromStart, startForward);
                     var lateral = fromStart - startForward * longitudinal;
                     if (Mathf.Abs(longitudinal) <= cellSize * 0.7f &&
-                        lateral.sqrMagnitude <= corridorHalfWidth * corridorHalfWidth)
+                        lateral.sqrMagnitude <= startHalfWidth * startHalfWidth)
                     {
                         potential[index] = 1f;
                         fixedCells[index] = true;
@@ -758,6 +775,29 @@ namespace TowerDefense.Simulation
             var direction = to - from;
             direction.y = 0f;
             return direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.zero;
+        }
+
+        private static float GetWaypointHalfWidth(IReadOnlyList<float> widths, int index, float fallback)
+        {
+            return widths != null && index >= 0 && index < widths.Count
+                ? Mathf.Max(0.5f, widths[index])
+                : Mathf.Max(0.5f, fallback);
+        }
+
+        private static float GetMaximumHalfWidth(IReadOnlyList<float> widths, float fallback)
+        {
+            var maximum = Mathf.Max(0.5f, fallback);
+            if (widths == null)
+            {
+                return maximum;
+            }
+
+            for (var i = 0; i < widths.Count; i++)
+            {
+                maximum = Mathf.Max(maximum, widths[i]);
+            }
+
+            return maximum;
         }
 
         private sealed class MinHeap

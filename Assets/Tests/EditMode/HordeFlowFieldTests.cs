@@ -100,5 +100,25 @@ namespace TowerDefense.Tests
             Assert.That(field.HasReachedExit(position), Is.True);
             Assert.That(Vector3.Distance(position, route[^1]), Is.LessThan(2.5f));
         }
+
+        [Test]
+        public void VariableWidthCorridor_UsesAuthoredNarrowAndWideSections()
+        {
+            var route = new[]
+            {
+                new Vector3(-12f, 0f, 0f),
+                Vector3.zero,
+                new Vector3(12f, 0f, 0f)
+            };
+            var halfWidths = new[] { 5f, 1.5f, 5f };
+            var field = new HordeFlowField(route, null, 5f, 0.5f, halfWidths);
+
+            Assert.That(field.IsWalkable(new Vector3(-10f, 0f, 3.5f)), Is.True,
+                "The entrance side should use the wide authored section.");
+            Assert.That(field.IsWalkable(new Vector3(0f, 0f, 2.25f)), Is.False,
+                "The middle should contract to the authored choke width.");
+            Assert.That(field.IsWalkable(new Vector3(10f, 0f, 3.5f)), Is.True,
+                "The exit side should expand back to the wide authored section.");
+        }
     }
 }

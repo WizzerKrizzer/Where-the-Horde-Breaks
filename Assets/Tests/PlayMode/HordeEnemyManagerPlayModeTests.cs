@@ -211,9 +211,9 @@ namespace TowerDefense.Tests
             Assert.That(levelFive.groundSize.x, Is.GreaterThanOrEqualTo(300f));
             Assert.That(levelFive.groundSize.z, Is.GreaterThanOrEqualTo(350f));
             Assert.That(catapult, Is.Not.Null);
-            Assert.That(catapult.range, Is.EqualTo(22f));
-            Assert.That(catapult.splashRadius, Is.EqualTo(6.5f));
-            Assert.That(catapult.knockbackDistance, Is.EqualTo(12f));
+            Assert.That(catapult.range, Is.EqualTo(9.5f));
+            Assert.That(catapult.splashRadius, Is.EqualTo(1.75f));
+            Assert.That(catapult.knockbackDistance, Is.EqualTo(1.15f));
 
             var route = CreateRoute(levelFive.pathWaypoints);
             var manager = CreateManager();

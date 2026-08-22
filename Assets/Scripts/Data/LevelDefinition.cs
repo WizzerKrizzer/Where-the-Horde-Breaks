@@ -10,6 +10,7 @@ namespace TowerDefense.Data
         public int startingLives = 20;
         public WaveDefinition wave;
         public Vector3[] pathWaypoints;
+        public float[] pathWaypointWidths;
         public Vector3[] secondaryPathWaypoints;
         public float roadWidth = 5.4f;
         public Vector3 groundCenter = new(0f, -0.08f, 1.5f);
