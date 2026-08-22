@@ -735,7 +735,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                         float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
                         float falloff = 1.0 - saturate(distance / command.radius);
                         state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
-                        state.padding = max(state.padding, 0.22);
+                        state.padding = max(state.padding, 0.55);
                     }
 
                     if (command.damage > 0.0)
@@ -845,7 +845,7 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                         float offsetLength = length(offset);
                         float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
                         state.velocity += direction * command.knockback * 5.0;
-                        state.padding = max(state.padding, 0.22);
+                        state.padding = max(state.padding, 0.55);
                     }
                     if (state.health <= 0.0)
                     {
@@ -1047,6 +1047,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     float2 separation = 0.0;
     float2 contactCorrection = 0.0;
+    float2 contactImpulse = 0.0;
+    float propagatedKnockback = 0.0;
     float congestion = 0.0;
     float rawOccupancy = CellOccupancy(centerCell);
     float overflowRatio = saturate((rawOccupancy - (float)_CellCapacity) / max(1.0, (float)_CellCapacity));
@@ -1116,9 +1118,24 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                     direction = delta / distance;
                 }
 
+                AgentState otherState = _StatesInput[otherIndex];
+                float selfMass = max(0.1, state.mass);
+                float otherMass = max(0.1, otherState.mass);
+                float massResponse = 2.0 * otherMass / (selfMass + otherMass);
                 float penetration = 1.0 - distance / pairDiameter;
-                separation += direction * penetration * 1.25;
-                contactCorrection += direction * (pairDiameter - distance) * 0.52;
+                separation += direction * penetration * 1.25 * massResponse;
+                contactCorrection += direction * (pairDiameter - distance) * 0.52 * massResponse;
+                float closingSpeed = dot(otherState.velocity - state.velocity, direction);
+                if (closingSpeed > 0.0 && (state.padding > 0.0 || otherState.padding > 0.0))
+                {
+                    // Inelastic, mass-aware contact transfers a catapult impulse
+                    // through the packed horde instead of allowing the fast body to
+                    // tunnel through its neighbour between grid rebuilds.
+                    contactImpulse += direction * closingSpeed * massResponse * 0.72;
+                    propagatedKnockback = max(
+                        propagatedKnockback,
+                        max(state.padding, otherState.padding) * 0.86);
+                }
                 congestion += dot(otherPosition - state.position, flow) > 0.0 ? penetration : 0.0;
             }
         }
@@ -1158,14 +1175,23 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float2 wallForce = wallNormal * wallPenetration * _WallAcceleration;
     float2 impulse = _Impulses[index];
     _Impulses[index] = 0.0;
-    state.velocity += (flowForce + collisionForce + wallForce) * simulationDelta + impulse;
+    if (propagatedKnockback > 0.0)
+    {
+        state.padding = max(state.padding, propagatedKnockback);
+    }
+    state.velocity += (flowForce + collisionForce + wallForce) * simulationDelta + impulse + contactImpulse;
     state.velocity *= rcp(1.0 + _VelocityDamping * simulationDelta);
     float maxSpeed = max(0.25, desiredSpeed * 1.12);
     float velocityLength = length(state.velocity);
-    bool hasExternalImpulse = hasPersistentKnockback || dot(impulse, impulse) > 0.000001;
+    bool hasExternalImpulse = hasPersistentKnockback || propagatedKnockback > 0.0 ||
+        dot(impulse, impulse) > 0.000001;
     if (hasExternalImpulse)
     {
-        maxSpeed = max(maxSpeed, velocityLength);
+        // Continuous collision needs the body to travel less than one diameter
+        // before the spatial grid is rebuilt. Retain the strong impulse for longer
+        // rather than allowing a single tunnelling leap.
+        float continuousCollisionSpeed = _CollisionDiameter * 0.32 / max(simulationDelta, 0.0001);
+        maxSpeed = max(maxSpeed, min(velocityLength, continuousCollisionSpeed));
     }
     if (velocityLength > maxSpeed)
     {
@@ -1193,8 +1219,11 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         state.velocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
     }
 
-    contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
-        flow * max(0.0, dot(contactCorrection, flow));
+    if (!hasExternalImpulse)
+    {
+        contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
+            flow * max(0.0, dot(contactCorrection, flow));
+    }
     float correctionLength = length(contactCorrection);
     float maximumCorrection = min(
         _CollisionDiameter * 0.12,

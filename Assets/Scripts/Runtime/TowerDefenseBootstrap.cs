@@ -703,7 +703,7 @@ namespace TowerDefense.Runtime
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
-                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 12f, 1.65f);
+                0, 1, 22f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 6.5f, 12f, 1.65f);
             var barrier = CreateTower("barrier", "Timber Barrier", TowerRole.BarrierLine,
                 "A physical barricade that can be placed on the path. It absorbs enemy attacks until destroyed.",
                 "Weak to enemies that specialize in breaking walls, especially orcs.",

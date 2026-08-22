@@ -624,7 +624,7 @@ namespace TowerDefense.Runtime
                     radius,
                     damage,
                     knockbackDistance,
-                    maxTargets: 160,
+                    maxTargets: 512,
                     out hitCount,
                     burnDamagePerTick,
                     burnTicksPerSecond,

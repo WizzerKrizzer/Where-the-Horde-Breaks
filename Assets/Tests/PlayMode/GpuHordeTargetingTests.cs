@@ -678,11 +678,63 @@ namespace TowerDefense.Tests
             simulation.Dispose();
 
             Assert.That(states[0].Padding, Is.GreaterThan(0f));
-            Assert.That(states[0].Velocity.x, Is.GreaterThan(20f),
+            Assert.That(states[0].Velocity.x, Is.GreaterThan(10f),
                 "The normal movement speed clamp swallowed the catapult impulse.");
-            Assert.That(states[0].Position.x, Is.GreaterThan(-4.15f),
+            Assert.That(states[0].Position.x, Is.GreaterThan(-4.3f),
                 "The strong area knockback did not visibly displace the enemy.");
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator AreaKnockback_TransfersThroughMassWithoutAgentTunnelling()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            const int count = 6;
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            var initialLastX = -5f + (count - 1) * 0.69f;
+            for (var i = 0; i < count; i++)
+            {
+                states[i] = State(-5f + i * 0.69f, 100f, -15f + i * 0.69f, false);
+                states[i].Mass = i == 3 ? 3f : 1f;
+                controls[i] = new Vector4(0f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueAreaEffect(
+                new Vector3(-5f, 0f, 0f), 0.3f, 0f, 12f, 1, 0f, 0f, 1), Is.True);
+
+            for (var frame = 0; frame < 45; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count]);
+                if ((frame & 7) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+
+            Assert.That(states[^1].Position.x, Is.GreaterThan(initialLastX + 0.12f),
+                "The contact impulse did not propagate through the enemy chain.");
+            for (var i = 1; i < count; i++)
+            {
+                Assert.That(states[i].Position.x, Is.GreaterThan(states[i - 1].Position.x),
+                    $"Enemy {i - 1} tunnelled through enemy {i}.");
+                Assert.That(states[i].Position.x - states[i - 1].Position.x, Is.GreaterThan(0.42f),
+                    $"Enemies {i - 1} and {i} lost their physical collision spacing.");
+            }
         }
 
         private sealed class TestCombatTarget : ICombatTarget
