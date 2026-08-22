@@ -26,6 +26,8 @@ namespace TowerDefense.Simulation
         private readonly float[] integration;
         private readonly float[] potential;
         private readonly Vector2[] directions;
+        private readonly Vector2[] corridorDirections;
+        private readonly float[] corridorDirectionDistanceSq;
         private readonly byte[] clearance;
         private readonly Vector3 primaryStart;
         private readonly Vector3 startForward;
@@ -68,6 +70,9 @@ namespace TowerDefense.Simulation
             integration = new float[walkable.Length];
             potential = new float[walkable.Length];
             directions = new Vector2[walkable.Length];
+            corridorDirections = new Vector2[walkable.Length];
+            corridorDirectionDistanceSq = new float[walkable.Length];
+            Array.Fill(corridorDirectionDistanceSq, float.PositiveInfinity);
             clearance = new byte[walkable.Length];
 
             RasterizeRoute(primaryRoute, roadHalfWidth);
@@ -290,10 +295,22 @@ namespace TowerDefense.Simulation
                     var point = CellCenter(x, y);
                     for (var segment = 1; segment < route.Count; segment++)
                     {
-                        if (DistanceToSegmentSquared(point, route[segment - 1], route[segment]) <= radiusSq)
+                        var distanceSq = DistanceToSegmentSquared(
+                            point,
+                            route[segment - 1],
+                            route[segment],
+                            out var segmentT);
+                        if (distanceSq > radiusSq)
                         {
-                            walkable[Index(x, y)] = true;
-                            break;
+                            continue;
+                        }
+
+                        var index = Index(x, y);
+                        walkable[index] = true;
+                        if (distanceSq < corridorDirectionDistanceSq[index])
+                        {
+                            corridorDirectionDistanceSq[index] = distanceSq;
+                            corridorDirections[index] = GetBlendedRouteDirection(route, segment, segmentT, radius);
                         }
                     }
                 }
@@ -439,6 +456,20 @@ namespace TowerDefense.Simulation
                     if (integration[index] <= 0.001f)
                     {
                         directions[index] = new Vector2(exitForward.x, exitForward.z);
+                        continue;
+                    }
+
+                    // Very wide stress corridors need a longitudinal vector in every
+                    // cell. A partially converged harmonic solve can contain zero or
+                    // strongly sideways vectors on grids hundreds of cells across,
+                    // which funnels the whole horde into a triangular stream. The
+                    // precomputed corridor tangent is still a shared flow field (not
+                    // per-agent lane/path-distance steering) and leaves lateral motion
+                    // entirely to collision and density pressure.
+                    if (corridorHalfWidth >= cellSize * 8f &&
+                        corridorDirections[index].sqrMagnitude > 0.000001f)
+                    {
+                        directions[index] = corridorDirections[index].normalized;
                         continue;
                     }
 
@@ -679,18 +710,47 @@ namespace TowerDefense.Simulation
             }
         }
 
-        private static float DistanceToSegmentSquared(Vector3 point, Vector3 from, Vector3 to)
+        private static float DistanceToSegmentSquared(Vector3 point, Vector3 from, Vector3 to, out float segmentT)
         {
             point.y = from.y = to.y = 0f;
             var segment = to - from;
             var lengthSq = segment.sqrMagnitude;
             if (lengthSq < 0.0001f)
             {
+                segmentT = 0f;
                 return (point - from).sqrMagnitude;
             }
 
-            var t = Mathf.Clamp01(Vector3.Dot(point - from, segment) / lengthSq);
-            return (point - (from + segment * t)).sqrMagnitude;
+            segmentT = Mathf.Clamp01(Vector3.Dot(point - from, segment) / lengthSq);
+            return (point - (from + segment * segmentT)).sqrMagnitude;
+        }
+
+        private static Vector2 GetBlendedRouteDirection(
+            IReadOnlyList<Vector3> route,
+            int segment,
+            float segmentT,
+            float blendDistance)
+        {
+            var current = FlatDirection(route[segment - 1], route[segment]);
+            var current2 = new Vector2(current.x, current.z);
+            var segmentLength = Vector3.Distance(route[segment - 1], route[segment]);
+            var blendT = Mathf.Clamp(blendDistance / Mathf.Max(segmentLength, 0.001f), 0.08f, 0.45f);
+
+            if (segmentT < blendT && segment > 1)
+            {
+                var previous = FlatDirection(route[segment - 2], route[segment - 1]);
+                var previous2 = new Vector2(previous.x, previous.z);
+                return Vector2.Lerp(previous2, current2, Mathf.SmoothStep(0f, 1f, segmentT / blendT)).normalized;
+            }
+
+            if (segmentT > 1f - blendT && segment < route.Count - 1)
+            {
+                var next = FlatDirection(route[segment], route[segment + 1]);
+                var next2 = new Vector2(next.x, next.z);
+                return Vector2.Lerp(current2, next2, Mathf.SmoothStep(0f, 1f, (segmentT - (1f - blendT)) / blendT)).normalized;
+            }
+
+            return current2;
         }
 
         private static Vector3 FlatDirection(Vector3 from, Vector3 to)

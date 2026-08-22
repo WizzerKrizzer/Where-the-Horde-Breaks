@@ -12,29 +12,7 @@ namespace TowerDefense.Tests
         [Test]
         public void WideStressField_FirstWaypointHasForwardGpuFlow()
         {
-            var route = new[]
-            {
-                new Vector3(-180f, 0f, 150f),
-                new Vector3(-110f, 0f, 150f),
-                new Vector3(0f, 0f, 145f),
-                new Vector3(110f, 0f, 150f),
-                new Vector3(180f, 0f, 125f),
-                new Vector3(180f, 0f, 78f),
-                new Vector3(110f, 0f, 50f),
-                new Vector3(0f, 0f, 55f),
-                new Vector3(-110f, 0f, 50f),
-                new Vector3(-180f, 0f, 25f),
-                new Vector3(-180f, 0f, -28f),
-                new Vector3(-110f, 0f, -50f),
-                new Vector3(0f, 0f, -45f),
-                new Vector3(110f, 0f, -50f),
-                new Vector3(180f, 0f, -78f),
-                new Vector3(180f, 0f, -128f),
-                new Vector3(110f, 0f, -150f),
-                new Vector3(0f, 0f, -145f),
-                new Vector3(-110f, 0f, -150f),
-                new Vector3(-180f, 0f, -150f)
-            };
+            var route = CreateWideStressRoute();
             var field = new HordeFlowField(route, null, 26.16f, 0.62f);
             field.BuildGpuData(out var vectors, out var data);
             var sampled = 0;
@@ -63,6 +41,124 @@ namespace TowerDefense.Tests
             }
 
             Assert.That(sampled, Is.GreaterThan(500));
+        }
+
+        [Test]
+        public void WideStressField_LongStraightUsesTheWholeCrossSection()
+        {
+            var route = CreateWideStressRoute();
+            var field = new HordeFlowField(route, null, 26.16f, 0.62f);
+            field.BuildGpuData(out var vectors, out var data);
+            var sampled = 0;
+            var worstForward = 1f;
+            var worstSideways = 0f;
+            for (var z = 126f; z <= 174f; z += 2f)
+            {
+                for (var x = -150f; x <= 90f; x += 4f)
+                {
+                    var cellX = Mathf.FloorToInt((x - field.Origin.x) / field.CellSize);
+                    var cellY = Mathf.FloorToInt((z - field.Origin.z) / field.CellSize);
+                    if (cellX < 0 || cellY < 0 || cellX >= field.Width || cellY >= field.Height)
+                    {
+                        continue;
+                    }
+
+                    var index = cellY * field.Width + cellX;
+                    if (data[index].y <= 0.001f)
+                    {
+                        continue;
+                    }
+
+                    sampled++;
+                    worstForward = Mathf.Min(worstForward, vectors[index].x);
+                    worstSideways = Mathf.Max(worstSideways, Mathf.Abs(vectors[index].y));
+                }
+            }
+
+            Assert.That(sampled, Is.GreaterThan(1000));
+            Assert.That(worstForward, Is.GreaterThan(0.72f),
+                $"The broad straight pulls part of the horde sideways (worst forward {worstForward:0.000}).");
+            Assert.That(worstSideways, Is.LessThan(0.7f),
+                $"The broad straight collapses toward one edge (worst sideways {worstSideways:0.000}).");
+        }
+
+        [Test]
+        public void WideStressField_StreamlinesReachExitWithoutCollapsing()
+        {
+            var route = CreateWideStressRoute();
+            var field = new HordeFlowField(route, null, 26.16f, 0.62f);
+            const int streamCount = 17;
+            var positions = new Vector3[streamCount];
+            var reached = new bool[streamCount];
+            for (var stream = 0; stream < streamCount; stream++)
+            {
+                positions[stream] = field.GetSpawnPoint(Mathf.Lerp(-24f, 24f, stream / (streamCount - 1f)));
+            }
+
+            for (var step = 0; step < 12000; step++)
+            {
+                var allReached = true;
+                for (var stream = 0; stream < streamCount; stream++)
+                {
+                    if (reached[stream])
+                    {
+                        continue;
+                    }
+
+                    allReached = false;
+                    positions[stream] = field.ConstrainMove(
+                        positions[stream],
+                        positions[stream] + field.GetDirection(positions[stream]) * 0.22f);
+                    reached[stream] = field.HasReachedExit(positions[stream]);
+                }
+
+                if (allReached)
+                {
+                    break;
+                }
+            }
+
+            var exitForward = (route[^1] - route[^2]).normalized;
+            var exitSide = Vector3.Cross(Vector3.up, exitForward);
+            var minLateral = float.PositiveInfinity;
+            var maxLateral = float.NegativeInfinity;
+            for (var stream = 0; stream < streamCount; stream++)
+            {
+                Assert.That(reached[stream], Is.True, $"Wide-flow streamline {stream} did not reach the exit.");
+                var lateral = Vector3.Dot(positions[stream] - route[^1], exitSide);
+                minLateral = Mathf.Min(minLateral, lateral);
+                maxLateral = Mathf.Max(maxLateral, lateral);
+            }
+
+            Assert.That(maxLateral - minLateral, Is.GreaterThan(35f),
+                $"The 48 meter entrance cross-section collapsed to {maxLateral - minLateral:0.0} meters.");
+        }
+
+        private static Vector3[] CreateWideStressRoute()
+        {
+            return new[]
+            {
+                new Vector3(-180f, 0f, 150f),
+                new Vector3(-110f, 0f, 150f),
+                new Vector3(0f, 0f, 145f),
+                new Vector3(110f, 0f, 150f),
+                new Vector3(180f, 0f, 125f),
+                new Vector3(180f, 0f, 78f),
+                new Vector3(110f, 0f, 50f),
+                new Vector3(0f, 0f, 55f),
+                new Vector3(-110f, 0f, 50f),
+                new Vector3(-180f, 0f, 25f),
+                new Vector3(-180f, 0f, -28f),
+                new Vector3(-110f, 0f, -50f),
+                new Vector3(0f, 0f, -45f),
+                new Vector3(110f, 0f, -50f),
+                new Vector3(180f, 0f, -78f),
+                new Vector3(180f, 0f, -128f),
+                new Vector3(110f, 0f, -150f),
+                new Vector3(0f, 0f, -145f),
+                new Vector3(-110f, 0f, -150f),
+                new Vector3(-180f, 0f, -150f)
+            };
         }
 
         [UnityTest]
