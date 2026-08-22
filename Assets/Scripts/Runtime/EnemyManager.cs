@@ -786,8 +786,8 @@ namespace TowerDefense.Runtime
                 return sharedLowEnemyMesh;
             }
 
-            const int segments = 8;
-            const int rings = 4;
+            const int segments = 12;
+            const int rings = 6;
             var vertices = new Vector3[2 + segments * (rings - 1)];
             var triangles = new int[segments * 6 * (rings - 1)];
             vertices[0] = new Vector3(0f, 2f, 0f);

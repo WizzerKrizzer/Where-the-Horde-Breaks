@@ -186,7 +186,7 @@ namespace TowerDefense.Tests
             Assert.That(detailed.bounds.extents.z, Is.EqualTo(1f).Within(0.06f));
             Assert.That(low.bounds.extents.x, Is.EqualTo(detailed.bounds.extents.x).Within(0.06f));
             Assert.That(low.bounds.extents.z, Is.EqualTo(detailed.bounds.extents.z).Within(0.06f));
-            Assert.That(low.triangles.Length / 3, Is.GreaterThan(8), "The far LOD regressed to the visibly angular octahedron.");
+            Assert.That(low.triangles.Length / 3, Is.EqualTo(120), "The unified horde mesh no longer matches the balanced visual-quality tier.");
             var vertices = low.vertices;
             var normals = low.normals;
             var outwardNormalScore = 0f;
