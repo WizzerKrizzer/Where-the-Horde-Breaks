@@ -842,6 +842,15 @@ namespace TowerDefense.Runtime
                 triangles[triangle++] = lastRing + next;
             }
 
+            // The procedural latitude/longitude order above is counter-clockwise in
+            // Unity's mesh convention. Reverse every face so back-face culling keeps
+            // the outside surface rather than making the far LOD look hollow.
+            for (var index = 0; index < triangles.Length; index += 3)
+            {
+                (triangles[index + 1], triangles[index + 2]) =
+                    (triangles[index + 2], triangles[index + 1]);
+            }
+
             sharedLowEnemyMesh = new Mesh
             {
                 name = "LowEnemyRounded",

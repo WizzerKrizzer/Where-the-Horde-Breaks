@@ -186,6 +186,19 @@ namespace TowerDefense.Tests
             Assert.That(low.bounds.extents.x, Is.EqualTo(detailed.bounds.extents.x).Within(0.06f));
             Assert.That(low.bounds.extents.z, Is.EqualTo(detailed.bounds.extents.z).Within(0.06f));
             Assert.That(low.triangles.Length / 3, Is.GreaterThan(8), "The far LOD regressed to the visibly angular octahedron.");
+            var vertices = low.vertices;
+            var normals = low.normals;
+            var outwardNormalScore = 0f;
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                var radial = vertices[i] - Vector3.up;
+                if (radial.sqrMagnitude > 0.001f)
+                {
+                    outwardNormalScore += Vector3.Dot(normals[i], radial.normalized);
+                }
+            }
+
+            Assert.That(outwardNormalScore, Is.GreaterThan(0f), "The far LOD mesh is inside-out and will look transparent with back-face culling.");
         }
 
         [UnityTest]
