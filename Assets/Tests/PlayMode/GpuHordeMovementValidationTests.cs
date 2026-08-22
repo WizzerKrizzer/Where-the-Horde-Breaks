@@ -9,6 +9,62 @@ namespace TowerDefense.Tests
 {
     public sealed class GpuHordeMovementValidationTests
     {
+        [Test]
+        public void WideStressField_FirstWaypointHasForwardGpuFlow()
+        {
+            var route = new[]
+            {
+                new Vector3(-180f, 0f, 150f),
+                new Vector3(-110f, 0f, 150f),
+                new Vector3(0f, 0f, 145f),
+                new Vector3(110f, 0f, 150f),
+                new Vector3(180f, 0f, 125f),
+                new Vector3(180f, 0f, 78f),
+                new Vector3(110f, 0f, 50f),
+                new Vector3(0f, 0f, 55f),
+                new Vector3(-110f, 0f, 50f),
+                new Vector3(-180f, 0f, 25f),
+                new Vector3(-180f, 0f, -28f),
+                new Vector3(-110f, 0f, -50f),
+                new Vector3(0f, 0f, -45f),
+                new Vector3(110f, 0f, -50f),
+                new Vector3(180f, 0f, -78f),
+                new Vector3(180f, 0f, -128f),
+                new Vector3(110f, 0f, -150f),
+                new Vector3(0f, 0f, -145f),
+                new Vector3(-110f, 0f, -150f),
+                new Vector3(-180f, 0f, -150f)
+            };
+            var field = new HordeFlowField(route, null, 26.16f, 0.62f);
+            field.BuildGpuData(out var vectors, out var data);
+            var sampled = 0;
+            for (var z = 125f; z <= 175f; z += 2f)
+            {
+                for (var x = -175f; x <= -80f; x += 2f)
+                {
+                    var cellX = Mathf.FloorToInt((x - field.Origin.x) / field.CellSize);
+                    var cellY = Mathf.FloorToInt((z - field.Origin.z) / field.CellSize);
+                    if (cellX < 0 || cellY < 0 || cellX >= field.Width || cellY >= field.Height)
+                    {
+                        continue;
+                    }
+
+                    var index = cellY * field.Width + cellX;
+                    if (data[index].y <= 0.001f)
+                    {
+                        continue;
+                    }
+
+                    sampled++;
+                    var direction = new Vector2(vectors[index].x, vectors[index].y);
+                    Assert.That(direction.sqrMagnitude, Is.GreaterThan(0.01f), $"Zero GPU flow at ({x}, {z}).");
+                    Assert.That(direction.x, Is.GreaterThan(0.05f), $"GPU flow does not cross the first waypoint at ({x}, {z}).");
+                }
+            }
+
+            Assert.That(sampled, Is.GreaterThan(500));
+        }
+
         [UnityTest]
         public IEnumerator MultiTurnFlow_StaysWalkableReachesExitAndKeepsWidth()
         {

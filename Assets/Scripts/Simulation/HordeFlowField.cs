@@ -454,8 +454,47 @@ namespace TowerDefense.Simulation
                     {
                         directions[index] = direction.normalized;
                     }
+                    else
+                    {
+                        directions[index] = GetIntegrationDirection(x, y);
+                    }
                 }
             }
+        }
+
+        private Vector2 GetIntegrationDirection(int x, int y)
+        {
+            var current = integration[Index(x, y)];
+            var bestScore = 0f;
+            var bestDirection = Vector2.zero;
+            for (var i = 0; i < Neighbors.Length; i++)
+            {
+                var offset = Neighbors[i];
+                var nx = x + offset.x;
+                var ny = y + offset.y;
+                if (!IsWalkableCell(nx, ny) || IsBlockedDiagonal(x, y, offset))
+                {
+                    continue;
+                }
+
+                var neighborCost = integration[Index(nx, ny)];
+                if (float.IsInfinity(neighborCost))
+                {
+                    continue;
+                }
+
+                var stepLength = offset.x == 0 || offset.y == 0 ? 1f : 1.41421356f;
+                var score = (current - neighborCost) / stepLength;
+                if (score <= bestScore)
+                {
+                    continue;
+                }
+
+                bestScore = score;
+                bestDirection = new Vector2(offset.x, offset.y).normalized;
+            }
+
+            return bestDirection;
         }
 
         private void BuildPotential()
