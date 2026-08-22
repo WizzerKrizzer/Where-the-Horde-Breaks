@@ -15,9 +15,9 @@ namespace TowerDefense.Runtime
         private const float VisualRadius = 0.34f;
         private const float SpatialCellSize = 1.2f;
         private const float CombatTargetCellSize = 4.5f;
-        // Visual diameter is roughly 0.68. Collision is deliberately a little larger,
-        // but remains contact-only; a broad influence radius crystallizes into patterns.
-        private const float CollisionDiameter = 0.84f;
+        // The normalized enemy meshes use state.scale as their visible radius.
+        // Keep contact only slightly outside the silhouette to avoid visible gaps.
+        private const float CollisionDiameter = 0.72f;
         private const float FlowCellSize = 0.62f;
         private const float FlowAcceleration = 8.5f;
         private const float CollisionAcceleration = 18f;
@@ -88,6 +88,7 @@ namespace TowerDefense.Runtime
         private int lastNearCombatCount;
         private bool running;
         private float activeRoadHalfWidth = RoadHalfWidth;
+        private float gpuSimulationAccumulator;
 
         public int TotalSpawned => totalSpawned;
         public int ActiveCount => activeCount;
@@ -197,6 +198,7 @@ namespace TowerDefense.Runtime
             totalSpawned = 0;
             activeCount = 0;
             totalResolved = 0;
+            gpuSimulationAccumulator = 0f;
             running = true;
         }
 
@@ -253,6 +255,7 @@ namespace TowerDefense.Runtime
             activeCount = 0;
             totalResolved = 0;
             activeRoadHalfWidth = RoadHalfWidth;
+            gpuSimulationAccumulator = 0f;
         }
 
         private void Update()
@@ -262,18 +265,35 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var deltaTime = Time.deltaTime;
-            elapsed += deltaTime;
-            var spawnStart = Stopwatch.GetTimestamp();
-            SpawnDueEnemies();
-            lastSpawnMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - spawnStart);
-            var simStart = Stopwatch.GetTimestamp();
-            Simulate(deltaTime);
-            lastSimMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - simStart) - lastBucketMs;
-            if (lastSimMs < 0f)
+            const float fixedGpuStep = 1f / 60f;
+            const int maximumStepsPerFrame = 32;
+            gpuSimulationAccumulator = Mathf.Min(
+                gpuSimulationAccumulator + Mathf.Max(0f, Time.deltaTime),
+                fixedGpuStep * maximumStepsPerFrame);
+            var stepCount = Mathf.Min(
+                maximumStepsPerFrame,
+                Mathf.FloorToInt((gpuSimulationAccumulator + 0.000001f) / fixedGpuStep));
+            if (stepCount <= 0)
             {
-                lastSimMs = 0f;
+                return;
             }
+
+            var spawnTicks = 0L;
+            var simulationTicks = 0L;
+            for (var step = 0; step < stepCount; step++)
+            {
+                elapsed += fixedGpuStep;
+                var sectionStart = Stopwatch.GetTimestamp();
+                SpawnDueEnemies();
+                spawnTicks += Stopwatch.GetTimestamp() - sectionStart;
+                sectionStart = Stopwatch.GetTimestamp();
+                Simulate(fixedGpuStep);
+                simulationTicks += Stopwatch.GetTimestamp() - sectionStart;
+                gpuSimulationAccumulator -= fixedGpuStep;
+            }
+
+            lastSpawnMs = TicksToMilliseconds(spawnTicks);
+            lastSimMs = Mathf.Max(0f, TicksToMilliseconds(simulationTicks) - lastBucketMs);
         }
 
         private void LateUpdate()
@@ -590,14 +610,7 @@ namespace TowerDefense.Runtime
             lastCheapFidelityCount = Mathf.Max(0, activeCount - lastFullFidelityCount);
             var movementStart = Stopwatch.GetTimestamp();
             gpuSimulation.SynchronizeDynamicTargets(combatTargets);
-            const float maximumGpuStep = 0.05f;
-            const int maximumSubsteps = 8;
-            var substeps = Mathf.Clamp(Mathf.CeilToInt(deltaTime / maximumGpuStep), 1, maximumSubsteps);
-            var stepDelta = Mathf.Min(maximumGpuStep, deltaTime / substeps);
-            for (var step = 0; step < substeps; step++)
-            {
-                gpuSimulation.Dispatch(stepDelta, null, null, step == substeps - 1);
-            }
+            gpuSimulation.Dispatch(deltaTime, null, null);
             lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
         }
 

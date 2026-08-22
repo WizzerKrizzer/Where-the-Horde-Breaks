@@ -176,6 +176,74 @@ namespace TowerDefense.Tests
             Assert.That(farArgs[1], Is.EqualTo(1u));
         }
 
+        [Test]
+        public void RenderingLod_KeepsTheSameVisibleBodyRadius()
+        {
+            var detailed = EnemyManager.GetDetailedEnemyMesh();
+            var low = EnemyManager.GetLowEnemyMesh();
+            Assert.That(detailed.bounds.extents.x, Is.EqualTo(1f).Within(0.06f));
+            Assert.That(detailed.bounds.extents.z, Is.EqualTo(1f).Within(0.06f));
+            Assert.That(low.bounds.extents.x, Is.EqualTo(detailed.bounds.extents.x).Within(0.06f));
+            Assert.That(low.bounds.extents.z, Is.EqualTo(detailed.bounds.extents.z).Within(0.06f));
+            Assert.That(low.triangles.Length / 3, Is.GreaterThan(8), "The far LOD regressed to the visibly angular octahedron.");
+        }
+
+        [UnityTest]
+        public IEnumerator CameraDistance_DoesNotChangeSimulationResult()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var cameraObject = new GameObject("GPU simulation distance test camera");
+            cameraObject.tag = "MainCamera";
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 30f;
+            camera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            var mesh = EnemyManager.GetDetailedEnemyMesh();
+            Assert.That(GpuHordeSimulation.TryCreate(8, field, mesh, out var nearSimulation), Is.True);
+            Assert.That(GpuHordeSimulation.TryCreate(8, field, mesh, out var farSimulation), Is.True);
+            var nearStates = new GpuHordeSimulation.AgentState[8];
+            var farStates = new GpuHordeSimulation.AgentState[8];
+            var controls = new Vector4[8];
+            for (var i = 0; i < nearStates.Length; i++)
+            {
+                nearStates[i] = State(-7f + i * 0.12f, 10f, -17f + i * 0.12f, false);
+                farStates[i] = nearStates[i];
+                controls[i] = new Vector4(4.8f, 1f, 0f, 0f);
+            }
+
+            nearSimulation.SpawnBatch(nearStates, nearStates.Length);
+            farSimulation.SpawnBatch(farStates, farStates.Length);
+            for (var tick = 0; tick < 90; tick++)
+            {
+                camera.transform.position = new Vector3(-5f, 20f, 0f);
+                nearSimulation.Dispatch(1f / 60f, controls, new Vector2[8], false);
+                camera.transform.position = new Vector3(200f, 20f, 200f);
+                farSimulation.Dispatch(1f / 60f, controls, new Vector2[8], false);
+            }
+
+            nearSimulation.ReadStatesSynchronous(nearStates, nearStates.Length);
+            farSimulation.ReadStatesSynchronous(farStates, farStates.Length);
+            nearSimulation.Dispose();
+            farSimulation.Dispose();
+            Object.DestroyImmediate(cameraObject);
+            for (var i = 0; i < nearStates.Length; i++)
+            {
+                Assert.That(Vector2.Distance(nearStates[i].Position, farStates[i].Position), Is.LessThan(0.001f));
+                Assert.That(nearStates[i].Status, Is.EqualTo(farStates[i].Status));
+            }
+
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator AreaEffect_UsesGpuGridAndRespectsRadiusAndTargetLimit()
         {

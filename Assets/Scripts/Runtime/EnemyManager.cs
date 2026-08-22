@@ -786,23 +786,67 @@ namespace TowerDefense.Runtime
                 return sharedLowEnemyMesh;
             }
 
+            const int segments = 8;
+            const int rings = 4;
+            var vertices = new Vector3[2 + segments * (rings - 1)];
+            var triangles = new int[segments * 6 * (rings - 1)];
+            vertices[0] = new Vector3(0f, 2f, 0f);
+            for (var ring = 1; ring < rings; ring++)
+            {
+                var latitude = Mathf.PI * ring / rings;
+                var radius = Mathf.Sin(latitude);
+                var y = 1f + Mathf.Cos(latitude);
+                for (var segment = 0; segment < segments; segment++)
+                {
+                    var longitude = Mathf.PI * 2f * segment / segments;
+                    vertices[1 + (ring - 1) * segments + segment] = new Vector3(
+                        Mathf.Cos(longitude) * radius,
+                        y,
+                        Mathf.Sin(longitude) * radius);
+                }
+            }
+
+            var bottomIndex = vertices.Length - 1;
+            vertices[bottomIndex] = Vector3.zero;
+            var triangle = 0;
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var next = (segment + 1) % segments;
+                triangles[triangle++] = 0;
+                triangles[triangle++] = 1 + segment;
+                triangles[triangle++] = 1 + next;
+            }
+
+            for (var ring = 0; ring < rings - 2; ring++)
+            {
+                var currentRing = 1 + ring * segments;
+                var nextRing = currentRing + segments;
+                for (var segment = 0; segment < segments; segment++)
+                {
+                    var next = (segment + 1) % segments;
+                    triangles[triangle++] = currentRing + segment;
+                    triangles[triangle++] = nextRing + segment;
+                    triangles[triangle++] = nextRing + next;
+                    triangles[triangle++] = currentRing + segment;
+                    triangles[triangle++] = nextRing + next;
+                    triangles[triangle++] = currentRing + next;
+                }
+            }
+
+            var lastRing = 1 + (rings - 2) * segments;
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var next = (segment + 1) % segments;
+                triangles[triangle++] = lastRing + segment;
+                triangles[triangle++] = bottomIndex;
+                triangles[triangle++] = lastRing + next;
+            }
+
             sharedLowEnemyMesh = new Mesh
             {
-                name = "LowEnemyOctahedron",
-                vertices = new[]
-                {
-                    new Vector3(0f, 2f, 0f),
-                    new Vector3(0f, 0f, 0f),
-                    new Vector3(1f, 0.85f, 0f),
-                    new Vector3(-1f, 0.85f, 0f),
-                    new Vector3(0f, 0.85f, 1f),
-                    new Vector3(0f, 0.85f, -1f)
-                },
-                triangles = new[]
-                {
-                    0, 2, 4, 0, 4, 3, 0, 3, 5, 0, 5, 2,
-                    1, 4, 2, 1, 3, 4, 1, 5, 3, 1, 2, 5
-                }
+                name = "LowEnemyRounded",
+                vertices = vertices,
+                triangles = triangles
             };
             sharedLowEnemyMesh.RecalculateNormals();
             sharedLowEnemyMesh.RecalculateBounds();
@@ -821,7 +865,7 @@ namespace TowerDefense.Runtime
             var vertices = templateMesh.vertices;
             for (var i = 0; i < vertices.Length; i++)
             {
-                vertices[i] = new Vector3(vertices[i].x * 1.05f, vertices[i].y * 1.18f + 0.82f, vertices[i].z * 1.05f);
+                vertices[i] = new Vector3(vertices[i].x * 2f, vertices[i].y * 1.9f + 1f, vertices[i].z * 2f);
             }
 
             sharedDetailedEnemyMesh = new Mesh

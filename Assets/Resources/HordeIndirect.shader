@@ -68,11 +68,13 @@ Shader "TowerDefense/HordeIndirect"
                 float3 normal : TEXCOORD0;
                 float tint : TEXCOORD1;
                 float active : TEXCOORD2;
+                float variation : TEXCOORD3;
             };
 
             Varyings Vert(Attributes input)
             {
-                AgentState state = _AgentStates[_VisibleIndices[input.instanceID]];
+                uint agentIndex = _VisibleIndices[input.instanceID];
+                AgentState state = _AgentStates[agentIndex];
                 Varyings output;
                 float active = state.status == 1 ? 1.0 : 0.0;
                 float3 world = input.vertex.xyz * state.scale + float3(state.position.x, 0.0, state.position.y);
@@ -81,6 +83,7 @@ Shader "TowerDefense/HordeIndirect"
                 output.normal = input.normal;
                 output.tint = state.tint;
                 output.active = active;
+                output.variation = frac(sin((float)agentIndex * 12.9898) * 43758.5453);
                 return output;
             }
 
@@ -88,7 +91,8 @@ Shader "TowerDefense/HordeIndirect"
             {
                 clip(input.active - 0.5);
                 float directionalLight = 0.68 + saturate(dot(normalize(input.normal), normalize(float3(0.35, 0.8, 0.25)))) * 0.32;
-                float light = lerp(0.84, directionalLight, saturate(_LightingVariation));
+                float individualVariation = lerp(0.94, 1.06, input.variation);
+                float light = lerp(0.84, directionalLight, saturate(_LightingVariation)) * individualVariation;
                 return lerp(_BaseColor, _SlowColor, saturate(input.tint)) * light;
             }
             ENDCG

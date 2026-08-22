@@ -73,7 +73,8 @@ namespace TowerDefense.Tests
             var manager = CreateManager();
 
             manager.BeginWave(wave, route);
-            for (var frame = 0; frame < 30 && manager.ActiveCount == 0; frame++)
+            var spawnTimeout = Time.realtimeSinceStartup + 0.5f;
+            while (manager.ActiveCount == 0 && Time.realtimeSinceStartup < spawnTimeout)
             {
                 yield return null;
             }
@@ -113,7 +114,8 @@ namespace TowerDefense.Tests
             var manager = CreateManager();
 
             manager.BeginWave(wave, route);
-            for (var frame = 0; frame < 4 && manager.TotalSpawned < count; frame++)
+            var spawnTimeout = Time.realtimeSinceStartup + 0.5f;
+            while (manager.TotalSpawned < count && Time.realtimeSinceStartup < spawnTimeout)
             {
                 yield return null;
             }

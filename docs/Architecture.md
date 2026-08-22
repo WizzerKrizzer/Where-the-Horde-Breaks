@@ -49,7 +49,7 @@ Projectile and area-effect commands are uploaded once and consumed sequentially 
 
 Enemy creation is also range-batched. A rapid spawn window prepares new records in the manager's preallocated arrays, then uploads the contiguous state range to both ping-pong buffers and its controls buffer once. Level 5 uses this path to introduce 100,000 enemies in large bursts without issuing several GPU uploads per enemy.
 
-Off-camera simulation uses distance-based update strides of 1, 2, or 4. A skipped far particle stays in GPU memory and catches up with a proportionally larger integration step; nearby enemies always run at full fidelity. Hardware without compute-shader support cannot start a horde wave and reports a clear error instead of silently changing behavior.
+Movement uses a fixed 60 Hz GPU tick independent of render frame rate and developer time scale. Camera distance never changes simulation frequency, so zooming out or switching between 1x and 10x cannot select a different crowd trajectory. Rendering remains split into near and far indirect lists entirely on the GPU; the rounded far mesh preserves the detailed mesh's footprint and lighting while using substantially fewer triangles. Hardware without compute-shader support cannot start a horde wave and reports a clear error instead of silently changing behavior.
 
 ## Horde Movement Prototype
 
@@ -59,7 +59,7 @@ The field adds a soft cost beside walls so the preferred direction does not hug 
 
 The flow-field stores wall clearance, exit integration cost, harmonic width potential, and a walkable flag per cell. If harmonic relaxation produces a locally flat cell, field generation falls back to the descending integration-cost neighbour so the GPU never receives a zero direction inside a reachable corridor. GPU movement combines the local vector with penetration-only separation, wall-gradient pressure, and a bounded post-integration contact projection. The projection prevents visible body intersection while retaining enough compliance for stable massively parallel simulation.
 
-Dense movement also applies a smoothed occupancy gradient every frame, projected primarily across the local flow. This fills empty road width without persistent lane offsets. Separation is stronger laterally than longitudinally, uses each pair's visual radii instead of one identical diameter, and therefore avoids crystallizing the horde into a uniform lattice. Wall collisions first remove the outward normal component of displacement, producing tangent sliding on diagonal corners before falling back to axis constraints. Wall pressure is prevented from applying a backward component against the flow. The 100K Level 5 stress scenario uses a per-level 54-meter road and widely separated turns so its physical carrying capacity matches the test population instead of forcing tens of thousands of discs into a normal gameplay corridor.
+Dense movement also applies a smoothed occupancy gradient every frame, projected primarily across the local flow. This fills empty road width without persistent lane offsets. Separation is stronger laterally than longitudinally and uses each pair's normalized visible radii with only a two-percent contact margin. This packs bodies without the regular empty rings caused by an oversized invisible collision footprint. Wall collisions first remove the outward normal component of displacement, producing tangent sliding on diagonal corners before falling back to axis constraints. Wall pressure is prevented from applying a backward component against the flow. The 100K Level 5 stress scenario uses a per-level 54-meter road and widely separated turns so its physical carrying capacity matches the test population instead of forcing tens of thousands of discs into a normal gameplay corridor.
 
 ## Validation and Diagnostics
 
@@ -71,12 +71,12 @@ Latest like-for-like reference run (RTX 5070 Ti, Direct3D 12, Unity 6000.3.19f1,
 
 | Agents | Frame avg before → after | Frame p95 before → after | Dropped before → after |
 | ---: | ---: | ---: | ---: |
-| 1,000 | 0.345 → 0.228 ms | 0.765 → 0.765 ms | 65 → 0 |
-| 5,000 | 0.431 → 0.278 ms | 0.802 → 0.575 ms | 96 → 1 |
-| 10,000 | 0.451 → 0.329 ms | 0.780 → 0.716 ms | 86 → 0 |
-| 25,000 | 0.503 → 0.392 ms | 0.843 → 0.764 ms | 78 → 1 |
-| 50,000 | 0.945 → 0.497 ms | 1.332 → 0.971 ms | 83 → 0 |
-| 100,000 | 2.741 → 1.132 ms | 3.174 → 1.812 ms | 90 → 1 |
+| 1,000 | 0.345 → 0.210 ms | 0.765 → 0.270 ms | 65 → 0 |
+| 5,000 | 0.431 → 0.200 ms | 0.802 → 0.260 ms | 96 → 0 |
+| 10,000 | 0.451 → 0.240 ms | 0.780 → 0.510 ms | 86 → 0 |
+| 25,000 | 0.503 → 0.290 ms | 0.843 → 0.460 ms | 78 → 0 |
+| 50,000 | 0.945 → 0.430 ms | 1.332 → 0.970 ms | 83 → 0 |
+| 100,000 | 2.741 → 1.030 ms | 3.174 → 2.070 ms | 90 → 1 |
 
 At 100K, median CPU submission for 256 queued projectiles improved from 0.398 to 0.054 ms, and 256 area effects improved from 0.382 to 0.062 ms. Fast-path dispatch plus both indirect draw submissions is approximately 0.050 ms; uploading complete controls and impulses costs approximately 0.170 ms and is therefore retained only as a compatibility/test path. The benchmark observed zero managed allocations per measured frame. The two 120-byte state buffers occupy 22.89 MiB at 100K, with an additional 1.53 MiB compact spatial buffer; neighbour-state fetch width is reduced from 120 to 16 bytes.
 

@@ -898,18 +898,6 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float simulationDelta = _DeltaTime;
-    if (_CullingEnabled != 0)
-    {
-        float cameraDistance = distance(state.position, _LodCameraPosition);
-        uint lodStride = cameraDistance > 70.0 ? 4u : (cameraDistance > 42.0 ? 2u : 1u);
-        if (lodStride > 1u && ((index + _FrameIndex) % lodStride) != 0u)
-        {
-            _StatesWrite[index] = state;
-            return;
-        }
-
-        simulationDelta *= lodStride;
-    }
 
     if (state.slowTimer > 0.0)
     {
@@ -1104,7 +1092,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
 
                 float pairDiameter = clamp(
-                    (state.scale + otherScale) * 1.12,
+                    (state.scale + otherScale) * 1.02,
                     _CollisionDiameter * 0.78,
                     maximumCollisionDiameter);
                 if (distanceSq >= pairDiameter * pairDiameter)

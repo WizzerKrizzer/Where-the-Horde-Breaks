@@ -332,6 +332,7 @@ namespace TowerDefense.Runtime
         private uint processedEventCount;
         private float nextDiagnosticsReadbackTime;
         private int activeHighWaterMark;
+        private uint simulationFrameIndex;
 
         public uint OverflowCellCount { get; private set; }
         public uint DroppedAgentCount { get; private set; }
@@ -357,7 +358,7 @@ namespace TowerDefense.Runtime
             material.SetColor("_BaseColor", new Color(0.1f, 0.9f, 0.18f, 1f));
             material.SetColor("_SlowColor", new Color(0.2f, 0.62f, 1f, 1f));
             properties.SetFloat("_LightingVariation", 1f);
-            lodProperties.SetFloat("_LightingVariation", 0f);
+            lodProperties.SetFloat("_LightingVariation", 1f);
             clearKernel = compute.FindKernel("ClearGrid");
             clearDiagnosticsKernel = compute.FindKernel("ClearDiagnostics");
             gridKernel = compute.FindKernel("BuildGrid");
@@ -448,7 +449,7 @@ namespace TowerDefense.Runtime
             compute.SetInts("_GridSize", field.Width, field.Height);
             compute.SetVector("_GridOrigin", new Vector4(field.Origin.x, field.Origin.z, 0f, 0f));
             compute.SetFloat("_CellSize", field.CellSize);
-            compute.SetFloat("_CollisionDiameter", 0.84f);
+            compute.SetFloat("_CollisionDiameter", 0.72f);
             compute.SetFloat("_FlowAcceleration", 8.5f);
             compute.SetFloat("_CollisionAcceleration", 18f);
             compute.SetFloat("_WallAcceleration", 13f);
@@ -1341,7 +1342,7 @@ namespace TowerDefense.Runtime
         private void SetCameraParameters()
         {
             var camera = Camera.main;
-            compute.SetInt("_FrameIndex", Time.frameCount);
+            compute.SetInt("_FrameIndex", (int)(simulationFrameIndex++ & 0x7fffffffu));
             if (camera == null)
             {
                 compute.SetInt("_CullingEnabled", 0);
