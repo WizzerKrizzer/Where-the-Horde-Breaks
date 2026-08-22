@@ -49,6 +49,8 @@ namespace TowerDefense.Tests
             var minLateral = float.PositiveInfinity;
             var maxLateral = float.NegativeInfinity;
             var averageForward = 0f;
+            var averageForwardVelocity = 0f;
+            var averageLateralVelocity = 0f;
             for (var i = 0; i < count; i++)
             {
                 Assert.That(states[i].Status, Is.EqualTo(1));
@@ -56,11 +58,19 @@ namespace TowerDefense.Tests
                 minLateral = Mathf.Min(minLateral, states[i].Position.y);
                 maxLateral = Mathf.Max(maxLateral, states[i].Position.y);
                 averageForward += states[i].Position.x;
+                averageForwardVelocity += Mathf.Max(0f, states[i].Velocity.x);
+                averageLateralVelocity += Mathf.Abs(states[i].Velocity.y);
             }
 
             averageForward /= count;
+            averageForwardVelocity /= count;
+            averageLateralVelocity /= count;
             Assert.That(maxLateral - minLateral, Is.GreaterThan(0.5f), "The overloaded pile did not spread laterally.");
             Assert.That(averageForward, Is.GreaterThan(-4f), "Overflow fallback stopped forward movement.");
+            Assert.That(
+                averageForwardVelocity,
+                Is.GreaterThan(averageLateralVelocity * 1.5f),
+                "Dense pressure turned the crowd into a sideways-moving wave.");
         }
 
         [UnityTest]
@@ -90,7 +100,7 @@ namespace TowerDefense.Tests
             };
 
             simulation.SpawnBatch(states, states.Length);
-            for (var frame = 0; frame < 8; frame++)
+            for (var frame = 0; frame < 60; frame++)
             {
                 simulation.Dispatch(1f / 60f, controls, new Vector2[2]);
                 yield return null;

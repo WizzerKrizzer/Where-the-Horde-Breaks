@@ -1163,6 +1163,19 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         state.velocity *= maxSpeed / velocityLength;
     }
 
+    // Dense contact pressure must not turn a forward-moving horde into a
+    // sideways avalanche. Preserve real impulses (knockback), but keep normal
+    // crowd motion inside a broad cone around the local flow direction.
+    if (blockingTarget < 0 && dot(impulse, impulse) < 0.000001)
+    {
+        float forwardVelocity = max(dot(state.velocity, flow), desiredSpeed * 0.55);
+        float lateralVelocity = clamp(
+            dot(state.velocity, lateralAxis),
+            -desiredSpeed * 0.38,
+            desiredSpeed * 0.38);
+        state.velocity = flow * forwardVelocity + lateralAxis * lateralVelocity;
+    }
+
     float2 oldPosition = state.position;
     float2 desiredPosition = oldPosition + state.velocity * simulationDelta;
     state.position = ConstrainMove(oldPosition, desiredPosition);
@@ -1174,7 +1187,9 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
         flow * max(0.0, dot(contactCorrection, flow));
     float correctionLength = length(contactCorrection);
-    float maximumCorrection = _CollisionDiameter * 0.35;
+    float maximumCorrection = min(
+        _CollisionDiameter * 0.12,
+        max(0.005, desiredSpeed * simulationDelta * 0.32));
     if (correctionLength > maximumCorrection)
     {
         contactCorrection *= maximumCorrection / correctionLength;
