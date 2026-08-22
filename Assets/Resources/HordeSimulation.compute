@@ -197,10 +197,12 @@ RWStructuredBuffer<uint> _DynamicTargetLastAttacker;
 RWStructuredBuffer<uint> _VisibleIndices;
 RWStructuredBuffer<uint> _LodVisibleIndices;
 RWStructuredBuffer<uint> _ActiveIndices;
+RWStructuredBuffer<float4> _SpatialStates;
 StructuredBuffer<uint> _CellCountsRead;
 StructuredBuffer<uint> _CellAgentsRead;
 StructuredBuffer<uint> _ActiveIndicesRead;
 StructuredBuffer<uint> _DiagnosticsRead;
+StructuredBuffer<float4> _SpatialStatesRead;
 RWByteAddressBuffer _IndirectArgs;
 RWByteAddressBuffer _LodIndirectArgs;
 RWByteAddressBuffer _ActiveDispatchArgs;
@@ -211,8 +213,8 @@ uint _CellCapacity;
 uint _QueryCount;
 uint _DamageCommandCount;
 uint _StatusCommandCount;
-uint _AreaCommandIndex;
-uint _ProjectileCommandIndex;
+uint _AreaCommandCount;
+uint _ProjectileCommandCount;
 uint _EventCapacity;
 uint _FrameIndex;
 uint _CullingEnabled;
@@ -573,6 +575,7 @@ void BuildGrid(uint3 id : SV_DispatchThreadID)
     }
 
     uint cellIndex = CellIndex(cell);
+    _SpatialStates[index] = float4(_StatesRead[index].position, _StatesRead[index].scale, 0.0);
     uint slot;
     InterlockedAdd(_CellCounts[cellIndex], 1, slot);
     uint activeSlot;
@@ -677,92 +680,97 @@ void ApplyStatusCommands(uint3 id : SV_DispatchThreadID)
 [numthreads(1, 1, 1)]
 void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
 {
-    AreaEffectCommand command = _AreaEffectCommands[_AreaCommandIndex];
-    int2 centerCell = WorldToCell(command.center);
-    int cellRadius = max(1, (int)ceil(command.radius / _CellSize));
-    float radiusSq = command.radius * command.radius;
-    uint hitCount = 0u;
-    float usedSlowCapacity = 0.0;
     [loop]
-    for (int oy = -cellRadius; oy <= cellRadius; oy++)
+    for (uint commandIndex = 0u; commandIndex < _AreaCommandCount; commandIndex++)
     {
+        AreaEffectCommand command = _AreaEffectCommands[commandIndex];
+        int2 centerCell = WorldToCell(command.center);
+        int cellRadius = max(1, (int)ceil(command.radius / _CellSize));
+        float radiusSq = command.radius * command.radius;
+        uint hitCount = 0u;
+        float usedSlowCapacity = 0.0;
+        bool commandComplete = false;
         [loop]
-        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        for (int oy = -cellRadius; oy <= cellRadius && !commandComplete; oy++)
         {
-            int2 cell = centerCell + int2(ox, oy);
-            if (!IsInside(cell))
-            {
-                continue;
-            }
-
-            uint cellIndex = CellIndex(cell);
-            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
             [loop]
-            for (uint slot = 0u; slot < count; slot++)
+            for (int ox = -cellRadius; ox <= cellRadius && !commandComplete; ox++)
             {
-                uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
-                AgentState state = _StatesRead[agentIndex];
-                if (state.status != 1 || state.health <= 0.0)
+                int2 cell = centerCell + int2(ox, oy);
+                if (!IsInside(cell))
                 {
                     continue;
                 }
 
-                float2 offset = state.position - command.center;
-                float distanceSq = dot(offset, offset);
-                if (distanceSq > radiusSq)
+                uint cellIndex = CellIndex(cell);
+                uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+                [loop]
+                for (uint slot = 0u; slot < count; slot++)
                 {
-                    continue;
-                }
-
-                bool applySlow = command.slowDuration > 0.0 && command.slowMultiplier < 0.995 &&
-                    usedSlowCapacity + max(0.1, state.mass) <= command.slowCapacity;
-                bool hasOtherEffect = command.damage > 0.0 || command.knockback > 0.0 || command.burnDamagePerSecond > 0.0;
-                if (!applySlow && !hasOtherEffect)
-                {
-                    continue;
-                }
-
-                if (command.knockback > 0.0)
-                {
-                    float distance = sqrt(max(distanceSq, 0.000001));
-                    float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
-                    float falloff = 1.0 - saturate(distance / command.radius);
-                    state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
-                }
-
-                if (command.damage > 0.0)
-                {
-                    float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
-                    state.health -= appliedDamage;
-                    if (state.health <= 0.0)
+                    uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                    AgentState state = _StatesRead[agentIndex];
+                    if (state.status != 1 || state.health <= 0.0)
                     {
-                        state.health = 0.0;
-                        state.status = 3;
-                        EmitEvent(agentIndex, 1u, appliedDamage);
+                        continue;
                     }
-                }
 
-                if (state.status == 1 && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
-                {
-                    uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
-                    uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
-                    state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
-                    state.burnTimer = max(state.burnTimer, command.burnDuration);
-                }
+                    float2 offset = state.position - command.center;
+                    float distanceSq = dot(offset, offset);
+                    if (distanceSq > radiusSq)
+                    {
+                        continue;
+                    }
 
+                    bool applySlow = command.slowDuration > 0.0 && command.slowMultiplier < 0.995 &&
+                        usedSlowCapacity + max(0.1, state.mass) <= command.slowCapacity;
+                    bool hasOtherEffect = command.damage > 0.0 || command.knockback > 0.0 || command.burnDamagePerSecond > 0.0;
+                    if (!applySlow && !hasOtherEffect)
+                    {
+                        continue;
+                    }
 
-                if (state.status == 1 && applySlow)
-                {
-                    state.slowMultiplier = min(state.slowMultiplier, command.slowMultiplier);
-                    state.slowTimer = max(state.slowTimer, command.slowDuration * (1.0 - saturate(state.slowResistance)));
-                    usedSlowCapacity += max(0.1, state.mass);
-                }
+                    if (command.knockback > 0.0)
+                    {
+                        float distance = sqrt(max(distanceSq, 0.000001));
+                        float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
+                        float falloff = 1.0 - saturate(distance / command.radius);
+                        state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
+                    }
 
-                _StatesRead[agentIndex] = state;
-                hitCount++;
-                if (command.maxTargets > 0u && hitCount >= command.maxTargets)
-                {
-                    return;
+                    if (command.damage > 0.0)
+                    {
+                        float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                        state.health -= appliedDamage;
+                        if (state.health <= 0.0)
+                        {
+                            state.health = 0.0;
+                            state.status = 3;
+                            EmitEvent(agentIndex, 1u, appliedDamage);
+                        }
+                    }
+
+                    if (state.status == 1 && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                    {
+                        uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+                        uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+                        state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+                        state.burnTimer = max(state.burnTimer, command.burnDuration);
+                    }
+
+                    if (state.status == 1 && applySlow)
+                    {
+                        state.slowMultiplier = min(state.slowMultiplier, command.slowMultiplier);
+                        state.slowTimer = max(state.slowTimer, command.slowDuration * (1.0 - saturate(state.slowResistance)));
+                        usedSlowCapacity += max(0.1, state.mass);
+                    }
+
+                    _StatesRead[agentIndex] = state;
+                    hitCount++;
+                    if (command.maxTargets > 0u && hitCount >= command.maxTargets)
+                    {
+                        commandComplete = true;
+                        break;
+                    }
                 }
             }
         }
@@ -785,72 +793,78 @@ float DistancePointToSegmentSq(float2 samplePosition, float2 a, float2 b)
 [numthreads(1, 1, 1)]
 void ApplyProjectile(uint3 id : SV_DispatchThreadID)
 {
-    ProjectileCommand command = _ProjectileCommands[_ProjectileCommandIndex];
-    float2 boundsMin = min(command.start, command.end) - command.radius;
-    float2 boundsMax = max(command.start, command.end) + command.radius;
-    int2 minCell = WorldToCell(boundsMin);
-    int2 maxCell = WorldToCell(boundsMax);
-    uint hitCount = 0u;
     [loop]
-    for (int y = minCell.y; y <= maxCell.y; y++)
+    for (uint commandIndex = 0u; commandIndex < _ProjectileCommandCount; commandIndex++)
     {
+        ProjectileCommand command = _ProjectileCommands[commandIndex];
+        float2 boundsMin = min(command.start, command.end) - command.radius;
+        float2 boundsMax = max(command.start, command.end) + command.radius;
+        int2 minCell = WorldToCell(boundsMin);
+        int2 maxCell = WorldToCell(boundsMax);
+        uint hitCount = 0u;
+        bool commandComplete = false;
         [loop]
-        for (int x = minCell.x; x <= maxCell.x; x++)
+        for (int y = minCell.y; y <= maxCell.y && !commandComplete; y++)
         {
-            int2 cell = int2(x, y);
-            if (!IsInside(cell))
-            {
-                continue;
-            }
-
-            uint cellIndex = CellIndex(cell);
-            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
             [loop]
-            for (uint slot = 0u; slot < count; slot++)
+            for (int x = minCell.x; x <= maxCell.x && !commandComplete; x++)
             {
-                uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
-                AgentState state = _StatesRead[agentIndex];
-                if (state.status != 1u || state.health <= 0.0 || ((state.flags & 1u) != 0u && command.canHitFlying == 0u))
+                int2 cell = int2(x, y);
+                if (!IsInside(cell))
                 {
                     continue;
                 }
 
-                float hitRadius = max(command.radius, state.scale * 0.62);
-                float distanceSq = command.mode == 0u
-                    ? DistancePointToSegmentSq(state.position, command.start, command.end)
-                    : dot(state.position - command.end, state.position - command.end);
-                if (distanceSq > hitRadius * hitRadius)
+                uint cellIndex = CellIndex(cell);
+                uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+                [loop]
+                for (uint slot = 0u; slot < count; slot++)
                 {
-                    continue;
-                }
+                    uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                    AgentState state = _StatesRead[agentIndex];
+                    if (state.status != 1u || state.health <= 0.0 || ((state.flags & 1u) != 0u && command.canHitFlying == 0u))
+                    {
+                        continue;
+                    }
 
-                float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
-                state.health = max(0.0, state.health - appliedDamage);
-                if (command.knockback > 0.0)
-                {
-                    float2 offset = state.position - command.end;
-                    float offsetLength = length(offset);
-                    float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
-                    state.velocity += direction * command.knockback * 5.0;
-                }
-                if (state.health <= 0.0)
-                {
-                    state.status = 3u;
-                    EmitEvent(agentIndex, 1u, appliedDamage);
-                }
-                else if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
-                {
-                    uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
-                    uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
-                    state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
-                    state.burnTimer = max(state.burnTimer, command.burnDuration);
-                }
+                    float hitRadius = max(command.radius, state.scale * 0.62);
+                    float distanceSq = command.mode == 0u
+                        ? DistancePointToSegmentSq(state.position, command.start, command.end)
+                        : dot(state.position - command.end, state.position - command.end);
+                    if (distanceSq > hitRadius * hitRadius)
+                    {
+                        continue;
+                    }
 
-                _StatesRead[agentIndex] = state;
-                hitCount++;
-                if (command.maxHits > 0u && hitCount >= command.maxHits)
-                {
-                    return;
+                    float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                    state.health = max(0.0, state.health - appliedDamage);
+                    if (command.knockback > 0.0)
+                    {
+                        float2 offset = state.position - command.end;
+                        float offsetLength = length(offset);
+                        float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
+                        state.velocity += direction * command.knockback * 5.0;
+                    }
+                    if (state.health <= 0.0)
+                    {
+                        state.status = 3u;
+                        EmitEvent(agentIndex, 1u, appliedDamage);
+                    }
+                    else if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                    {
+                        uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+                        uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+                        state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+                        state.burnTimer = max(state.burnTimer, command.burnDuration);
+                    }
+
+                    _StatesRead[agentIndex] = state;
+                    hitCount++;
+                    if (command.maxHits > 0u && hitCount >= command.maxHits)
+                    {
+                        commandComplete = true;
+                        break;
+                    }
                 }
             }
         }
@@ -1058,6 +1072,14 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 continue;
             }
 
+            float2 cellMin = _GridOrigin + (float2)neighborCell * _CellSize;
+            float2 closestInCell = clamp(state.position, cellMin, cellMin + _CellSize);
+            float2 cellOffset = state.position - closestInCell;
+            if (dot(cellOffset, cellOffset) >= searchRadiusSq)
+            {
+                continue;
+            }
+
             uint cellIndex = CellIndex(neighborCell);
             uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
             [loop]
@@ -1069,8 +1091,10 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                     continue;
                 }
 
-                AgentState other = _StatesInput[otherIndex];
-                float2 delta = state.position - other.position;
+                float4 otherSpatial = _SpatialStatesRead[otherIndex];
+                float2 otherPosition = otherSpatial.xy;
+                float otherScale = otherSpatial.z;
+                float2 delta = state.position - otherPosition;
                 float distanceSq = dot(delta, delta);
                 if (distanceSq >= searchRadiusSq)
                 {
@@ -1079,7 +1103,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
 
                 float pairDiameter = clamp(
-                    (state.scale + other.scale) * 1.12,
+                    (state.scale + otherScale) * 1.12,
                     _CollisionDiameter * 0.78,
                     maximumCollisionDiameter) * lerp(1.0, 0.72, overflowRatio);
                 if (distanceSq >= pairDiameter * pairDiameter)
@@ -1101,7 +1125,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
                 float penetration = 1.0 - distance / pairDiameter;
                 separation += direction * penetration * 1.25;
-                congestion += dot(other.position - state.position, flow) > 0.0 ? penetration : 0.0;
+                congestion += dot(otherPosition - state.position, flow) > 0.0 ? penetration : 0.0;
             }
         }
     }

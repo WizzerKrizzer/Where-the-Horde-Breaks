@@ -39,9 +39,13 @@ Target query results and death/escape/object events use asynchronous readback. Q
 
 The runtime no longer executes a CPU loop over every enemy and has no CPU horde fallback. Slow, burn, armor/resistance, damage-over-time, melee blocking, splash, pierce, knockback, and slow-aura capacity are processed by compute kernels against GPU spatial grids. Barricades and allied blockers use generation-tagged GPU slots, so stale build/sell/destroy commands and delayed events cannot affect a reused object. CPU receives only selected target records, compact gameplay events, and diagnostics.
 
-`BuildGrid` also compacts living slots into an active-index buffer and writes indirect compute arguments. Movement and culling dispatch only the active list, so terminal slots no longer consume simulation threads. Visible agents are split into near and far lists: the near list uses the detailed sphere mesh, while the far list uses an eight-triangle octahedron in a second indirect draw.
+`BuildGrid` scans only the spawned high-water range, compacts living slots into an active-index buffer, and writes indirect compute arguments. Movement and culling dispatch only the active list, so unspawned capacity and terminal slots no longer consume simulation threads. Visible agents are split into near and far lists: the near list uses the detailed sphere mesh, while the far list uses an eight-triangle octahedron in a second indirect draw.
 
-The fixed grid still stores at most 48 neighbor references per cell. When occupancy exceeds that limit, every agent continues to simulate, but collision sampling becomes incomplete. An emergency overflow path therefore reduces the local collision constraint, applies a density-gradient pressure toward less crowded cells, and adds a small stable per-agent scatter term. The F3 panel reports the overflow and displays an explicit warning while this fallback is active. This is a safety mechanism, not a replacement for a future sorted/prefix-sum grid.
+The movement kernel reads neighbour position and radius from a compact 16-byte spatial record instead of fetching the complete 120-byte movement/combat record for every candidate. It also rejects grid cells whose bounds cannot intersect the collision radius. The complete state remains authoritative and ping-ponged on the GPU because movement itself uses health, status, slow, burn, and melee fields every step; a full hot/cold split would duplicate synchronization without removing those self-state accesses.
+
+The fixed grid stores at most 96 neighbour references per cell. When occupancy exceeds that limit, every agent continues to simulate, but collision sampling becomes incomplete. An emergency overflow path therefore reduces the local collision constraint, applies a density-gradient pressure toward less crowded cells, and adds a small stable per-agent scatter term. The F3 panel reports the raw maximum occupancy, overflowing cells, and dropped neighbour references. This is a safety mechanism, not a replacement for a future sorted/prefix-sum grid if production maps routinely exceed 96 agents in one 0.62 m cell.
+
+Projectile and area-effect commands are uploaded once and consumed sequentially by one compute dispatch per command batch. This preserves command ordering and avoids concurrent read/modify/write races when several effects hit the same enemy, while removing up to 255 CPU dispatch calls per batch. Direct damage and status changes remain compact dirty-command uploads. The normal GPU fast path passes no complete controls or impulses arrays; compatibility uploads are limited to the spawned high-water range.
 
 Off-camera simulation uses distance-based update strides of 1, 2, or 4. A skipped far particle stays in GPU memory and catches up with a proportionally larger integration step; nearby enemies always run at full fidelity. Hardware without compute-shader support cannot start a horde wave and reports a clear error instead of silently changing behavior.
 
@@ -59,20 +63,24 @@ Dense movement also applies a smoothed occupancy gradient every frame, projected
 
 The F3 performance panel identifies the GPU compute backend, reports CPU/GPU frame timing, active/drawn counts, and uniform-grid maximum occupancy, overflow cells, and dropped entries. Frame timing is workload timing, not total operating-system GPU utilization.
 
-PlayMode coverage includes multi-corner width preservation, walkability and exit completion, all four targeting modes, flying filters, damage/death/escape events, intentional spatial-grid overflow, and indirect culling. The explicit `GpuHordeStressBenchmarkTests` scenario measures 1k, 5k, 10k, 25k, 50k, and 100k agents and writes `gpu-horde-benchmark.json` under `Application.persistentDataPath`. Benchmark numbers are synthetic engineering measurements and are not a minimum hardware guarantee.
+PlayMode coverage includes multi-corner width preservation, walkability and exit completion, all four targeting modes, flying filters, damage/death/escape events, multi-command projectile and area batches, intentional spatial-grid overflow, and indirect culling. The explicit `GpuHordeStressBenchmarkTests` scenario measures 1k, 5k, 10k, 25k, 50k, and 100k densely seeded agents and writes `gpu-horde-detailed-benchmark.json` under `Application.persistentDataPath`. It records CPU dispatch/draw submission, complete-upload cost, 256-command batch submission, allocations, average/p95/max frame stability, state stride/residency, and grid diagnostics.
 
-Latest reference run (RTX 5070 Ti, Direct3D 12, 2026-08-18):
+Latest like-for-like reference run (RTX 5070 Ti, Direct3D 12, Unity 6000.3.19f1, 2026-08-22):
 
-| Agents | CPU submit | GPU/sync frame | Max cell | Overflow / dropped |
-| ---: | ---: | ---: | ---: | ---: |
-| 1,000 | 0.033 ms | 0.188 ms | 1 | 0 / 0 |
-| 5,000 | 0.037 ms | 0.122 ms | 1 | 0 / 0 |
-| 10,000 | 0.042 ms | 0.122 ms | 1 | 0 / 0 |
-| 25,000 | 0.061 ms | 0.130 ms | 1 | 0 / 0 |
-| 50,000 | 0.086 ms | 0.347 ms | 1 | 0 / 0 |
-| 100,000 | 0.143 ms | 0.535 ms | 2 | 0 / 0 |
+| Agents | Frame avg before → after | Frame p95 before → after | Dropped before → after |
+| ---: | ---: | ---: | ---: |
+| 1,000 | 0.345 → 0.228 ms | 0.765 → 0.765 ms | 65 → 0 |
+| 5,000 | 0.431 → 0.278 ms | 0.802 → 0.575 ms | 96 → 1 |
+| 10,000 | 0.451 → 0.329 ms | 0.780 → 0.716 ms | 86 → 0 |
+| 25,000 | 0.503 → 0.392 ms | 0.843 → 0.764 ms | 78 → 1 |
+| 50,000 | 0.945 → 0.497 ms | 1.332 → 0.971 ms | 83 → 0 |
+| 100,000 | 2.741 → 1.132 ms | 3.174 → 1.812 ms | 90 → 1 |
 
-In headless/batch runs where Unity does not expose `FrameTimingManager.gpuFrameTime`, the GPU column is the synchronous fence-wait proxy sampled every ten measured frames. It is suitable for regressions on the same machine, not cross-machine marketing comparisons.
+At 100K, median CPU submission for 256 queued projectiles improved from 0.398 to 0.054 ms, and 256 area effects improved from 0.382 to 0.062 ms. Fast-path dispatch plus both indirect draw submissions is approximately 0.050 ms; uploading complete controls and impulses costs approximately 0.170 ms and is therefore retained only as a compatibility/test path. The benchmark observed zero managed allocations per measured frame. The two 120-byte state buffers occupy 22.89 MiB at 100K, with an additional 1.53 MiB compact spatial buffer; neighbour-state fetch width is reduced from 120 to 16 bytes.
+
+Unity returned no valid `FrameTimingManager.gpuFrameTime` samples in this batch DX12 run, so the table deliberately reports measured frame throughput rather than inventing a GPU-only number. CPU submission is measured separately and is much smaller, making the throughput value useful for same-machine regressions but not a substitute for a RenderDoc/Nsight hardware-counter capture. The F3 panel can report GPU frame timing during an interactive player run when the driver exposes it.
+
+The production recommendation is a 50K active-enemy soft limit for a typical discrete desktop GPU, with 25K as a conservative target for integrated/handheld-class hardware. 100K is a validated high-end stress capacity, not the default content budget. If a real level reports persistent overflow or more than a handful of dropped references, widen the occupied road region or move to a sorted/prefix-sum grid before raising the 96-entry cell limit again.
 
 ## MVP Acceptance
 

@@ -226,7 +226,7 @@ namespace TowerDefense.Tests
                 Assert.Ignore("Compute shaders are unavailable on this test device.");
             }
 
-            const int count = 64;
+            const int count = 112;
             var field = new HordeFlowField(
                 new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
                 null,
@@ -249,7 +249,7 @@ namespace TowerDefense.Tests
             simulation.Dispose();
             Assert.That(diagnostics[0], Is.EqualTo(1u));
             Assert.That(diagnostics[1], Is.EqualTo(16u));
-            Assert.That(diagnostics[2], Is.EqualTo(64u));
+            Assert.That(diagnostics[2], Is.EqualTo((uint)count));
             yield return null;
         }
 
@@ -465,6 +465,47 @@ namespace TowerDefense.Tests
                 deaths += states[i].Status == 3u ? 1 : 0;
             }
             Assert.That(deaths, Is.EqualTo(2), "The GPU projectile did not respect its pierce hit limit.");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator BatchedAreaAndProjectileCommands_ApplyEveryQueuedCommand()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            var controls = new[] { new Vector4(0f, 1f, 0f, 0f) };
+            var impulses = new Vector2[1];
+            var states = new[] { State(-5f, 10f, -15f, false) };
+
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetDetailedEnemyMesh(), out var areaSimulation), Is.True);
+            areaSimulation.SpawnBatch(states, 1);
+            Assert.That(areaSimulation.QueueAreaEffect(new Vector3(-5f, 0f, 0f), 1f, 6f, 0f, 1, 0f, 0f, 1), Is.True);
+            Assert.That(areaSimulation.QueueAreaEffect(new Vector3(-5f, 0f, 0f), 1f, 6f, 0f, 1, 0f, 0f, 1), Is.True);
+            areaSimulation.Dispatch(1f / 60f, controls, impulses);
+            areaSimulation.ReadStatesSynchronous(states, 1);
+            areaSimulation.Dispose();
+            Assert.That(states[0].Status, Is.EqualTo(3u), "The area batch skipped a queued command.");
+
+            states[0] = State(-5f, 10f, -15f, false);
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetDetailedEnemyMesh(), out var projectileSimulation), Is.True);
+            projectileSimulation.SpawnBatch(states, 1);
+            for (var i = 0; i < 2; i++)
+            {
+                Assert.That(projectileSimulation.QueueProjectile(
+                    new Vector3(-6f, 0f, 0f), new Vector3(-4f, 0f, 0f), 0.25f, 6f, 0f, 1, true, false), Is.True);
+            }
+            projectileSimulation.Dispatch(1f / 60f, controls, impulses);
+            projectileSimulation.ReadStatesSynchronous(states, 1);
+            projectileSimulation.Dispose();
+            Assert.That(states[0].Status, Is.EqualTo(3u), "The projectile batch skipped a queued command.");
             yield return null;
         }
 

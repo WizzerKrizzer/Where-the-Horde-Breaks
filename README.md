@@ -9,7 +9,7 @@ This repository currently contains an early Unity prototype focused on validatin
 - Top-down 2.5D tower defense camera with pan and zoom.
 - Build phase before each wave.
 - Combat phase with tower automation and a mouse-aimed active weapon.
-- Continuous waves with a GPU-authoritative flow-field horde, dynamic blockers, melee/projectile combat, compact events, and indirect culling/rendering; there is no legacy CPU horde mode.
+- Continuous waves with a GPU-authoritative flow-field horde, compact neighbour state, batched melee/projectile/area combat, compact events, active-range dispatch, and indirect culling/rendering; there is no legacy CPU horde mode.
 - Persistent per-level tower layout.
 - Permanent currencies and profile save data.
 - Icon-based permanent skill tree with prerequisite links, delayed hover details, zoom, pan, rank indicators, and upgrade purchasing.
@@ -104,4 +104,4 @@ This is not final gameplay, art, balance, or UI. It is a living prototype used t
 
 The project includes EditMode and PlayMode coverage for flow-field construction, dense corner movement, GPU targeting, combat events, overflow handling, and stress scenarios. A Windows Development build is used as the final verification step for completed runtime changes.
 
-Detailed GPU pipeline and simulation notes are available in [`docs/Architecture.md`](docs/Architecture.md).
+Detailed GPU pipeline, validation notes, and the latest dense 1K–100K before/after benchmark are available in [`docs/Architecture.md`](docs/Architecture.md).

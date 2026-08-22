@@ -15,7 +15,7 @@ namespace TowerDefense.Runtime
     internal sealed class GpuHordeSimulation : IDisposable
     {
         private const int ThreadGroupSize = 64;
-        private const int CellCapacity = 48;
+        private const int CellCapacity = 96;
         private const int MaxTargetQueries = 512;
         private const int MaxAreaCommands = 256;
         private const int MaxProjectileCommands = 256;
@@ -260,6 +260,7 @@ namespace TowerDefense.Runtime
         private readonly int projectileKernel;
         private readonly GraphicsBuffer stateA;
         private readonly GraphicsBuffer stateB;
+        private readonly GraphicsBuffer spatialStates;
         private readonly GraphicsBuffer controls;
         private readonly GraphicsBuffer impulses;
         private readonly GraphicsBuffer flowVectors;
@@ -295,6 +296,8 @@ namespace TowerDefense.Runtime
         private readonly Bounds drawBounds;
         private readonly uint[] drawArgs = new uint[5];
         private readonly uint[] lodDrawArgs = new uint[5];
+        private readonly AgentState[] singleStateUpload = new AgentState[1];
+        private readonly Vector4[] singleControlUpload = new Vector4[1];
         private readonly List<PendingTargetQuery> pendingTargetQueries = new(MaxTargetQueries);
         private readonly HashSet<TargetQueryKey> queuedTargetKeys = new();
         private readonly Dictionary<TargetQueryKey, CachedTarget> cachedTargets = new();
@@ -328,6 +331,7 @@ namespace TowerDefense.Runtime
         private bool eventDataReadbackPending;
         private uint processedEventCount;
         private float nextDiagnosticsReadbackTime;
+        private int activeHighWaterMark;
 
         public uint OverflowCellCount { get; private set; }
         public uint DroppedAgentCount { get; private set; }
@@ -372,6 +376,7 @@ namespace TowerDefense.Runtime
             var stateStride = Marshal.SizeOf<AgentState>();
             stateA = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, stateStride);
             stateB = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, stateStride);
+            spatialStates = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
             controls = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
             impulses = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
             flowVectors = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount, sizeof(float) * 4);
@@ -435,7 +440,7 @@ namespace TowerDefense.Runtime
             gridCenter = new Vector2(center.x, center.z);
             gridDiagonal = new Vector2(field.Width * field.CellSize, field.Height * field.CellSize).magnitude;
 
-            compute.SetInt("_AgentCount", capacity);
+            compute.SetInt("_AgentCount", 0);
             compute.SetInt("_CellCount", cellCount);
             compute.SetInt("_CellCapacity", CellCapacity);
             compute.SetInts("_GridSize", field.Width, field.Height);
@@ -457,6 +462,7 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(gridKernel, "_CellAgents", cellAgents);
             compute.SetBuffer(gridKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(gridKernel, "_ActiveIndices", activeIndices);
+            compute.SetBuffer(gridKernel, "_SpatialStates", spatialStates);
             compute.SetBuffer(finalizeActiveKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(finalizeActiveKernel, "_ActiveDispatchArgs", activeDispatchArgs);
             compute.SetBuffer(simulateKernel, "_Controls", controls);
@@ -467,6 +473,7 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(simulateKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(simulateKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(simulateKernel, "_DiagnosticsRead", diagnostics);
+            compute.SetBuffer(simulateKernel, "_SpatialStatesRead", spatialStates);
             compute.SetBuffer(targetQueryKernel, "_CellCountsRead", cellCounts);
             compute.SetBuffer(targetQueryKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(targetQueryKernel, "_TargetQueries", targetQueries);
@@ -572,11 +579,12 @@ namespace TowerDefense.Runtime
                 CombatFlags = definition != null && definition.drainsAllies ? 2u : 0u,
                 DefinitionIndex = (uint)index
             };
-            var one = new[] { state };
-            stateA.SetData(one, 0, index, 1);
-            stateB.SetData(one, 0, index, 1);
-            var oneControl = new[] { new Vector4(Mathf.Max(0.25f, velocity.magnitude), 1f, 0f, 0f) };
-            controls.SetData(oneControl, 0, index, 1);
+            singleStateUpload[0] = state;
+            stateA.SetData(singleStateUpload, 0, index, 1);
+            stateB.SetData(singleStateUpload, 0, index, 1);
+            singleControlUpload[0] = new Vector4(Mathf.Max(0.25f, velocity.magnitude), 1f, 0f, 0f);
+            controls.SetData(singleControlUpload, 0, index, 1);
+            activeHighWaterMark = Mathf.Max(activeHighWaterMark, index + 1);
             var spawnedCount = (uint)(index + 1);
             if (drawArgs[1] < spawnedCount)
             {
@@ -600,6 +608,7 @@ namespace TowerDefense.Runtime
 
             stateA.SetData(states, 0, 0, count);
             stateB.SetData(states, 0, 0, count);
+            activeHighWaterMark = Mathf.Max(activeHighWaterMark, count);
             drawArgs[1] = (uint)count;
             indirectArgs.SetData(drawArgs);
         }
@@ -751,15 +760,17 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (controlData != null)
+            var uploadCount = Mathf.Min(activeHighWaterMark, capacity);
+            if (controlData != null && uploadCount > 0)
             {
-                controls.SetData(controlData, 0, 0, capacity);
+                controls.SetData(controlData, 0, 0, Mathf.Min(uploadCount, controlData.Length));
             }
 
-            if (impulseData != null)
+            if (impulseData != null && uploadCount > 0)
             {
-                impulses.SetData(impulseData, 0, 0, capacity);
+                impulses.SetData(impulseData, 0, 0, Mathf.Min(uploadCount, impulseData.Length));
             }
+            compute.SetInt("_AgentCount", uploadCount);
             compute.SetFloat("_DeltaTime", Mathf.Min(deltaTime, 0.05f));
             SetCameraParameters();
             compute.SetBuffer(gridKernel, "_StatesRead", readStates);
@@ -774,7 +785,7 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(simulateKernel, "_StatesWrite", writeStates);
             compute.Dispatch(clearKernel, DivideRoundUp(cellCount, ThreadGroupSize), 1, 1);
             compute.Dispatch(clearDiagnosticsKernel, 1, 1, 1);
-            compute.Dispatch(gridKernel, DivideRoundUp(capacity, ThreadGroupSize), 1, 1);
+            compute.Dispatch(gridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
             compute.Dispatch(finalizeActiveKernel, 1, 1, 1);
             DispatchProjectiles();
             DispatchAreaEffects();
@@ -846,17 +857,15 @@ namespace TowerDefense.Runtime
             var count = queuedProjectiles.Count;
             if (count <= 0)
             {
+                compute.SetInt("_ProjectileCommandCount", 0);
                 return;
             }
 
             queuedProjectiles.CopyTo(projectileUpload, 0);
             projectileCommands.SetData(projectileUpload, 0, 0, count);
             compute.SetBuffer(projectileKernel, "_StatesRead", readStates);
-            for (var i = 0; i < count; i++)
-            {
-                compute.SetInt("_ProjectileCommandIndex", i);
-                compute.Dispatch(projectileKernel, 1, 1, 1);
-            }
+            compute.SetInt("_ProjectileCommandCount", count);
+            compute.Dispatch(projectileKernel, 1, 1, 1);
             queuedProjectiles.Clear();
         }
 
@@ -1055,6 +1064,7 @@ namespace TowerDefense.Runtime
             disposed = true;
             stateA?.Dispose();
             stateB?.Dispose();
+            spatialStates?.Dispose();
             controls?.Dispose();
             impulses?.Dispose();
             flowVectors?.Dispose();
@@ -1176,6 +1186,7 @@ namespace TowerDefense.Runtime
             var count = Mathf.Min(queuedAreaEffects.Count, MaxAreaCommands);
             if (count == 0)
             {
+                compute.SetInt("_AreaCommandCount", 0);
                 return;
             }
 
@@ -1187,11 +1198,8 @@ namespace TowerDefense.Runtime
             queuedAreaEffects.RemoveRange(0, count);
             areaEffectCommands.SetData(areaEffectUpload, 0, 0, count);
             compute.SetBuffer(areaEffectKernel, "_StatesRead", readStates);
-            for (var i = 0; i < count; i++)
-            {
-                compute.SetInt("_AreaCommandIndex", i);
-                compute.Dispatch(areaEffectKernel, 1, 1, 1);
-            }
+            compute.SetInt("_AreaCommandCount", count);
+            compute.Dispatch(areaEffectKernel, 1, 1, 1);
         }
 
         private void RequestEventReadback()

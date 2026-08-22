@@ -309,7 +309,7 @@ namespace TowerDefense.UI
                 $"CPU  {smoothedCpuFrameMs:0.00} ms  {cpuFrameLoad:0}%   process {processCpuPercent:0.0}%\n" +
                 $"GPU  {gpuTiming}\n" +
                 $"HORDE  {enemies.ActiveEnemyCount} active   {perf.VisibleDrawn} visible\n" +
-                $"GRID  {perf.MaxCellOccupancy}/48 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped\n" +
+                $"GRID  {perf.MaxCellOccupancy}/96 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped\n" +
                 overflowWarning +
                 $"WORK  sim {perf.SimMs:0.00}   move {perf.MovementMs:0.00}   draw {perf.DrawMs:0.00} ms\n" +
                 $"{SystemInfo.graphicsDeviceName}";
