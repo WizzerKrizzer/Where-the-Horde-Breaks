@@ -81,10 +81,7 @@ Shader "TowerDefense/HordeIndirect"
                 Varyings output;
                 float active = state.status == 1 ? 1.0 : 0.0;
                 float rare = ((agentIndex + 1u) % 1000u) == 0u ? 1.0 : 0.0;
-                float3 localVertex = input.vertex.xyz;
-                localVertex.xz *= lerp(1.0, 1.16, rare);
-                localVertex.y *= lerp(1.0, 1.65, rare);
-                float3 world = localVertex * state.scale + float3(state.position.x, 0.0, state.position.y);
+                float3 world = input.vertex.xyz * state.scale + float3(state.position.x, 0.0, state.position.y);
                 world.y += (1.0 - active) * -100000.0;
                 output.position = UnityWorldToClipPos(world);
                 output.normal = input.normal;
@@ -103,7 +100,7 @@ Shader "TowerDefense/HordeIndirect"
                 float light = lerp(0.84, directionalLight, saturate(_LightingVariation)) * individualVariation;
                 float4 enemyColor = lerp(_BaseColor, _SlowColor, saturate(input.tint));
                 enemyColor = lerp(enemyColor, _RareColor, input.rare);
-                return enemyColor * lerp(light, 1.08, input.rare);
+                return enemyColor * light;
             }
             ENDCG
         }

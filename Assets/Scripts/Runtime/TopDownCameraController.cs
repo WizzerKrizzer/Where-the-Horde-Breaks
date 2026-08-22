@@ -5,6 +5,12 @@ namespace TowerDefense.Runtime
 {
     public sealed class TopDownCameraController : MonoBehaviour
     {
+        // The original 55 degree view lets front rows hide several rows behind
+        // them in a dense horde. A steeper view keeps touching ground-plane
+        // silhouettes individually readable without changing their simulation.
+        private const float AuthoredCameraPitch = 55f;
+        private const float HordeReadableCameraPitch = 75f;
+
         [SerializeField] private float panSpeed = 26f;
         [SerializeField] private float mouseDragSensitivity = 3.35f;
         [SerializeField] private float zoomSpeed = 10f;
@@ -29,7 +35,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            controlledCamera.transform.position = position;
+            controlledCamera.transform.position = ConvertAuthoredPositionToReadablePitch(position);
+            controlledCamera.transform.rotation = Quaternion.Euler(HordeReadableCameraPitch, 0f, 0f);
             controlledCamera.fieldOfView = fieldOfView;
             minHeight = Mathf.Max(1f, minZoomHeight);
             maxHeight = Mathf.Max(minHeight + 1f, maxZoomHeight);
@@ -38,6 +45,16 @@ namespace TowerDefense.Runtime
             minBounds = min;
             maxBounds = max;
             ClampCameraPosition();
+        }
+
+        private static Vector3 ConvertAuthoredPositionToReadablePitch(Vector3 authoredPosition)
+        {
+            // Level camera positions were composed at 55 degrees. Preserve the
+            // same point on the ground while changing only the viewing pitch.
+            var authoredGroundOffset = authoredPosition.y / Mathf.Tan(AuthoredCameraPitch * Mathf.Deg2Rad);
+            var readableGroundOffset = authoredPosition.y / Mathf.Tan(HordeReadableCameraPitch * Mathf.Deg2Rad);
+            authoredPosition.z += authoredGroundOffset - readableGroundOffset;
+            return authoredPosition;
         }
 
         private void LateUpdate()

@@ -99,7 +99,7 @@ namespace TowerDefense.Runtime
             go.tag = "MainCamera";
             var camera = go.AddComponent<Camera>();
             camera.transform.position = new Vector3(0f, 24f, -20f);
-            camera.transform.rotation = Quaternion.Euler(55f, 0f, 0f);
+            camera.transform.rotation = Quaternion.Euler(75f, 0f, 0f);
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.08f, 0.1f, 0.11f);
             camera.fieldOfView = 45f;
