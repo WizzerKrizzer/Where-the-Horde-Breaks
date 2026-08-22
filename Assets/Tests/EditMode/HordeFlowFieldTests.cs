@@ -120,5 +120,39 @@ namespace TowerDefense.Tests
             Assert.That(field.IsWalkable(new Vector3(10f, 0f, 3.5f)), Is.True,
                 "The exit side should expand back to the wide authored section.");
         }
+
+        [Test]
+        public void LevelTwoVariableWidthRoute_StaysOnRoadAndReachesExit()
+        {
+            var route = new[]
+            {
+                new Vector3(-56f, 0f, 14f),
+                new Vector3(-34f, 0f, 14f),
+                new Vector3(-24f, 0f, 14f),
+                new Vector3(-24f, 0f, -5f),
+                new Vector3(-24f, 0f, -17f),
+                new Vector3(2f, 0f, -17f),
+                new Vector3(10f, 0f, -17f),
+                new Vector3(18f, 0f, -17f),
+                new Vector3(36f, 0f, -17f),
+                new Vector3(42f, 0f, -11f),
+                new Vector3(42f, 0f, 10f),
+                new Vector3(56f, 0f, 10f)
+            };
+            var halfWidths = new[] { 2.66f, 2.66f, 2.66f, 2.16f, 1.16f, 1.16f, 2.16f, 4.66f, 4.66f, 4.16f, 3.16f, 2.66f };
+            var field = new HordeFlowField(route, null, 2.31f, 0.62f, halfWidths);
+            var position = field.GetSpawnPoint(1.8f);
+
+            for (var step = 0; step < 3000 && !field.HasReachedExit(position); step++)
+            {
+                var previous = position;
+                position = field.ConstrainMove(position, position + field.GetDirection(position) * 0.08f);
+                Assert.That(field.IsWalkable(position), Is.True, $"The Level 2 route was left at step {step}.");
+                Assert.That(Vector3.Distance(previous, position), Is.LessThan(0.12f),
+                    $"The Level 2 route teleported at step {step}.");
+            }
+
+            Assert.That(field.HasReachedExit(position), Is.True, "The Level 2 flow did not reach its real exit.");
+        }
     }
 }

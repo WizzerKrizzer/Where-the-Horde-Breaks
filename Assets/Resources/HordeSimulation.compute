@@ -373,7 +373,7 @@ float2 FindNavigableFlow(float2 position, float2 preferred)
     return best;
 }
 
-float2 ConstrainMove(float2 current, float2 desired)
+float2 ConstrainMoveStep(float2 current, float2 desired)
 {
     if (IsWalkable(desired))
     {
@@ -405,6 +405,21 @@ float2 ConstrainMove(float2 current, float2 desired)
     }
 
     return xValid ? xOnly : (yValid ? yOnly : current);
+}
+
+float2 ConstrainMove(float2 current, float2 desired)
+{
+    float2 displacement = desired - current;
+    float distance = length(displacement);
+    int stepCount = clamp((int)ceil(distance / max(_CellSize * 0.4, 0.05)), 1, 16);
+    float2 step = displacement / (float)stepCount;
+    float2 result = current;
+    [loop]
+    for (int stepIndex = 0; stepIndex < stepCount; stepIndex++)
+    {
+        result = ConstrainMoveStep(result, result + step);
+    }
+    return result;
 }
 
 [numthreads(64, 1, 1)]

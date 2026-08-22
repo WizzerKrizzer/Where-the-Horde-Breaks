@@ -248,5 +248,82 @@ namespace TowerDefense.Tests
             simulation.Dispose();
             Assert.That(maxLateral - minLateral, Is.GreaterThan(3f), "The GPU flow collapsed into a narrow exit line.");
         }
+
+        [UnityTest]
+        public IEnumerator LevelTwoVariableWidthRoute_DoesNotTeleportOffRoad()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var route = new[]
+            {
+                new Vector3(-56f, 0f, 14f), new Vector3(-34f, 0f, 14f),
+                new Vector3(-24f, 0f, 14f), new Vector3(-24f, 0f, -5f),
+                new Vector3(-24f, 0f, -17f), new Vector3(2f, 0f, -17f),
+                new Vector3(10f, 0f, -17f), new Vector3(18f, 0f, -17f),
+                new Vector3(36f, 0f, -17f), new Vector3(42f, 0f, -11f),
+                new Vector3(42f, 0f, 10f), new Vector3(56f, 0f, 10f)
+            };
+            var halfWidths = new[] { 2.66f, 2.66f, 2.66f, 2.16f, 1.16f, 1.16f, 2.16f, 4.66f, 4.66f, 4.16f, 3.16f, 2.66f };
+            var field = new HordeFlowField(route, null, 2.31f, 0.62f, halfWidths);
+            const int count = 63;
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            var impulses = new Vector2[count];
+            var forward = (route[1] - route[0]).normalized;
+            var side = Vector3.Cross(Vector3.up, forward);
+            for (var i = 0; i < count; i++)
+            {
+                var position = route[0] + forward * ((i / 9) * 0.6f) + side * Mathf.Lerp(-2f, 2f, (i % 9) / 8f);
+                states[i] = new GpuHordeSimulation.AgentState
+                {
+                    Position = new Vector2(position.x, position.z),
+                    Velocity = new Vector2(forward.x, forward.z) * 4.8f,
+                    Scale = 0.34f,
+                    Status = 1,
+                    Health = 100f,
+                    MaxHealth = 100f,
+                    SlowMultiplier = 1f,
+                    Mass = 1f
+                };
+                controls[i] = new Vector4(4.8f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            simulation.SpawnBatch(states, count);
+            for (var frame = 0; frame < 2600; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, impulses, requestReadback: false);
+                if (frame % 20 == 0)
+                {
+                    simulation.ReadStatesSynchronous(states, count);
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (states[i].Status != 1)
+                        {
+                            continue;
+                        }
+
+                        var position = new Vector3(states[i].Position.x, 0f, states[i].Position.y);
+                        Assert.That(field.IsWalkable(position), Is.True,
+                            $"GPU agent {i} teleported outside Level 2 at frame {frame}: {position}.");
+                    }
+                }
+
+                if (frame % 20 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            for (var i = 0; i < count; i++)
+            {
+                Assert.That(states[i].Status, Is.EqualTo(2), $"GPU agent {i} never reached the Level 2 exit.");
+            }
+            simulation.Dispose();
+        }
     }
 }

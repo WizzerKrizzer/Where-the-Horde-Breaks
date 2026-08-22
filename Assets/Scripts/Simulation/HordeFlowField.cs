@@ -34,6 +34,7 @@ namespace TowerDefense.Simulation
         private readonly Vector3 exitForward;
         private readonly float startHalfWidth;
         private readonly float exitHalfWidth;
+        private readonly bool preferCorridorDirections;
 
         public Vector3 Exit { get; }
         public float CellSize => cellSize;
@@ -63,6 +64,7 @@ namespace TowerDefense.Simulation
             primaryStart = primaryRoute[0];
             startForward = FlatDirection(primaryRoute[0], primaryRoute[1]);
             startHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, 0, roadHalfWidth);
+            preferCorridorDirections = HasCompleteWidthProfile(primaryRoute, primaryWaypointHalfWidths);
             Exit = primaryRoute[^1];
             exitForward = FlatDirection(primaryRoute[^2], primaryRoute[^1]);
             exitHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, primaryRoute.Count - 1, roadHalfWidth);
@@ -483,7 +485,7 @@ namespace TowerDefense.Simulation
                     // precomputed corridor tangent is still a shared flow field (not
                     // per-agent lane/path-distance steering) and leaves lateral motion
                     // entirely to collision and density pressure.
-                    if (corridorHalfWidth >= cellSize * 8f &&
+                    if ((preferCorridorDirections || corridorHalfWidth >= cellSize * 8f) &&
                         corridorDirections[index].sqrMagnitude > 0.000001f)
                     {
                         directions[index] = corridorDirections[index].normalized;
@@ -798,6 +800,11 @@ namespace TowerDefense.Simulation
             }
 
             return maximum;
+        }
+
+        private static bool HasCompleteWidthProfile(IReadOnlyList<Vector3> route, IReadOnlyList<float> widths)
+        {
+            return route != null && widths != null && route.Count > 1 && widths.Count == route.Count;
         }
 
         private sealed class MinHeap
