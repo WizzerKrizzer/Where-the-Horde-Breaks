@@ -654,6 +654,37 @@ namespace TowerDefense.Tests
             yield return null;
         }
 
+        [UnityTest]
+        public IEnumerator AreaKnockback_PreservesTheExternalImpulsePastMovementClamp()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            var states = new[] { State(-4.5f, 100f, -14.5f, false) };
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            simulation.SpawnBatch(states, 1);
+            Assert.That(simulation.QueueAreaEffect(
+                new Vector3(-5f, 0f, 0f), 1.75f, 0f, 12f, 1, 0f, 0f, 1), Is.True);
+
+            simulation.Dispatch(1f / 60f, new[] { new Vector4(0f, 1f, 0f, 0f) }, new Vector2[1]);
+            simulation.ReadStatesSynchronous(states, 1);
+            simulation.Dispose();
+
+            Assert.That(states[0].Padding, Is.GreaterThan(0f));
+            Assert.That(states[0].Velocity.x, Is.GreaterThan(20f),
+                "The normal movement speed clamp swallowed the catapult impulse.");
+            Assert.That(states[0].Position.x, Is.GreaterThan(-4.15f),
+                "The strong area knockback did not visibly displace the enemy.");
+            yield return null;
+        }
+
         private sealed class TestCombatTarget : ICombatTarget
         {
             public TestCombatTarget(Vector3 position, float health)

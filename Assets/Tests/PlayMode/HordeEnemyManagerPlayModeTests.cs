@@ -188,9 +188,15 @@ namespace TowerDefense.Tests
                 }
             }
             cleanupObjects.Add(content.SkillTree);
+            TowerDefinition catapult = null;
             for (var i = 0; i < content.Towers.Count; i++)
             {
-                cleanupObjects.Add(content.Towers[i]);
+                var tower = content.Towers[i];
+                cleanupObjects.Add(tower);
+                if (tower.id == "catapult")
+                {
+                    catapult = tower;
+                }
             }
 
             Assert.That(levelFive, Is.Not.Null);
@@ -204,6 +210,8 @@ namespace TowerDefense.Tests
             Assert.That(levelFive.pathWaypoints.Length, Is.GreaterThanOrEqualTo(20));
             Assert.That(levelFive.groundSize.x, Is.GreaterThanOrEqualTo(300f));
             Assert.That(levelFive.groundSize.z, Is.GreaterThanOrEqualTo(350f));
+            Assert.That(catapult, Is.Not.Null);
+            Assert.That(catapult.knockbackDistance, Is.EqualTo(12f));
 
             var route = CreateRoute(levelFive.pathWaypoints);
             var manager = CreateManager();

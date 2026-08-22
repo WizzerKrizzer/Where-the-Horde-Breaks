@@ -735,6 +735,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                         float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
                         float falloff = 1.0 - saturate(distance / command.radius);
                         state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
+                        state.padding = max(state.padding, 0.22);
                     }
 
                     if (command.damage > 0.0)
@@ -844,6 +845,7 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                         float offsetLength = length(offset);
                         float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
                         state.velocity += direction * command.knockback * 5.0;
+                        state.padding = max(state.padding, 0.22);
                     }
                     if (state.health <= 0.0)
                     {
@@ -898,6 +900,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float simulationDelta = _DeltaTime;
+    bool hasPersistentKnockback = state.padding > 0.0;
+    state.padding = max(0.0, state.padding - simulationDelta);
 
     if (state.slowTimer > 0.0)
     {
@@ -1158,6 +1162,11 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     state.velocity *= rcp(1.0 + _VelocityDamping * simulationDelta);
     float maxSpeed = max(0.25, desiredSpeed * 1.12);
     float velocityLength = length(state.velocity);
+    bool hasExternalImpulse = hasPersistentKnockback || dot(impulse, impulse) > 0.000001;
+    if (hasExternalImpulse)
+    {
+        maxSpeed = max(maxSpeed, velocityLength);
+    }
     if (velocityLength > maxSpeed)
     {
         state.velocity *= maxSpeed / velocityLength;
@@ -1166,7 +1175,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     // Dense contact pressure must not turn a forward-moving horde into a
     // sideways avalanche. Preserve real impulses (knockback), but keep normal
     // crowd motion inside a broad cone around the local flow direction.
-    if (blockingTarget < 0 && dot(impulse, impulse) < 0.000001)
+    if (blockingTarget < 0 && !hasExternalImpulse)
     {
         float forwardVelocity = max(dot(state.velocity, flow), desiredSpeed * 0.55);
         float lateralVelocity = clamp(
