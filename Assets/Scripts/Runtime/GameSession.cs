@@ -235,7 +235,12 @@ namespace TowerDefense.Runtime
                 return profile.clearedLevelIds.Contains("level_02");
             }
 
-            return definition.id == "level_04" && profile.clearedLevelIds.Contains("level_03");
+            if (definition.id == "level_04")
+            {
+                return profile.clearedLevelIds.Contains("level_03");
+            }
+
+            return definition.id == "level_05" && profile.clearedLevelIds.Contains("level_04");
         }
 
         public bool SelectLevel(string levelId)

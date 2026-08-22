@@ -94,6 +94,86 @@ namespace TowerDefense.Tests
             Assert.That(manager.TotalResolved, Is.LessThanOrEqualTo(manager.TotalSpawned));
         }
 
+        [UnityTest]
+        public IEnumerator DataHordeWave_BatchesLargeImmediateSpawn()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 4096;
+            var route = CreateRoute(new[]
+            {
+                new Vector3(-40f, 0f, 0f),
+                new Vector3(40f, 0f, 0f)
+            });
+            var enemy = CreateEnemy(speed: 1f, health: 10f);
+            var wave = CreateWave(enemy, count, spawnInterval: 0.01f, spawnImmediately: true);
+            var manager = CreateManager();
+
+            manager.BeginWave(wave, route);
+            for (var frame = 0; frame < 4 && manager.TotalSpawned < count; frame++)
+            {
+                yield return null;
+            }
+
+            Assert.That(manager.TotalSpawned, Is.EqualTo(count));
+            Assert.That(manager.ActiveCount, Is.GreaterThan(0));
+            Assert.That(manager.Performance.ShaderName, Does.Contain("GPU Compute"));
+        }
+
+        [UnityTest, Explicit("Allocates the complete 100K Level 5 GPU stress configuration.")]
+        [Category("Performance")]
+        public IEnumerator LevelFiveStressWave_AllocatesAndStartsOneHundredThousandAgents()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var content = SampleContent.Create();
+            LevelDefinition levelFive = null;
+            for (var i = 0; i < content.Levels.Count; i++)
+            {
+                var level = content.Levels[i];
+                cleanupObjects.Add(level);
+                cleanupObjects.Add(level.wave);
+                if (level.wave?.entries != null)
+                {
+                    for (var entryIndex = 0; entryIndex < level.wave.entries.Length; entryIndex++)
+                    {
+                        cleanupObjects.Add(level.wave.entries[entryIndex].enemy);
+                    }
+                }
+                if (level.id == "level_05")
+                {
+                    levelFive = level;
+                }
+            }
+            cleanupObjects.Add(content.SkillTree);
+            for (var i = 0; i < content.Towers.Count; i++)
+            {
+                cleanupObjects.Add(content.Towers[i]);
+            }
+
+            Assert.That(levelFive, Is.Not.Null);
+            Assert.That(levelFive.wave.totalEnemyCount, Is.EqualTo(100000));
+            Assert.That(levelFive.startingLives, Is.EqualTo(100000));
+            Assert.That(levelFive.wave.randomSpawnBurstMin, Is.GreaterThanOrEqualTo(1000));
+            Assert.That(levelFive.pathWaypoints.Length, Is.GreaterThanOrEqualTo(20));
+            Assert.That(levelFive.groundSize.x, Is.GreaterThanOrEqualTo(300f));
+
+            var route = CreateRoute(levelFive.pathWaypoints);
+            var manager = CreateManager();
+            manager.BeginWave(levelFive.wave, route);
+            yield return null;
+
+            Assert.That(manager.IsRunning, Is.True);
+            Assert.That(manager.TotalSpawned, Is.GreaterThan(0));
+            Assert.That(manager.Performance.ShaderName, Does.Contain("GPU Compute"));
+        }
+
         private HordeEnemyManager CreateManager()
         {
             var gameObject = new GameObject("TestHordeEnemyManager");

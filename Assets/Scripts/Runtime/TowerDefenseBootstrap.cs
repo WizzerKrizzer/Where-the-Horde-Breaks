@@ -886,6 +886,43 @@ namespace TowerDefense.Runtime
             levelFour.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
             levelFour.recommendedTactics = "Prototype stress map. The route is oversized and the wave is intentionally excessive so horde rendering, simulation ticking, and endpoint-seeking crowd movement can be profiled under pressure.";
 
+            var levelFiveWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelFiveWave.id = "wave_05_100k_stress_test";
+            levelFiveWave.totalEnemyCount = 100000;
+            levelFiveWave.spawnInterval = 0.08f;
+            levelFiveWave.randomSpawnBurstMin = 1000;
+            levelFiveWave.randomSpawnBurstMax = 1600;
+            levelFiveWave.useEndpointSeeking = true;
+            levelFiveWave.entries = new[]
+            {
+                new WaveEntry { enemy = runner, count = 100000 }
+            };
+
+            var levelFive = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelFive.id = "level_05";
+            levelFive.displayName = "Stress Field: Hundred Thousand";
+            levelFive.startingLives = 100000;
+            levelFive.wave = levelFiveWave;
+            levelFive.pathWaypoints = CreateLevelFivePath();
+            levelFive.groundCenter = new Vector3(0f, -0.08f, -4f);
+            levelFive.groundSize = new Vector3(350f, 0.1f, 190f);
+            levelFive.decorVariant = 4;
+            levelFive.useDataHordePrototype = true;
+            levelFive.cameraPosition = new Vector3(0f, 112f, -104f);
+            levelFive.cameraFieldOfView = 55f;
+            levelFive.cameraMinHeight = 20f;
+            levelFive.cameraMaxHeight = 260f;
+            levelFive.cameraPanSpeed = 96f;
+            levelFive.cameraMouseDragSensitivity = 10f;
+            levelFive.cameraMinBounds = new Vector2(-170f, -88f);
+            levelFive.cameraMaxBounds = new Vector2(170f, 88f);
+            levelFive.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelFive.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelFive.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 40);
+            levelFive.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelFive.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelFive.recommendedTactics = "Dedicated 100,000-enemy GPU stress test. The very long map and rapid batched spawn expose simulation, grid, rendering, combat-command, and frame-stability limits.";
+
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
             tree.nodes = new[]
@@ -1599,7 +1636,7 @@ namespace TowerDefense.Runtime
             return new SampleContent
             {
                 Level = level,
-                Levels = new[] { level, levelTwo, levelThree, levelFour },
+                Levels = new[] { level, levelTwo, levelThree, levelFour, levelFive },
                 SkillTree = tree,
                 Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
             };
@@ -1699,6 +1736,38 @@ namespace TowerDefense.Runtime
                 new Vector3(54f, 0f, -38f),
                 new Vector3(86f, 0f, -42f),
                 new Vector3(106f, 0f, -22f)
+            };
+        }
+
+        private static Vector3[] CreateLevelFivePath()
+        {
+            return new[]
+            {
+                new Vector3(-160f, 0f, 70f),
+                new Vector3(-120f, 0f, 70f),
+                new Vector3(-70f, 0f, 64f),
+                new Vector3(-20f, 0f, 70f),
+                new Vector3(40f, 0f, 64f),
+                new Vector3(100f, 0f, 70f),
+                new Vector3(150f, 0f, 55f),
+                new Vector3(155f, 0f, 28f),
+                new Vector3(105f, 0f, 15f),
+                new Vector3(45f, 0f, 24f),
+                new Vector3(-20f, 0f, 15f),
+                new Vector3(-82f, 0f, 25f),
+                new Vector3(-140f, 0f, 10f),
+                new Vector3(-152f, 0f, -18f),
+                new Vector3(-102f, 0f, -36f),
+                new Vector3(-42f, 0f, -25f),
+                new Vector3(20f, 0f, -36f),
+                new Vector3(82f, 0f, -25f),
+                new Vector3(145f, 0f, -42f),
+                new Vector3(152f, 0f, -68f),
+                new Vector3(102f, 0f, -78f),
+                new Vector3(42f, 0f, -68f),
+                new Vector3(-20f, 0f, -78f),
+                new Vector3(-82f, 0f, -68f),
+                new Vector3(-150f, 0f, -78f)
             };
         }
 

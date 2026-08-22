@@ -47,6 +47,8 @@ The fixed grid stores at most 96 neighbour references per cell. When occupancy e
 
 Projectile and area-effect commands are uploaded once and consumed sequentially by one compute dispatch per command batch. This preserves command ordering and avoids concurrent read/modify/write races when several effects hit the same enemy, while removing up to 255 CPU dispatch calls per batch. Direct damage and status changes remain compact dirty-command uploads. The normal GPU fast path passes no complete controls or impulses arrays; compatibility uploads are limited to the spawned high-water range.
 
+Enemy creation is also range-batched. A rapid spawn window prepares new records in the manager's preallocated arrays, then uploads the contiguous state range to both ping-pong buffers and its controls buffer once. Level 5 uses this path to introduce 100,000 enemies in large bursts without issuing several GPU uploads per enemy.
+
 Off-camera simulation uses distance-based update strides of 1, 2, or 4. A skipped far particle stays in GPU memory and catches up with a proportionally larger integration step; nearby enemies always run at full fidelity. Hardware without compute-shader support cannot start a horde wave and reports a clear error instead of silently changing behavior.
 
 ## Horde Movement Prototype

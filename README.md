@@ -15,10 +15,12 @@ This repository currently contains an early Unity prototype focused on validatin
 - Icon-based permanent skill tree with prerequisite links, delayed hover details, zoom, pan, rank indicators, and upgrade purchasing.
 - Dev wallet for testing currencies, upgrade reset, test speed, level loading, save snapshots, and an isolated Best Bot balance run.
 - Enemy health bars, tower placement preview, range display, and placement error popups.
-- Three prototype levels:
+- Five prototype levels:
   - Level 1: playable balance target and first progression slice.
   - Level 2: larger split-road map using the shared GPU flow-field horde simulation.
   - Level 3: foundation map with mixed undead/support/flying enemies for future design work.
+  - Level 4: 10,000-enemy GPU stress field.
+  - Level 5: oversized rapid-spawn stress map with exactly 100,000 enemies.
 
 ## Unity Version
 

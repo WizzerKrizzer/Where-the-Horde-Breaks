@@ -1411,7 +1411,7 @@ namespace TowerDefense.UI
             contentRect.anchorMax = new Vector2(0.5f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(214f, 850f);
+            contentRect.sizeDelta = new Vector2(214f, 900f);
 
             var scrollRect = devPanel.AddComponent<ScrollRect>();
             scrollRect.viewport = viewportRect;
@@ -1518,15 +1518,17 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => session.SelectLevel("level_03"));
             CreateButton("DevLoadLevel4", content.transform, "10K TEST", new Vector2(46f, -484f), new Vector2(86f, 24f), 11)
                 .onClick.AddListener(() => session.SelectLevel("level_04"));
+            CreateButton("DevLoadLevel5", content.transform, "100K GPU STRESS TEST", new Vector2(0f, -512f), new Vector2(178f, 24f), 10)
+                .onClick.AddListener(() => session.SelectLevel("level_05"));
 
             var saveLabel = CreateText("DevSaveTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -522f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -552f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             saveLabel.text = "DEV SAVES";
 
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                var rowY = -522f - slot * 26f;
+                var rowY = -552f - slot * 26f;
                 var status = CreateText($"DevSaveSlotStatus{slot}", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 9);
                 ConfigureCenteredRect(status.GetComponent<RectTransform>(), new Vector2(0f, rowY), new Vector2(46f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
                 devSaveSlotStatusTexts[slot] = status;
@@ -1546,18 +1548,18 @@ namespace TowerDefense.UI
                 });
             }
 
-            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -632f), new Vector2(178f, 24f), 12)
+            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -662f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -660f), new Vector2(178f, 24f), 12)
+            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -690f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.ClearCurrencies());
-            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -688f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -718f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
-            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -716f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -746f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ResetBalanceTestProgress());
-            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -744f), new Vector2(178f, 24f), 11)
+            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -774f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.AutoResolveRun());
             var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
-            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -770f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -800f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
             autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
 

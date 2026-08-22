@@ -555,7 +555,34 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var state = new AgentState
+            var state = CreateAgentState(index, position, velocity, scale, tint, health, progress, isFlying, mass, definition);
+            singleStateUpload[0] = state;
+            stateA.SetData(singleStateUpload, 0, index, 1);
+            stateB.SetData(singleStateUpload, 0, index, 1);
+            singleControlUpload[0] = new Vector4(Mathf.Max(0.25f, velocity.magnitude), 1f, 0f, 0f);
+            controls.SetData(singleControlUpload, 0, index, 1);
+            activeHighWaterMark = Mathf.Max(activeHighWaterMark, index + 1);
+            var spawnedCount = (uint)(index + 1);
+            if (drawArgs[1] < spawnedCount)
+            {
+                drawArgs[1] = spawnedCount;
+                indirectArgs.SetData(drawArgs);
+            }
+        }
+
+        internal static AgentState CreateAgentState(
+            int index,
+            Vector3 position,
+            Vector3 velocity,
+            float scale,
+            float tint,
+            float health,
+            float progress,
+            bool isFlying,
+            float mass,
+            EnemyDefinition definition)
+        {
+            return new AgentState
             {
                 Position = new Vector2(position.x, position.z),
                 Velocity = new Vector2(velocity.x, velocity.z),
@@ -579,37 +606,39 @@ namespace TowerDefense.Runtime
                 CombatFlags = definition != null && definition.drainsAllies ? 2u : 0u,
                 DefinitionIndex = (uint)index
             };
-            singleStateUpload[0] = state;
-            stateA.SetData(singleStateUpload, 0, index, 1);
-            stateB.SetData(singleStateUpload, 0, index, 1);
-            singleControlUpload[0] = new Vector4(Mathf.Max(0.25f, velocity.magnitude), 1f, 0f, 0f);
-            controls.SetData(singleControlUpload, 0, index, 1);
-            activeHighWaterMark = Mathf.Max(activeHighWaterMark, index + 1);
-            var spawnedCount = (uint)(index + 1);
-            if (drawArgs[1] < spawnedCount)
-            {
-                drawArgs[1] = spawnedCount;
-                indirectArgs.SetData(drawArgs);
-            }
         }
 
         internal void SpawnBatch(AgentState[] states, int count)
+        {
+            SpawnBatch(states, null, 0, count);
+        }
+
+        internal void SpawnBatch(AgentState[] states, Vector4[] controlData, int startIndex, int count)
         {
             if (disposed || states == null)
             {
                 return;
             }
 
-            count = Mathf.Clamp(count, 0, Mathf.Min(capacity, states.Length));
+            startIndex = Mathf.Clamp(startIndex, 0, capacity);
+            if (startIndex >= states.Length)
+            {
+                return;
+            }
+            count = Mathf.Clamp(count, 0, Mathf.Min(capacity - startIndex, states.Length - startIndex));
             if (count <= 0)
             {
                 return;
             }
 
-            stateA.SetData(states, 0, 0, count);
-            stateB.SetData(states, 0, 0, count);
-            activeHighWaterMark = Mathf.Max(activeHighWaterMark, count);
-            drawArgs[1] = (uint)count;
+            stateA.SetData(states, startIndex, startIndex, count);
+            stateB.SetData(states, startIndex, startIndex, count);
+            if (controlData != null && controlData.Length >= startIndex + count)
+            {
+                controls.SetData(controlData, startIndex, startIndex, count);
+            }
+            activeHighWaterMark = Mathf.Max(activeHighWaterMark, startIndex + count);
+            drawArgs[1] = (uint)Mathf.Max((int)drawArgs[1], startIndex + count);
             indirectArgs.SetData(drawArgs);
         }
 

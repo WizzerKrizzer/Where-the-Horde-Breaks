@@ -56,6 +56,7 @@ namespace TowerDefense.Runtime
         private bool[] alive;
         private Vector4[] gpuControls;
         private Vector2[] gpuImpulses;
+        private GpuHordeSimulation.AgentState[] gpuSpawnStates;
         private GpuHordeSimulation gpuSimulation;
         private IReadOnlyList<ICombatTarget> combatTargets;
         private WaveDefinition wave;
@@ -155,6 +156,7 @@ namespace TowerDefense.Runtime
             alive = new bool[count];
             gpuControls = new Vector4[count];
             gpuImpulses = new Vector2[count];
+            gpuSpawnStates = new GpuHordeSimulation.AgentState[count];
             flowField = new HordeFlowField(path.Waypoints, path.SecondaryWaypoints, RoadHalfWidth - VisualRadius, FlowCellSize);
             var cursor = 0f;
             var windowDuration = Mathf.Max(0.01f, wave.spawnInterval);
@@ -235,6 +237,7 @@ namespace TowerDefense.Runtime
             alive = null;
             gpuControls = null;
             gpuImpulses = null;
+            gpuSpawnStates = null;
             flowField = null;
             spatialBuckets.Clear();
             combatTargetBuckets.Clear();
@@ -290,6 +293,7 @@ namespace TowerDefense.Runtime
 
         private void SpawnDueEnemies()
         {
+            var batchStart = totalSpawned;
             while (totalSpawned < spawnSequence.Count && elapsed >= spawnTimes[totalSpawned])
             {
                 var definition = spawnSequence[totalSpawned];
@@ -314,7 +318,7 @@ namespace TowerDefense.Runtime
                 velocities[totalSpawned] = flowField.GetDirection(position) * speeds[totalSpawned];
                 alive[totalSpawned] = true;
                 gpuControls[totalSpawned] = new Vector4(speeds[totalSpawned], 1f, 0f, 0f);
-                gpuSimulation?.Spawn(
+                gpuSpawnStates[totalSpawned] = GpuHordeSimulation.CreateAgentState(
                     totalSpawned,
                     position,
                     velocities[totalSpawned],
@@ -327,6 +331,12 @@ namespace TowerDefense.Runtime
                     definition);
                 totalSpawned++;
                 activeCount++;
+            }
+
+            var batchCount = totalSpawned - batchStart;
+            if (batchCount > 0)
+            {
+                gpuSimulation?.SpawnBatch(gpuSpawnStates, gpuControls, batchStart, batchCount);
             }
         }
 
