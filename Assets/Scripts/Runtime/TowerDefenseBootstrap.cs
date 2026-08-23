@@ -1413,7 +1413,7 @@ namespace TowerDefense.Runtime
                     maxRanks = 8,
                     prerequisiteNodeIds = new[] { "barrier_unlock" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerHealthFlat, targetId = "barrier", value = 20f } }
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerHealthFlat, targetId = "barrier", value = 15f } }
                 },
                 new SkillNodeDefinition
                 {
