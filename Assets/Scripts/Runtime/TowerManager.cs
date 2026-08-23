@@ -164,6 +164,15 @@ namespace TowerDefense.Runtime
             var go = TowerVisualFactory.CreateTowerVisual(definition, $"Tower_{definition.id}");
             go.transform.SetParent(transform);
             go.transform.position = position;
+            if (definition.behavior == TowerBehavior.Barrier && route != null)
+            {
+                route.GetNearestRoadPoint(position, out var roadTangent);
+                roadTangent.y = 0f;
+                if (roadTangent.sqrMagnitude > 0.001f)
+                {
+                    go.transform.rotation = Quaternion.LookRotation(roadTangent.normalized, Vector3.up);
+                }
+            }
             var tower = go.AddComponent<TowerActor>();
             tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
             tower.SetFireRateMultiplier(GetFireRateMultiplier(definition));

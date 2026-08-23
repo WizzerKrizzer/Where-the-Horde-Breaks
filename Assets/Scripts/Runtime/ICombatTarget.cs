@@ -23,4 +23,11 @@ namespace TowerDefense.Runtime
         void TakeDamage(float damage, EnemyActor source);
         void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition);
     }
+
+    public interface IOrientedCombatTarget
+    {
+        Vector3 CombatAxis { get; }
+        float CombatHalfLength { get; }
+        float CombatHalfDepth { get; }
+    }
 }

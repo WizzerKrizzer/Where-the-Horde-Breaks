@@ -625,6 +625,58 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator OrientedBarricade_ContactsAtVisibleDepthAndAllowsSideBypass()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            const int count = 2;
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new[]
+            {
+                State(-5f, 100f, -15f, false),
+                State(-5f, 100f, -15f, false)
+            };
+            states[0].Position.y = 0f;
+            states[1].Position.y = 1.2f;
+            var controls = new[]
+            {
+                new Vector4(4.8f, 1f, 0f, 0f),
+                new Vector4(4.8f, 1f, 0f, 0f)
+            };
+            simulation.SpawnBatch(states, count);
+            var blocker = new TestCombatTarget(
+                new Vector3(-3f, 0f, 0f), 100000f, 100f,
+                Vector3.forward, 0.675f, 0.26f);
+
+            for (var frame = 0; frame < 150; frame++)
+            {
+                simulation.SynchronizeDynamicTargets(new ICombatTarget[] { blocker });
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count], requestReadback: false);
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+
+            var expectedContactX = blocker.Position.x - (blocker.CombatHalfDepth + states[0].Scale * 1.045f);
+            Assert.That(states[0].Position.x, Is.EqualTo(expectedContactX).Within(0.06f),
+                "The front enemy stopped with a visible gap from the barricade.");
+            Assert.That(states[1].Position.x, Is.GreaterThan(blocker.Position.x + 1f),
+                "An enemy beside the barricade was incorrectly treated as blocked.");
+        }
+
+        [UnityTest]
         public IEnumerator DenseQueue_AtBarricade_PreservesEnemyBodySpacing()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -845,20 +897,32 @@ namespace TowerDefense.Tests
             }
         }
 
-        private sealed class TestCombatTarget : ICombatTarget
+        private sealed class TestCombatTarget : ICombatTarget, IOrientedCombatTarget
         {
-            public TestCombatTarget(Vector3 position, float health, float blockCapacity = 20f)
+            public TestCombatTarget(
+                Vector3 position,
+                float health,
+                float blockCapacity = 20f,
+                Vector3 combatAxis = default,
+                float combatHalfLength = 0f,
+                float combatHalfDepth = 0f)
             {
                 Position = position;
                 CurrentHealth = health;
                 MaximumHealth = health;
                 BlockCapacity = blockCapacity;
+                CombatAxis = combatAxis;
+                CombatHalfLength = combatHalfLength;
+                CombatHalfDepth = combatHalfDepth;
             }
 
             public Vector3 Position { get; }
             public bool IsAlive => CurrentHealth > 0f;
             public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
             public float CombatRadius => 0.6f;
+            public Vector3 CombatAxis { get; }
+            public float CombatHalfLength { get; }
+            public float CombatHalfDepth { get; }
             public float BlockCapacity { get; }
             public float CurrentBlockedMass => 0f;
             public float CurrentHealth { get; private set; }

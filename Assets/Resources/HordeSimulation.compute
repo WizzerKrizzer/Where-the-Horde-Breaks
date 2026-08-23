@@ -87,6 +87,9 @@ struct DynamicTargetState
     float health;
     float maxHealth;
     float radius;
+    float2 axis;
+    float segmentHalfLength;
+    float halfDepth;
     float blockCapacity;
     float armor;
     float physicalResistance;
@@ -113,6 +116,9 @@ struct DynamicTargetCommand
     float health;
     float maxHealth;
     float radius;
+    float2 axis;
+    float segmentHalfLength;
+    float halfDepth;
     float blockCapacity;
     float armor;
     float physicalResistance;
@@ -443,6 +449,9 @@ void ApplyDynamicTargetCommands(uint3 id : SV_DispatchThreadID)
         state.health = command.health;
         state.maxHealth = command.maxHealth;
         state.radius = command.radius;
+        state.axis = command.axis;
+        state.segmentHalfLength = command.segmentHalfLength;
+        state.halfDepth = command.halfDepth;
         state.blockCapacity = command.blockCapacity;
         state.armor = command.armor;
         state.physicalResistance = command.physicalResistance;
@@ -462,6 +471,9 @@ void ApplyDynamicTargetCommands(uint3 id : SV_DispatchThreadID)
     {
         state.position = command.position;
         state.radius = command.radius;
+        state.axis = command.axis;
+        state.segmentHalfLength = command.segmentHalfLength;
+        state.halfDepth = command.halfDepth;
         state.blockCapacity = command.blockCapacity;
     }
     else if (state.generation == command.generation && command.operation == 3u)
@@ -992,16 +1004,25 @@ void Simulate(uint3 id : SV_DispatchThreadID)
             {
                 uint targetIndex = _DynamicTargetCellIndicesRead[targetCellIndex * _DynamicTargetCellCapacity + targetSlot];
                 DynamicTargetState target = _DynamicTargetsRead[targetIndex];
-                float2 targetOffset = target.position - state.position;
+                float axisLengthSq = dot(target.axis, target.axis);
+                float alongTarget = axisLengthSq > 0.0001
+                    ? clamp(dot(state.position - target.position, target.axis),
+                        -target.segmentHalfLength, target.segmentHalfLength)
+                    : 0.0;
+                float2 closestTargetPoint = target.position + target.axis * alongTarget;
+                float2 targetOffset = closestTargetPoint - state.position;
                 float targetDistanceSq = dot(targetOffset, targetOffset);
-                float attackRange = max(0.35, target.radius + state.scale * 1.2);
+                float targetDepth = max(0.05, target.halfDepth);
+                float attackRange = max(0.35, targetDepth + state.scale * 1.2);
+                float forwardOffset = dot(targetOffset, flow);
                 if (target.status == 1u && target.blockCapacity > 0.0 &&
+                    forwardOffset >= -state.scale * 0.15 &&
                     targetDistanceSq <= attackRange * attackRange && targetDistanceSq < blockingDistanceSq)
                 {
                     blockingTarget = (int)targetIndex;
                     blockingDistanceSq = targetDistanceSq;
-                    blockingTargetPosition = target.position;
-                    blockingContactRadius = max(0.1, target.radius + state.scale);
+                    blockingTargetPosition = closestTargetPoint;
+                    blockingContactRadius = max(0.1, targetDepth + state.scale * 1.045);
                 }
             }
         }

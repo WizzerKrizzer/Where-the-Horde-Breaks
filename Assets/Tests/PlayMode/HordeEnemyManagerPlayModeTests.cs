@@ -246,7 +246,10 @@ namespace TowerDefense.Tests
             wrapper.RegisterCombatTarget(barricade);
             wrapper.BeginWave(wave, route, useDataHordePrototype: true);
 
-            var deadline = Time.realtimeSinceStartup + 3f;
+            // The first GPU dispatch can include shader warm-up when this test
+            // runs after the full movement suite, so keep the gameplay assertion
+            // deterministic without relying on a three-second wall-clock race.
+            var deadline = Time.realtimeSinceStartup + 5f;
             while (!barricade.Destroyed && Time.realtimeSinceStartup < deadline)
             {
                 yield return null;

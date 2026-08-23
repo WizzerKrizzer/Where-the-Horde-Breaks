@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace TowerDefense.Runtime
 {
-    public sealed class TowerActor : MonoBehaviour, ICombatTarget
+    public sealed class TowerActor : MonoBehaviour, ICombatTarget, IOrientedCombatTarget
     {
         private EnemyManager enemies;
         private TowerDefinition definition;
@@ -27,7 +27,14 @@ namespace TowerDefense.Runtime
         public Vector3 Position => transform.position;
         public bool IsAlive => gameObject.activeSelf && (definition == null || definition.behavior != TowerBehavior.Barrier || health > 0f);
         public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
-        public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? 1.25f : 0.7f;
+        public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? CombatHalfDepth : 0.7f;
+        public Vector3 CombatAxis => transform.right;
+        public float CombatHalfLength => definition != null && definition.behavior == TowerBehavior.Barrier
+            ? Mathf.Max(0.05f, Mathf.Abs(transform.lossyScale.x) * 0.5f)
+            : 0f;
+        public float CombatHalfDepth => definition != null && definition.behavior == TowerBehavior.Barrier
+            ? Mathf.Max(0.05f, Mathf.Abs(transform.lossyScale.z) * 0.5f)
+            : CombatRadius;
         public float BlockCapacity => definition != null && definition.behavior == TowerBehavior.Barrier ? 9999f : 0f;
         public float CurrentBlockedMass => GetBlockedMass();
         public float CurrentHealth => health;

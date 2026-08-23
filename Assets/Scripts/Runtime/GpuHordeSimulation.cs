@@ -103,6 +103,9 @@ namespace TowerDefense.Runtime
             public float Health;
             public float MaxHealth;
             public float Radius;
+            public Vector2 Axis;
+            public float SegmentHalfLength;
+            public float HalfDepth;
             public float BlockCapacity;
             public float Armor;
             public float PhysicalResistance;
@@ -130,6 +133,9 @@ namespace TowerDefense.Runtime
             public float Health;
             public float MaxHealth;
             public float Radius;
+            public Vector2 Axis;
+            public float SegmentHalfLength;
+            public float HalfDepth;
             public float BlockCapacity;
             public float Armor;
             public float PhysicalResistance;
@@ -769,6 +775,22 @@ namespace TowerDefense.Runtime
             }
 
             var position = target != null ? target.Position : Vector3.zero;
+            var radius = target != null ? Mathf.Max(0.05f, target.CombatRadius) : 0.05f;
+            var axis = Vector2.zero;
+            var segmentHalfLength = 0f;
+            var halfDepth = radius;
+            if (target is IOrientedCombatTarget oriented && oriented.CombatHalfLength > 0f)
+            {
+                var worldAxis = oriented.CombatAxis;
+                axis = new Vector2(worldAxis.x, worldAxis.z);
+                if (axis.sqrMagnitude > 0.0001f)
+                {
+                    axis.Normalize();
+                    halfDepth = Mathf.Max(0.05f, oriented.CombatHalfDepth);
+                    segmentHalfLength = Mathf.Max(0f, oriented.CombatHalfLength - halfDepth);
+                    radius = halfDepth;
+                }
+            }
             dynamicTargetCommandUpload[dynamicTargetCommandCount++] = new DynamicTargetCommand
             {
                 Slot = (uint)slot,
@@ -778,7 +800,10 @@ namespace TowerDefense.Runtime
                 Position = new Vector2(position.x, position.z),
                 Health = target != null ? Mathf.Max(0f, target.CurrentHealth) : 0f,
                 MaxHealth = target != null ? Mathf.Max(1f, target.MaximumHealth) : 1f,
-                Radius = target != null ? Mathf.Max(0.05f, target.CombatRadius) : 0.05f,
+                Radius = radius,
+                Axis = axis,
+                SegmentHalfLength = segmentHalfLength,
+                HalfDepth = halfDepth,
                 BlockCapacity = target != null ? Mathf.Max(0f, target.BlockCapacity) : 0f,
                 Armor = target != null ? Mathf.Max(0f, target.Armor) : 0f,
                 PhysicalResistance = target != null ? Mathf.Clamp(target.PhysicalResistance, 0f, 0.95f) : 0f,
