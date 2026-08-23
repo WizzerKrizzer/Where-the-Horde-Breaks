@@ -2446,10 +2446,10 @@ namespace TowerDefense.Runtime
             return $"{totalSeconds / 60:00}:{totalSeconds % 60:00}";
         }
 
-        private void OnEnemyKilled(EnemyActor enemy)
+        private void OnEnemyKilled(EnemyDefinition enemy)
         {
             enemiesKilled++;
-            AwardKillEssenceForMass(Mathf.Max(0f, enemy?.Definition?.mass ?? 1f));
+            AwardKillEssenceForMass(Mathf.Max(0f, enemy?.mass ?? 1f));
         }
 
         private void AwardKillEssenceForMass(float mass)
@@ -2613,9 +2613,9 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void OnEnemyEscaped(EnemyActor enemy)
+        private void OnEnemyEscaped(EnemyDefinition enemy)
         {
-            lives -= enemy.Definition.lifeDamage;
+            lives -= enemy != null ? enemy.lifeDamage : 1;
         }
 
         private void OnEnemySpawned(EnemyDefinition enemy)

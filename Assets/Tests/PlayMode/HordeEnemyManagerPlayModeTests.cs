@@ -183,6 +183,114 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator GpuEntity_TakesDamageDiesAndForwardsGameplayEvents()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var route = CreateRoute(new[] { new Vector3(-6f, 0f, 0f), new Vector3(6f, 0f, 0f) });
+            var definition = CreateEnemy(speed: 0.5f, health: 12f);
+            var wave = CreateWave(definition, 1, 0.01f, spawnImmediately: true);
+            var horde = CreateManager();
+            var wrapperObject = new GameObject("TestEnemyManager");
+            cleanupObjects.Add(wrapperObject);
+            var wrapper = wrapperObject.AddComponent<EnemyManager>();
+            wrapper.SetHordePrototype(horde);
+            var spawned = 0;
+            EnemyDefinition killed = null;
+            wrapper.EnemySpawned += _ => spawned++;
+            wrapper.EnemyKilled += enemy => killed = enemy;
+
+            wrapper.BeginWave(wave, route, useDataHordePrototype: true);
+            var spawnDeadline = Time.realtimeSinceStartup + 1f;
+            while (wrapper.TotalSpawned == 0 && Time.realtimeSinceStartup < spawnDeadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(spawned, Is.EqualTo(1), "The GPU entity did not emit its compact spawn event.");
+            wrapper.DamageAndKnockbackInRadius(route.StartPoint, 4f, 50f, 0f, out _);
+            var deathDeadline = Time.realtimeSinceStartup + 2f;
+            while (killed == null && Time.realtimeSinceStartup < deathDeadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(killed, Is.SameAs(definition), "GPU death was not forwarded to gameplay rewards/state.");
+            Assert.That(wrapper.ActiveEnemyCount, Is.EqualTo(0));
+            Assert.That(wrapper.TotalResolved, Is.EqualTo(1));
+        }
+
+        [UnityTest]
+        public IEnumerator GpuEntity_StopsAtAndDestroysDynamicBarricade()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var route = CreateRoute(new[] { new Vector3(-6f, 0f, 0f), new Vector3(6f, 0f, 0f) });
+            var definition = CreateEnemy(speed: 4.8f, health: 100f);
+            definition.attackDamage = 8f;
+            definition.attackInterval = 0.15f;
+            definition.wallDamageMultiplier = 1f;
+            var wave = CreateWave(definition, 1, 0.01f, spawnImmediately: true);
+            var horde = CreateManager();
+            var wrapperObject = new GameObject("TestEnemyManagerWithBarricade");
+            cleanupObjects.Add(wrapperObject);
+            var wrapper = wrapperObject.AddComponent<EnemyManager>();
+            wrapper.SetHordePrototype(horde);
+            var barricade = new TestGpuCombatTarget(new Vector3(-3.8f, 0f, 0f), 12f);
+            wrapper.RegisterCombatTarget(barricade);
+            wrapper.BeginWave(wave, route, useDataHordePrototype: true);
+
+            var deadline = Time.realtimeSinceStartup + 3f;
+            while (!barricade.Destroyed && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(barricade.WasDamaged, Is.True, "The GPU enemy never attacked the blocking target.");
+            Assert.That(barricade.Destroyed, Is.True, "The GPU enemy did not destroy the barricade.");
+            Assert.That(barricade.LastSource, Is.SameAs(definition));
+        }
+
+        [UnityTest]
+        public IEnumerator GpuEntity_ReachingExitForwardsBaseDamageDefinition()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var route = CreateRoute(new[] { new Vector3(-2f, 0f, 0f), new Vector3(2f, 0f, 0f) });
+            var definition = CreateEnemy(speed: 12f, health: 20f);
+            definition.lifeDamage = 3;
+            var wave = CreateWave(definition, 1, 0.01f, spawnImmediately: true);
+            var horde = CreateManager();
+            var wrapperObject = new GameObject("TestEnemyManagerEscape");
+            cleanupObjects.Add(wrapperObject);
+            var wrapper = wrapperObject.AddComponent<EnemyManager>();
+            wrapper.SetHordePrototype(horde);
+            EnemyDefinition escaped = null;
+            wrapper.EnemyEscaped += enemy => escaped = enemy;
+
+            wrapper.BeginWave(wave, route, useDataHordePrototype: true);
+            var deadline = Time.realtimeSinceStartup + 2f;
+            while (escaped == null && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(escaped, Is.SameAs(definition),
+                "The escaped GPU entity did not forward its life-damage definition to GameSession.");
+            Assert.That(escaped.lifeDamage, Is.EqualTo(3));
+            Assert.That(wrapper.TotalResolved, Is.EqualTo(1));
+        }
+
+        [UnityTest]
         public IEnumerator DataHordeWave_BatchesLargeImmediateSpawn()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -360,6 +468,45 @@ namespace TowerDefense.Tests
             enemy.killReward = 1;
             enemy.color = Color.green;
             return enemy;
+        }
+
+        private sealed class TestGpuCombatTarget : ICombatTarget
+        {
+            public TestGpuCombatTarget(Vector3 position, float health)
+            {
+                Position = position;
+                CurrentHealth = health;
+                MaximumHealth = health;
+            }
+
+            public Vector3 Position { get; }
+            public bool IsAlive => !Destroyed;
+            public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
+            public float CombatRadius => 0.65f;
+            public float BlockCapacity => 20f;
+            public float CurrentBlockedMass => 0f;
+            public float CurrentHealth { get; private set; }
+            public float MaximumHealth { get; }
+            public float Armor => 0f;
+            public float PhysicalResistance => 0f;
+            public float FireResistance => 0f;
+            public float SlowResistance => 0f;
+            public float ThornsDamage => 0f;
+            public bool WasDamaged { get; private set; }
+            public bool Destroyed { get; private set; }
+            public EnemyDefinition LastSource { get; private set; }
+
+            public bool TryAddBlocker(EnemyActor enemy) => true;
+            public void RemoveBlocker(EnemyActor enemy) { }
+            public void TakeDamage(float damage, EnemyActor source) { }
+
+            public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition)
+            {
+                WasDamaged = authoritativeHealth < MaximumHealth;
+                CurrentHealth = authoritativeHealth;
+                Destroyed = destroyed;
+                LastSource = sourceDefinition;
+            }
         }
     }
 }

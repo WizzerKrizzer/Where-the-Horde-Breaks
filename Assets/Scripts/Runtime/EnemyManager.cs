@@ -45,8 +45,8 @@ namespace TowerDefense.Runtime
             ? hordePrototype.IsComplete
             : wave != null && totalSpawned >= spawnSequence.Count && activeEnemies.Count == 0;
         public event Action<EnemyDefinition> EnemySpawned;
-        public event Action<EnemyActor> EnemyKilled;
-        public event Action<EnemyActor> EnemyEscaped;
+        public event Action<EnemyDefinition> EnemyKilled;
+        public event Action<EnemyDefinition> EnemyEscaped;
 
         public void SetCorpseManager(EnemyCorpseManager manager)
         {
@@ -55,9 +55,31 @@ namespace TowerDefense.Runtime
 
         public void SetHordePrototype(HordeEnemyManager manager)
         {
+            if (hordePrototype != null)
+            {
+                hordePrototype.EnemySpawned -= ForwardHordeEnemySpawned;
+                hordePrototype.EnemyKilled -= ForwardHordeEnemyKilled;
+                hordePrototype.EnemyEscaped -= ForwardHordeEnemyEscaped;
+            }
+
             hordePrototype = manager;
-            hordePrototype?.SetCombatTargets(combatTargets);
+            if (hordePrototype != null)
+            {
+                hordePrototype.EnemySpawned += ForwardHordeEnemySpawned;
+                hordePrototype.EnemyKilled += ForwardHordeEnemyKilled;
+                hordePrototype.EnemyEscaped += ForwardHordeEnemyEscaped;
+                hordePrototype.SetCombatTargets(combatTargets);
+            }
         }
+
+        private void OnDestroy()
+        {
+            SetHordePrototype(null);
+        }
+
+        private void ForwardHordeEnemySpawned(EnemyDefinition definition) => EnemySpawned?.Invoke(definition);
+        private void ForwardHordeEnemyKilled(EnemyDefinition definition) => EnemyKilled?.Invoke(definition);
+        private void ForwardHordeEnemyEscaped(EnemyDefinition definition) => EnemyEscaped?.Invoke(definition);
 
         public void SetLevelRoute(PathRoute route)
         {
@@ -288,7 +310,7 @@ namespace TowerDefense.Runtime
             {
                 corpseManager?.SpawnCorpse(enemy);
                 totalResolved++;
-                EnemyKilled?.Invoke(enemy);
+                EnemyKilled?.Invoke(enemy.Definition);
             }
         }
 
@@ -297,7 +319,7 @@ namespace TowerDefense.Runtime
             if (activeEnemies.Remove(enemy))
             {
                 totalResolved++;
-                EnemyEscaped?.Invoke(enemy);
+                EnemyEscaped?.Invoke(enemy.Definition);
             }
         }
 

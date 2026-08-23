@@ -96,6 +96,9 @@ namespace TowerDefense.Runtime
         public int TotalResolved => totalResolved;
         public bool IsRunning => running;
         public bool IsComplete => running && totalSpawned >= spawnSequence.Count && activeCount == 0;
+        public event Action<EnemyDefinition> EnemySpawned;
+        public event Action<EnemyDefinition> EnemyKilled;
+        public event Action<EnemyDefinition> EnemyEscaped;
         public HordePerformanceSnapshot Performance => new(
             lastSpawnMs,
             lastSimMs,
@@ -376,6 +379,7 @@ namespace TowerDefense.Runtime
                     definition != null && definition.isFlying,
                     definition != null ? definition.mass : 1f,
                     definition);
+                EnemySpawned?.Invoke(definition);
                 totalSpawned++;
                 activeCount++;
             }
@@ -1031,7 +1035,7 @@ namespace TowerDefense.Runtime
             {
                 if (eventType == 1u || eventType == 2u)
                 {
-                    ResolveGpuAgent(eventIndex);
+                    ResolveGpuAgent(eventIndex, eventType == 1u);
                     continue;
                 }
 
@@ -1046,18 +1050,27 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void ResolveGpuAgent(int index)
+        private void ResolveGpuAgent(int index, bool killed)
         {
             if (index < 0 || index >= totalSpawned || !alive[index])
             {
                 return;
             }
 
+            var definition = definitions[index];
             alive[index] = false;
             health[index] = Mathf.Max(0f, health[index]);
             gpuControls[index] = Vector4.zero;
             activeCount--;
             totalResolved++;
+            if (killed)
+            {
+                EnemyKilled?.Invoke(definition);
+            }
+            else
+            {
+                EnemyEscaped?.Invoke(definition);
+            }
         }
 
         private Vector3 CalculateSeparation(int index, Vector3 flowDirection, out float congestion)
