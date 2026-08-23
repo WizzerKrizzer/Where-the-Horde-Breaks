@@ -917,6 +917,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float simulationDelta = _DeltaTime;
     bool hasPersistentKnockback = state.padding > 0.0;
     state.padding = max(0.0, state.padding - simulationDelta);
+    state.padding2 = max(0.0, state.padding2 - simulationDelta * 0.5);
 
     if (state.slowTimer > 0.0)
     {
@@ -966,6 +967,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float2 flow = FindNavigableFlow(state.position, SampleFlow(state.position));
+    float2 lateralAxis = float2(-flow.y, flow.x);
     int blockingTarget = -1;
     float blockingDistanceSq = 1e30;
     float2 blockingTargetPosition = 0.0;
@@ -1007,6 +1009,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     if (blockingTarget >= 0)
     {
+        state.padding2 = 1.0;
         uint targetIndex = (uint)blockingTarget;
         DynamicTargetState target = _DynamicTargetsRead[targetIndex];
         uint massUnits = max(1u, (uint)round(max(0.1, state.mass) * 1024.0));
@@ -1058,11 +1061,9 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 }
             }
         }
-        else
-        {
-            blockingTarget = -1;
-            blockingContactRadius = 0.0;
-        }
+        // Block capacity limits simultaneous attackers, not collision.
+        // Agents that lose the atomic reservation deliberately retain the
+        // physical target and stop instead of passing through its body.
     }
 
     float2 separation = 0.0;
@@ -1070,6 +1071,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float2 contactImpulse = 0.0;
     float propagatedKnockback = 0.0;
     float congestion = 0.0;
+    float forwardSpeedLimit = 1e30;
     float rawOccupancy = CellOccupancy(centerCell);
     float overflowRatio = saturate((rawOccupancy - (float)_CellCapacity) / max(1.0, (float)_CellCapacity));
     float maximumCollisionDiameter = _CollisionDiameter * 1.25;
@@ -1109,6 +1111,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 float4 otherSpatial = _SpatialStatesRead[otherIndex];
                 float2 otherPosition = otherSpatial.xy;
                 float otherScale = otherSpatial.z;
+                AgentState otherState = _StatesInput[otherIndex];
                 float2 delta = state.position - otherPosition;
                 float distanceSq = dot(delta, delta);
                 if (distanceSq >= searchRadiusSq)
@@ -1118,9 +1121,26 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
 
                 float pairDiameter = clamp(
-                    (state.scale + otherScale) * 1.02,
+                    // Match the 1.04 render packing scale. A contact that is
+                    // physically valid must also look separated on screen.
+                    (state.scale + otherScale) * 1.045,
                     _CollisionDiameter * 0.78,
                     maximumCollisionDiameter);
+                float forwardDistance = dot(otherPosition - state.position, flow);
+                float lateralDistance = abs(dot(otherPosition - state.position, lateralAxis));
+                if (forwardDistance > 0.0 && lateralDistance < pairDiameter)
+                {
+                    float contactForwardDistance = sqrt(max(0.0,
+                        pairDiameter * pairDiameter - lateralDistance * lateralDistance));
+                    float freeDistance = max(0.0, forwardDistance - contactForwardDistance);
+                    float otherForwardSpeed = max(0.0, dot(otherState.velocity, flow));
+                    if (otherState.padding2 > 0.05)
+                    {
+                        state.padding2 = max(state.padding2, otherState.padding2 * 0.96);
+                        forwardSpeedLimit = min(forwardSpeedLimit,
+                            otherForwardSpeed + freeDistance / max(simulationDelta, 0.0001));
+                    }
+                }
                 if (distanceSq >= pairDiameter * pairDiameter)
                 {
                     continue;
@@ -1130,21 +1150,25 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 float2 direction;
                 if (distanceSq <= 0.000001)
                 {
-                    float angle = frac((index * 0.7548777 + otherIndex * 0.5698403)) * 6.2831853;
+                    uint lowerIndex = min(index, otherIndex);
+                    uint upperIndex = max(index, otherIndex);
+                    float angle = frac((lowerIndex * 0.7548777 + upperIndex * 0.5698403)) * 6.2831853;
                     sincos(angle, direction.y, direction.x);
+                    direction *= index < otherIndex ? 1.0 : -1.0;
                 }
                 else
                 {
                     direction = delta / distance;
                 }
 
-                AgentState otherState = _StatesInput[otherIndex];
                 float selfMass = max(0.1, state.mass);
                 float otherMass = max(0.1, otherState.mass);
                 float massResponse = 2.0 * otherMass / (selfMass + otherMass);
                 float penetration = 1.0 - distance / pairDiameter;
                 separation += direction * penetration * 1.25 * massResponse;
-                contactCorrection += direction * (pairDiameter - distance) * 0.52 * massResponse;
+                float contactDepth = pairDiameter - distance;
+                float2 pairCorrection = direction * contactDepth * 0.52 * massResponse;
+                contactCorrection += pairCorrection;
                 float closingSpeed = dot(otherState.velocity - state.velocity, direction);
                 if (closingSpeed > 0.0 && (state.padding > 0.0 || otherState.padding > 0.0))
                 {
@@ -1162,7 +1186,6 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     separation = clamp(separation, -1.25, 1.25);
-    float2 lateralAxis = float2(-flow.y, flow.x);
     separation = flow * dot(separation, flow) * 0.72 + lateralAxis * dot(separation, lateralAxis) * 1.28;
     float densityLeft = SmoothedSideOccupancy(centerCell, int2(-1, 0), int2(0, 1));
     float densityRight = SmoothedSideOccupancy(centerCell, int2(1, 0), int2(0, 1));
@@ -1182,7 +1205,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float2 overflowPressure = (pressureAwayFromDensity * 1.8 + overflowScatter * 0.22) * overflowRatio;
     float2 crowdPressure = widthPressure * crowdPressureWeight + overflowPressure;
     float combatSpeed = blockingTarget >= 0 ? 0.04 : 1.0;
-    float desiredSpeed = control.x * combatSpeed * max(0.05, state.slowMultiplier) * lerp(1.0, 0.64, saturate(congestion / 3.0));
+    float congestionStop = saturate(congestion / 2.0);
+    float desiredSpeed = control.x * combatSpeed * max(0.05, state.slowMultiplier) * lerp(1.0, 0.64, congestionStop);
     float2 desiredVelocity = flow * desiredSpeed;
     float2 flowForce = (desiredVelocity - state.velocity) * _FlowAcceleration;
     float2 collisionForce = (separation + crowdPressure) * _CollisionAcceleration;
@@ -1223,7 +1247,17 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     // crowd motion inside a broad cone around the local flow direction.
     if (blockingTarget < 0 && !hasExternalImpulse)
     {
-        float forwardVelocity = max(dot(state.velocity, flow), desiredSpeed * 0.55);
+        // A packed queue must be allowed to stop. Forcing every rear body to
+        // retain forward speed continually compresses it into the bodies at
+        // the barricade and defeats positional collision correction.
+        float minimumForwardVelocity = desiredSpeed * 0.55;
+        float forwardVelocity = max(dot(state.velocity, flow), minimumForwardVelocity);
+        if (forwardSpeedLimit < 1e20 && rawOccupancy < (float)_CellCapacity)
+        {
+            // Continuous relative contact: following bodies may match the
+            // speed ahead, but cannot consume more than the remaining gap.
+            forwardVelocity = min(forwardVelocity, forwardSpeedLimit);
+        }
         float lateralVelocity = clamp(
             dot(state.velocity, lateralAxis),
             -desiredSpeed * 0.38,
@@ -1239,15 +1273,19 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         state.velocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
     }
 
-    if (!hasExternalImpulse)
+    // Keep both signs of the flow-axis correction. Backward correction is how
+    // contact pressure propagates through a stopped queue instead of allowing
+    // rear agents to occupy the same space as agents at the obstacle.
+    // At hard cell-capacity overflow the neighbour set is incomplete, so a
+    // backward component would introduce a biased whole-pile drift. The
+    // emergency pressure path keeps only forward/lateral correction there.
+    if (!hasExternalImpulse && rawOccupancy >= (float)_CellCapacity)
     {
         contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
             flow * max(0.0, dot(contactCorrection, flow));
     }
     float correctionLength = length(contactCorrection);
-    float maximumCorrection = min(
-        _CollisionDiameter * 0.12,
-        max(0.005, desiredSpeed * simulationDelta * 0.32));
+    float maximumCorrection = _CollisionDiameter * (hasExternalImpulse ? 0.22 : 0.32);
     if (correctionLength > maximumCorrection)
     {
         contactCorrection *= maximumCorrection / correctionLength;

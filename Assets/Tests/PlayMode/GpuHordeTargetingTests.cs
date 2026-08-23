@@ -625,6 +625,67 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator DenseQueue_AtBarricade_PreservesEnemyBodySpacing()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 24;
+            var field = new HordeFlowField(
+                new[] { new Vector3(-12f, 0f, 0f), new Vector3(12f, 0f, 0f) },
+                null,
+                0.72f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            var impulses = new Vector2[count];
+            for (var i = 0; i < count; i++)
+            {
+                var row = i / 2;
+                states[i] = State(-10f + row * 0.71f, 100f, -22f + row * 0.71f, false);
+                states[i].Position.y = (i & 1) == 0 ? -0.355f : 0.355f;
+                states[i].Velocity = new Vector2(4.8f, 0f);
+                states[i].Mass = 1f;
+                states[i].MaxHealth = 100f;
+                states[i].AttackDamage = 1f;
+                states[i].AttackInterval = 0.15f;
+                states[i].WallDamageMultiplier = 1f;
+                controls[i] = new Vector4(4.8f, 1f, 0f, 0f);
+            }
+
+            simulation.SpawnBatch(states, count);
+            var blocker = new TestCombatTarget(new Vector3(-1f, 0f, 0f), 100000f, 100f);
+            for (var frame = 0; frame < 120; frame++)
+            {
+                simulation.SynchronizeDynamicTargets(new ICombatTarget[] { blocker });
+                simulation.Dispatch(1f / 60f, controls, impulses, requestReadback: false);
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+
+            var minimumDistance = float.MaxValue;
+            for (var i = 0; i < count; i++)
+            {
+                for (var j = i + 1; j < count; j++)
+                {
+                    minimumDistance = Mathf.Min(minimumDistance,
+                        Vector2.Distance(states[i].Position, states[j].Position));
+                }
+            }
+
+            Assert.That(minimumDistance, Is.GreaterThanOrEqualTo(0.66f),
+                $"Dense barricade queue compressed overlapping bodies to {minimumDistance:F3}m.");
+        }
+
+        [UnityTest]
         public IEnumerator ProjectileKernel_ResolvesSegmentPierceOnGpu()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -786,18 +847,19 @@ namespace TowerDefense.Tests
 
         private sealed class TestCombatTarget : ICombatTarget
         {
-            public TestCombatTarget(Vector3 position, float health)
+            public TestCombatTarget(Vector3 position, float health, float blockCapacity = 20f)
             {
                 Position = position;
                 CurrentHealth = health;
                 MaximumHealth = health;
+                BlockCapacity = blockCapacity;
             }
 
             public Vector3 Position { get; }
             public bool IsAlive => CurrentHealth > 0f;
             public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
             public float CombatRadius => 0.6f;
-            public float BlockCapacity => 20f;
+            public float BlockCapacity { get; }
             public float CurrentBlockedMass => 0f;
             public float CurrentHealth { get; private set; }
             public float MaximumHealth { get; }
