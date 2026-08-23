@@ -578,6 +578,53 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator DynamicBlocker_RemainsAHardPhysicalObstacleWhileAlive()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var state = State(-5f, 100f, -15f, false);
+            state.Velocity = new Vector2(4.8f, 0f);
+            state.Mass = 1f;
+            state.MaxHealth = 100f;
+            state.AttackDamage = 1f;
+            state.AttackInterval = 0.15f;
+            state.WallDamageMultiplier = 1f;
+            simulation.SpawnBatch(new[] { state }, 1);
+            var blocker = new TestCombatTarget(new Vector3(-3f, 0f, 0f), 10000f);
+            var controls = new[] { new Vector4(4.8f, 1f, 0f, 0f) };
+            var impulses = new Vector2[1];
+
+            for (var frame = 0; frame < 150; frame++)
+            {
+                simulation.SynchronizeDynamicTargets(new ICombatTarget[] { blocker });
+                simulation.Dispatch(1f / 60f, controls, impulses, requestReadback: false);
+                if (frame % 15 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            var states = new GpuHordeSimulation.AgentState[1];
+            simulation.ReadStatesSynchronous(states, 1);
+            simulation.Dispose();
+            var blockerPosition = new Vector2(blocker.Position.x, blocker.Position.z);
+            var contactDistance = Vector2.Distance(states[0].Position, blockerPosition);
+            Assert.That(states[0].Position.x, Is.LessThan(blocker.Position.x),
+                "The GPU entity crossed through the living barricade.");
+            Assert.That(contactDistance, Is.GreaterThanOrEqualTo(blocker.CombatRadius + states[0].Scale - 0.025f),
+                "The GPU entity occupied the barricade's physical body.");
+        }
+
+        [UnityTest]
         public IEnumerator ProjectileKernel_ResolvesSegmentPierceOnGpu()
         {
             if (!SystemInfo.supportsComputeShaders)

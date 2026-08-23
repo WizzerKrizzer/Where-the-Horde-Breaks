@@ -19,6 +19,12 @@ namespace TowerDefense.Simulation
         public Vector3 StartPoint => waypoints.Count > 0 ? waypoints[0] : transform.position;
         public Vector3 EndPoint => waypoints.Count > 0 ? waypoints[^1] : transform.position;
 
+        public bool IsInsideCorridor(Vector3 position, float extraRadius = 0f)
+        {
+            return IsInsideRouteCorridor(position, waypoints, waypointHalfWidths, extraRadius) ||
+                   IsInsideRouteCorridor(position, secondaryWaypoints, secondaryWaypointHalfWidths, extraRadius);
+        }
+
         private void Awake()
         {
             RecalculateLength();
@@ -54,6 +60,45 @@ namespace TowerDefense.Simulation
             {
                 destination.Add(Mathf.Max(0.5f, fullWidths[i] * 0.5f));
             }
+        }
+
+        private static bool IsInsideRouteCorridor(
+            Vector3 position,
+            IReadOnlyList<Vector3> points,
+            IReadOnlyList<float> halfWidths,
+            float extraRadius)
+        {
+            if (points == null || points.Count < 2)
+            {
+                return false;
+            }
+
+            position.y = 0f;
+            for (var i = 1; i < points.Count; i++)
+            {
+                var from = points[i - 1];
+                var to = points[i];
+                from.y = to.y = 0f;
+                var segment = to - from;
+                var segmentLengthSq = segment.sqrMagnitude;
+                var t = segmentLengthSq > 0.0001f
+                    ? Mathf.Clamp01(Vector3.Dot(position - from, segment) / segmentLengthSq)
+                    : 0f;
+                var fromHalfWidth = halfWidths != null && halfWidths.Count == points.Count
+                    ? halfWidths[i - 1]
+                    : 2.7f;
+                var toHalfWidth = halfWidths != null && halfWidths.Count == points.Count
+                    ? halfWidths[i]
+                    : 2.7f;
+                var radius = Mathf.Max(0f, Mathf.Lerp(fromHalfWidth, toHalfWidth, t) + extraRadius);
+                var nearest = from + segment * t;
+                if ((position - nearest).sqrMagnitude <= radius * radius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public Vector3 Sample(float distance)

@@ -18,7 +18,7 @@ namespace TowerDefense.Runtime
         private float towerDamageMultiplier = 1f;
         private float towerFireRateMultiplier = 1f;
         private TowerActor selectedTower;
-        private const float MinimumPathDistance = 3.05f;
+        private const float TowerPathClearance = 0.7f;
 
         public IReadOnlyList<TowerActor> Towers => towers;
         public IReadOnlyList<TowerDefinition> AvailableTowers { get; private set; }
@@ -332,20 +332,7 @@ namespace TowerDefense.Runtime
 
         private bool IsTooCloseToPath(Vector3 position)
         {
-            if (route?.Waypoints == null || route.Waypoints.Count < 2)
-            {
-                return false;
-            }
-
-            for (var i = 1; i < route.Waypoints.Count; i++)
-            {
-                if (DistancePointToSegment(position, route.Waypoints[i - 1], route.Waypoints[i]) < MinimumPathDistance)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return route != null && route.IsInsideCorridor(position, TowerPathClearance);
         }
 
         private bool OverlapsExistingTower(Vector3 position)
@@ -361,11 +348,5 @@ namespace TowerDefense.Runtime
             return false;
         }
 
-        private static float DistancePointToSegment(Vector3 point, Vector3 a, Vector3 b)
-        {
-            var ab = b - a;
-            var t = Mathf.Clamp01(Vector3.Dot(point - a, ab) / ab.sqrMagnitude);
-            return Vector3.Distance(point, a + ab * t);
-        }
     }
 }

@@ -354,6 +354,36 @@ namespace TowerDefense.Tests
                 $"A single spawn burst left a {largestGap:0.00} metre empty lateral band.");
         }
 
+        [Test]
+        public void TowerPlacement_UsesCurrentVariableWidthRoadGeometry()
+        {
+            var points = new[]
+            {
+                new Vector3(-10f, 0f, 0f),
+                Vector3.zero,
+                new Vector3(10f, 0f, 0f)
+            };
+            var route = CreateRoute(points);
+            route.SetWaypoints(points, new[] { 10f, 3f, 3f });
+            var definition = ScriptableObject.CreateInstance<TowerDefinition>();
+            cleanupObjects.Add(definition);
+            definition.id = "placement_test";
+            definition.displayName = "Placement Test Tower";
+            definition.behavior = TowerBehavior.Projectile;
+            definition.perTypeLimit = 10;
+            var managerObject = new GameObject("TestTowerManager");
+            cleanupObjects.Add(managerObject);
+            var manager = managerObject.AddComponent<TowerManager>();
+            manager.Initialize(null, route, new[] { definition });
+
+            Assert.That(manager.CanPlace(definition, new Vector3(-8f, 0f, 4f)), Is.False,
+                "A tower was allowed on the visible wide road.");
+            Assert.That(manager.CanPlace(definition, new Vector3(8f, 0f, 1f)), Is.False,
+                "A tower was allowed on the visible narrow road.");
+            Assert.That(manager.CanPlace(definition, new Vector3(8f, 0f, 2.4f)), Is.True,
+                "Grass beside the narrow road was blocked by the old uniform-width rule.");
+        }
+
         [UnityTest, Explicit("Allocates the complete 100K Level 5 GPU stress configuration.")]
         [Category("Performance")]
         public IEnumerator LevelFiveStressWave_AllocatesAndStartsOneHundredThousandAgents()

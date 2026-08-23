@@ -968,6 +968,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     float2 flow = FindNavigableFlow(state.position, SampleFlow(state.position));
     int blockingTarget = -1;
     float blockingDistanceSq = 1e30;
+    float2 blockingTargetPosition = 0.0;
+    float blockingContactRadius = 0.0;
     const int targetCellRadius = 2;
     [loop]
     for (int toy = -targetCellRadius; toy <= targetCellRadius; toy++)
@@ -996,6 +998,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 {
                     blockingTarget = (int)targetIndex;
                     blockingDistanceSq = targetDistanceSq;
+                    blockingTargetPosition = target.position;
+                    blockingContactRadius = max(0.1, target.radius + state.scale);
                 }
             }
         }
@@ -1057,6 +1061,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         else
         {
             blockingTarget = -1;
+            blockingContactRadius = 0.0;
         }
     }
 
@@ -1250,6 +1255,27 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     if (correctionLength > 0.00001)
     {
         state.position = ConstrainMove(state.position, state.position + contactCorrection);
+    }
+
+    if (blockingTarget >= 0 && blockingContactRadius > 0.0)
+    {
+        float2 obstacleDelta = state.position - blockingTargetPosition;
+        float obstacleDistanceSq = dot(obstacleDelta, obstacleDelta);
+        if (obstacleDistanceSq < blockingContactRadius * blockingContactRadius)
+        {
+            float obstacleDistance = sqrt(max(obstacleDistanceSq, 0.000001));
+            float2 obstacleNormal = obstacleDistanceSq > 0.000001
+                ? obstacleDelta / obstacleDistance
+                : -flow;
+            float2 projectedPosition = blockingTargetPosition + obstacleNormal * blockingContactRadius;
+            float2 constrainedPosition = ConstrainMove(oldPosition, projectedPosition);
+            if (distance(constrainedPosition, blockingTargetPosition) > distance(state.position, blockingTargetPosition))
+            {
+                state.position = constrainedPosition;
+            }
+            float inwardSpeed = min(0.0, dot(state.velocity, obstacleNormal));
+            state.velocity -= obstacleNormal * inwardSpeed;
+        }
     }
 
     state.tint = state.slowTimer > 0.0 && state.slowMultiplier < 0.995 ? 1.0 : control.z;

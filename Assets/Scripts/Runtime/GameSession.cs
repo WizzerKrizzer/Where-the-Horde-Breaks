@@ -263,7 +263,7 @@ namespace TowerDefense.Runtime
             profile.selectedLevelId = level.id;
             path = loadLevelMap != null ? loadLevelMap(level) : path;
             enemies?.SetLevelRoute(path);
-            towers.Initialize(enemies, path, GetUnlockedTowers());
+            towers.Initialize(enemies, this.path, GetUnlockedTowers());
             ApplyProgressionStats();
             enemiesKilled = 0;
             killRewardMassProgress = 0f;
@@ -618,7 +618,7 @@ namespace TowerDefense.Runtime
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
             enemies.EnemySpawned += OnEnemySpawned;
-            towers.Initialize(enemies, path, GetUnlockedTowers());
+            towers.Initialize(enemies, this.path, GetUnlockedTowers());
             ApplyProgressionStats();
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
