@@ -30,6 +30,7 @@ namespace TowerDefense.Runtime
         private int burstPatternIndex;
         private int currentWindowSpawnCount;
         private int currentWindowSpawned;
+        private int actorSpawnSequenceIndex;
         private int totalSpawned;
         private int totalResolved;
 
@@ -90,7 +91,6 @@ namespace TowerDefense.Runtime
         {
             ClearAll(clearCombatTargets: false);
             corpseManager?.ClearAllVisuals();
-            hordePrototype?.StopWave();
             if (useDataHordePrototype)
             {
                 wave = null;
@@ -101,6 +101,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            hordePrototype?.StopWave();
+
             wave = waveDefinition;
             path = route;
             elapsed = 0f;
@@ -109,12 +111,21 @@ namespace TowerDefense.Runtime
             burstPatternIndex = 0;
             currentWindowSpawnCount = GetNextWindowSpawnCount();
             currentWindowSpawned = 0;
+            actorSpawnSequenceIndex = 0;
             totalSpawned = 0;
             totalResolved = 0;
             BuildSpawnSequence();
             if (path == null || !path.HasUsableRoute || spawnSequence.Count == 0)
             {
                 wave = null;
+            }
+        }
+
+        public void PrepareWave(WaveDefinition waveDefinition, PathRoute route, bool useDataHordePrototype)
+        {
+            if (useDataHordePrototype)
+            {
+                hordePrototype?.PrepareWave(waveDefinition, route);
             }
         }
 
@@ -639,6 +650,59 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 0)
         {
+            return DamageAndKnockbackInRadiusInternal(
+                center,
+                radius,
+                damage,
+                knockbackDistance,
+                160,
+                out hitCount,
+                burnSource,
+                burnDamagePerTick,
+                burnTicksPerSecond,
+                burnDuration,
+                maxBurnStacks,
+                0f);
+        }
+
+        public float DamageAndKnockbackInRadius(
+            Vector3 center,
+            float radius,
+            float damage,
+            float knockbackDistance,
+            int maxTargets,
+            out int hitCount,
+            float knockbackPropagationRadius = 0f)
+        {
+            return DamageAndKnockbackInRadiusInternal(
+                center,
+                radius,
+                damage,
+                knockbackDistance,
+                maxTargets,
+                out hitCount,
+                null,
+                0f,
+                0f,
+                0f,
+                0,
+                knockbackPropagationRadius);
+        }
+
+        private float DamageAndKnockbackInRadiusInternal(
+            Vector3 center,
+            float radius,
+            float damage,
+            float knockbackDistance,
+            int maxTargets,
+            out int hitCount,
+            TowerActor burnSource,
+            float burnDamagePerTick,
+            float burnTicksPerSecond,
+            float burnDuration,
+            int maxBurnStacks,
+            float knockbackPropagationRadius)
+        {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
                 return hordePrototype.DamageAndKnockbackInRadius(
@@ -646,20 +710,26 @@ namespace TowerDefense.Runtime
                     radius,
                     damage,
                     knockbackDistance,
-                    maxTargets: 160,
+                    maxTargets,
                     out hitCount,
                     burnDamagePerTick,
                     burnTicksPerSecond,
                     burnDuration,
-                    maxBurnStacks);
+                    maxBurnStacks,
+                    knockbackPropagationRadius);
             }
 
             var radiusSq = radius * radius;
             hitCount = 0;
             var appliedDamage = 0f;
-            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 160);
+            CollectNearbyEnemies(center, radius, targetCandidates, maxTargets > 0 ? maxTargets : 0);
             for (var i = targetCandidates.Count - 1; i >= 0; i--)
             {
+                if (maxTargets > 0 && hitCount >= maxTargets)
+                {
+                    break;
+                }
+
                 var enemy = targetCandidates[i];
                 if (!enemy.IsAlive)
                 {
@@ -688,12 +758,69 @@ namespace TowerDefense.Runtime
                 && hordePrototype.TryGetTargetPosition(position, range, canHitFlying, targetingMode, out targetPosition);
         }
 
+        public bool TryGetHordeTargetSnapshot(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, out int targetIndex, out Vector3 targetPosition, out Vector3 targetVelocity)
+        {
+            targetIndex = -1;
+            targetPosition = Vector3.zero;
+            targetVelocity = Vector3.zero;
+            return hordePrototype != null
+                && hordePrototype.IsRunning
+                && hordePrototype.TryGetTargetSnapshot(position, range, canHitFlying, targetingMode, out targetIndex, out targetPosition, out targetVelocity);
+        }
+
+        public bool TryGetNearestHordeTargetExcept(Vector3 position, float range, bool canHitFlying, int excludedIndex, out int targetIndex, out Vector3 targetPosition, out Vector3 targetVelocity)
+        {
+            targetIndex = -1;
+            targetPosition = Vector3.zero;
+            targetVelocity = Vector3.zero;
+            return hordePrototype != null
+                && hordePrototype.IsRunning
+                && hordePrototype.TryGetNearestTargetExcept(position, range, canHitFlying, excludedIndex, out targetIndex, out targetPosition, out targetVelocity);
+        }
+
+        public bool TryGetSecondaryHordeTargetSnapshot(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, out int targetIndex, out Vector3 targetPosition, out Vector3 targetVelocity)
+        {
+            targetIndex = -1;
+            targetPosition = Vector3.zero;
+            targetVelocity = Vector3.zero;
+            return hordePrototype != null
+                && hordePrototype.IsRunning
+                && hordePrototype.TryGetSecondaryTargetSnapshot(position, range, canHitFlying, targetingMode, out targetIndex, out targetPosition, out targetVelocity);
+        }
+
         public float DamageHordeTarget(Vector3 position, float range, bool canHitFlying, TowerTargetingMode targetingMode, float damage, out Vector3 targetPosition)
         {
             targetPosition = Vector3.zero;
             return hordePrototype != null && hordePrototype.IsRunning
                 ? hordePrototype.DamageTarget(position, range, canHitFlying, targetingMode, damage, out targetPosition)
                 : 0f;
+        }
+
+        public float DamageHordeTarget(int targetIndex, float damage)
+        {
+            return hordePrototype != null && hordePrototype.IsRunning
+                ? hordePrototype.DamageTarget(targetIndex, damage)
+                : 0f;
+        }
+
+        public bool TryReserveHordeDamage(int targetIndex, float damage)
+        {
+            return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.TryReserveDamage(targetIndex, damage);
+        }
+
+        public float ResolveReservedHordeDamage(int targetIndex, float damage)
+        {
+            return hordePrototype != null && hordePrototype.IsRunning
+                ? hordePrototype.ResolveReservedDamage(targetIndex, damage)
+                : 0f;
+        }
+
+        public void ReleaseReservedHordeDamage(int targetIndex, float damage)
+        {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                hordePrototype.ReleaseReservedDamage(targetIndex, damage);
+            }
         }
 
         public bool QueueHordeProjectile(
@@ -707,7 +834,9 @@ namespace TowerDefense.Runtime
             bool splash,
             float burnDamagePerSecond = 0f,
             float burnDuration = 0f,
-            int maxBurnStacks = 1)
+            int maxBurnStacks = 1,
+            uint projectileId = 0u,
+            bool resetHitCount = true)
         {
             return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.QueueProjectile(
                 start,
@@ -720,7 +849,16 @@ namespace TowerDefense.Runtime
                 splash,
                 burnDamagePerSecond,
                 burnDuration,
-                maxBurnStacks);
+                maxBurnStacks,
+                projectileId,
+                resetHitCount);
+        }
+
+        public uint CreateHordeProjectileId()
+        {
+            return hordePrototype != null && hordePrototype.IsRunning
+                ? hordePrototype.CreateProjectileId()
+                : 0u;
         }
 
         public void ClearAll(bool clearCombatTargets = true)
@@ -736,6 +874,7 @@ namespace TowerDefense.Runtime
 
             activeEnemies.Clear();
             spatialBucketsFrame = -1;
+            actorSpawnSequenceIndex = 0;
             if (clearCombatTargets)
             {
                 combatTargets.Clear();
@@ -755,13 +894,35 @@ namespace TowerDefense.Runtime
             }
 
             var actor = pool.Count > 0 ? pool.Dequeue() : CreateEnemyActor(enemyDefinition);
-            actor.Initialize(enemyDefinition, path, this, Mathf.Clamp(initialOffset, 0f, path.TotalLength), wave != null && wave.useEndpointSeeking);
+            var individualSpeed = ResolveActorSpeed(enemyDefinition, actorSpawnSequenceIndex++);
+            actor.Initialize(
+                enemyDefinition,
+                path,
+                this,
+                Mathf.Clamp(initialOffset, 0f, path.TotalLength),
+                wave != null && wave.useEndpointSeeking,
+                individualSpeed);
             activeEnemies.Add(actor);
             if (countTowardWaveTotal)
             {
                 totalSpawned++;
             }
             EnemySpawned?.Invoke(enemyDefinition);
+        }
+
+        private float ResolveActorSpeed(EnemyDefinition enemyDefinition, int spawnIndex)
+        {
+            var speed = Mathf.Max(0.1f, enemyDefinition != null ? enemyDefinition.speed : 3f);
+            if (wave != null)
+            {
+                speed *= Mathf.Max(0.1f, wave.enemySpeedMultiplier);
+                if (wave.randomEnemySpeedMin > 0f && wave.randomEnemySpeedMax >= wave.randomEnemySpeedMin)
+                {
+                    return UnityEngine.Random.Range(wave.randomEnemySpeedMin, wave.randomEnemySpeedMax);
+                }
+            }
+
+            return speed * EnemyActor.GetPersonalSpeedFactor(spawnIndex);
         }
 
         public float EstimatePathDistance(Vector3 position)

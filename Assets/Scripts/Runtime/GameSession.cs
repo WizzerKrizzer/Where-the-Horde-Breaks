@@ -41,6 +41,7 @@ namespace TowerDefense.Runtime
         private int maxLivesForRun;
         private int enemiesKilled;
         private float killRewardMassProgress;
+        private bool killRewardSavePending;
         private float baseActiveWeaponDamage;
         private float baseActiveWeaponCooldown;
         private float baseActiveWeaponRadius;
@@ -230,6 +231,11 @@ namespace TowerDefense.Runtime
                 return profile.clearedLevelIds.Contains("level_01");
             }
 
+            if (definition.id == "level_02_1")
+            {
+                return profile.clearedLevelIds.Contains("level_02");
+            }
+
             if (definition.id == "level_03")
             {
                 return profile.clearedLevelIds.Contains("level_02");
@@ -240,7 +246,17 @@ namespace TowerDefense.Runtime
                 return profile.clearedLevelIds.Contains("level_03");
             }
 
-            return definition.id == "level_05" && profile.clearedLevelIds.Contains("level_04");
+            if (definition.id == "level_05")
+            {
+                return profile.clearedLevelIds.Contains("level_04");
+            }
+
+            if (definition.id == "level_06")
+            {
+                return profile.clearedLevelIds.Contains("level_05");
+            }
+
+            return definition.id == "level_07" && profile.clearedLevelIds.Contains("level_06");
         }
 
         public bool SelectLevel(string levelId)
@@ -276,6 +292,7 @@ namespace TowerDefense.Runtime
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
             profileStore.Save(profile);
+            enemies?.PrepareWave(level.wave, path, level.useDataHordePrototype);
             return true;
         }
 
@@ -567,6 +584,25 @@ namespace TowerDefense.Runtime
             return purchased;
         }
 
+        public bool CanRefundUpgrade(string nodeId)
+        {
+            return progression.CanRefundLatestRank(nodeId);
+        }
+
+        public bool TryRefundUpgrade(string nodeId)
+        {
+            var refunded = progression.TryRefundLatestRank(nodeId);
+            if (refunded)
+            {
+                ApplyProgressionStats();
+                profile.ResetBalanceTestProgress();
+                profileStore.Save(profile);
+                ResetToPlanning();
+            }
+
+            return refunded;
+        }
+
         public void Initialize(
             IReadOnlyList<LevelDefinition> levelDefinitions,
             LevelDefinition levelDefinition,
@@ -622,6 +658,7 @@ namespace TowerDefense.Runtime
             ApplyProgressionStats();
             lives = maxLivesForRun;
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
+            enemies?.PrepareWave(level.wave, this.path, level.useDataHordePrototype);
         }
 
         private LevelDefinition FindLevel(string levelId)
@@ -662,6 +699,8 @@ namespace TowerDefense.Runtime
 
         private void Update()
         {
+            FlushPendingKillRewardSave();
+
             if (input == null)
             {
                 return;
@@ -2075,6 +2114,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            FlushPendingKillRewardSave();
             SaveLayout();
             var progress = profile.GetOrCreateLevelProgress(level.id);
             progress.attempts++;
@@ -2093,6 +2133,7 @@ namespace TowerDefense.Runtime
 
         public void ResetToPlanning()
         {
+            FlushPendingKillRewardSave();
             enemies.EnemyKilled -= OnEnemyKilled;
             enemies.EnemyEscaped -= OnEnemyEscaped;
             enemies.StopWave();
@@ -2106,6 +2147,7 @@ namespace TowerDefense.Runtime
             won = false;
             activeWeapon.CanFire = false;
             lastRunCurrencyDeltas.Clear();
+            enemies?.PrepareWave(level.wave, path, level.useDataHordePrototype);
             enemies.EnemyKilled += OnEnemyKilled;
             enemies.EnemyEscaped += OnEnemyEscaped;
         }
@@ -2204,6 +2246,7 @@ namespace TowerDefense.Runtime
 
             SaveLayout();
             CaptureLastRunCurrencyDeltas();
+            killRewardSavePending = false;
             profileStore.Save(profile);
         }
 
@@ -2465,8 +2508,27 @@ namespace TowerDefense.Runtime
             if (essenceReward > 0)
             {
                 profile.AddCurrency(CurrencyType.KillEssence, essenceReward * rewardTestMultiplier);
-                profileStore.Save(profile);
+                // A GPU area kill can resolve thousands of agents in one frame.
+                // Persist the combined reward once instead of serializing the
+                // whole profile separately for every small essence increment.
+                killRewardSavePending = true;
             }
+        }
+
+        private void FlushPendingKillRewardSave()
+        {
+            if (!killRewardSavePending || profileStore == null || profile == null)
+            {
+                return;
+            }
+
+            killRewardSavePending = false;
+            profileStore.Save(profile);
+        }
+
+        private void OnDisable()
+        {
+            FlushPendingKillRewardSave();
         }
 
         private List<EnemyDefinition> BuildRemainingEnemySequence()
@@ -2615,6 +2677,11 @@ namespace TowerDefense.Runtime
 
         private void OnEnemyEscaped(EnemyDefinition enemy)
         {
+            if (level != null && level.preventLifeLoss)
+            {
+                return;
+            }
+
             lives -= enemy != null ? enemy.lifeDamage : 1;
         }
 
@@ -2707,6 +2774,36 @@ namespace TowerDefense.Runtime
             activeWeapon.CooldownSeconds = baseActiveWeaponCooldown * activeCooldownMultiplier;
             activeWeapon.Radius = baseActiveWeaponRadius + activeRadiusBonus;
             activeWeapon.MaxTargets = baseActiveWeaponMaxTargets + activePierceBonus;
+            activeWeapon.KnockbackDistance = 0f;
+            activeWeapon.KnockbackPropagationRadius = 0f;
+            activeWeapon.ShockwaveArenaCenter = Vector3.zero;
+            activeWeapon.ShockwaveArenaRadius = 0f;
+            activeWeapon.DisplayName = "Volley of Arrows";
+            if (level != null && (level.id == "level_02" || level.id == "level_02_1"))
+            {
+                // Level 2 and 2.1 are the crowd-physics laboratory. The charge causes no
+                // damage so repeated tests preserve the full 10k horde; only its
+                // radial impulse and contact propagation are under observation.
+                activeWeapon.Damage = 0f;
+                activeWeapon.CooldownSeconds = 0.65f;
+                activeWeapon.Radius = 3.4f;
+                activeWeapon.MaxTargets = 0;
+                activeWeapon.KnockbackDistance = 5.5f;
+                activeWeapon.KnockbackPropagationRadius = 12f;
+                activeWeapon.DisplayName = "Physics Charge";
+            }
+            else if (level != null && level.id == "level_07")
+            {
+                activeWeapon.Damage = 100f;
+                activeWeapon.CooldownSeconds = 0.1f * activeCooldownMultiplier;
+                activeWeapon.Radius = 10f + activeRadiusBonus;
+                activeWeapon.MaxTargets = 0;
+                activeWeapon.KnockbackDistance = 16f;
+                activeWeapon.KnockbackPropagationRadius = 110f;
+                activeWeapon.ShockwaveArenaCenter = level.groundCenter;
+                activeWeapon.ShockwaveArenaRadius = level.arenaRadius;
+                activeWeapon.DisplayName = "Shockwave Bomb";
+            }
             activeWeapon.AutoFireUnlocked = activeAutoFireUnlocked;
         }
 

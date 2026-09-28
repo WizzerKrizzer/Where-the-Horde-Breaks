@@ -1,7 +1,9 @@
 {
   "name": "TowerDefense.Runtime",
   "rootNamespace": "TowerDefense",
-  "references": [],
+  "references": [
+    "UnityEngine.ParticleSystemModule"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

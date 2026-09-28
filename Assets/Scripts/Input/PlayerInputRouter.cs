@@ -8,6 +8,8 @@ namespace TowerDefense.Input
         private readonly List<RectTransform> blockingUiRects = new();
         private Camera targetCamera;
         private int selectedTowerIndex;
+        private Vector2 previousMousePosition;
+        private bool mousePanActive;
 
         public GameInputState Current { get; private set; }
         public bool GameplayInputBlocked { get; set; }
@@ -29,6 +31,7 @@ namespace TowerDefense.Input
         {
             if (GameplayInputBlocked)
             {
+                mousePanActive = false;
                 Current = new GameInputState
                 {
                     SelectedTowerIndex = selectedTowerIndex,
@@ -42,7 +45,18 @@ namespace TowerDefense.Input
             var mousePanDelta = Vector2.zero;
             if (!pointerOverUi && UnityEngine.Input.GetMouseButton(1))
             {
-                mousePanDelta = new Vector2(UnityEngine.Input.GetAxisRaw("Mouse X"), UnityEngine.Input.GetAxisRaw("Mouse Y"));
+                var mousePosition = (Vector2)UnityEngine.Input.mousePosition;
+                if (mousePanActive)
+                {
+                    mousePanDelta = mousePosition - previousMousePosition;
+                }
+
+                previousMousePosition = mousePosition;
+                mousePanActive = true;
+            }
+            else
+            {
+                mousePanActive = false;
             }
 
             UpdateTowerHotkeySelection();

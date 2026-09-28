@@ -2,7 +2,8 @@
   "name": "TowerDefense.PlayModeTests",
   "rootNamespace": "TowerDefense.Tests",
   "references": [
-    "TowerDefense.Runtime"
+    "TowerDefense.Runtime",
+    "UnityEngine.ParticleSystemModule"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

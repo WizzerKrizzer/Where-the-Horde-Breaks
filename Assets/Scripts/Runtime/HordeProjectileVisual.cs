@@ -1,9 +1,12 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TowerDefense.Runtime
 {
     public sealed class HordeProjectileVisual : MonoBehaviour
     {
+        private static readonly Dictionary<uint, HordeProjectileVisual> ActiveProjectiles = new();
         private Vector3 start;
         private Vector3 end;
         private float duration;
@@ -11,6 +14,9 @@ namespace TowerDefense.Runtime
         private float elapsed;
         private bool arc;
         private Color impactColor;
+        private Action<Vector3, Vector3> travelCallback;
+        private Vector3 previousPosition;
+        private uint projectileId;
 
         public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile)
         {
@@ -18,6 +24,11 @@ namespace TowerDefense.Runtime
         }
 
         public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius)
+        {
+            Spawn(from, to, color, arcProjectile, travelDuration, markerRadius, null);
+        }
+
+        public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius, Action<Vector3, Vector3> onTravel, uint trackedProjectileId = 0u)
         {
             var go = GameObject.CreatePrimitive(arcProjectile ? PrimitiveType.Sphere : PrimitiveType.Capsule);
             go.name = arcProjectile ? "HordeBoulderVisual" : "HordeProjectileVisual";
@@ -35,10 +46,18 @@ namespace TowerDefense.Runtime
             }
 
             var visual = go.AddComponent<HordeProjectileVisual>();
-            visual.Initialize(from, to, color, arcProjectile, travelDuration, markerRadius);
+            visual.Initialize(from, to, color, arcProjectile, travelDuration, markerRadius, onTravel, trackedProjectileId);
         }
 
-        private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius)
+        public static void CompleteProjectile(uint trackedProjectileId)
+        {
+            if (trackedProjectileId != 0u && ActiveProjectiles.TryGetValue(trackedProjectileId, out var visual) && visual != null)
+            {
+                Destroy(visual.gameObject);
+            }
+        }
+
+        private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius, Action<Vector3, Vector3> onTravel, uint trackedProjectileId)
         {
             start = from;
             end = to;
@@ -47,7 +66,22 @@ namespace TowerDefense.Runtime
             duration = Mathf.Max(0.04f, travelDuration);
             impactRadius = Mathf.Max(0.05f, markerRadius);
             elapsed = 0f;
+            travelCallback = onTravel;
+            previousPosition = start;
+            projectileId = trackedProjectileId;
+            if (projectileId != 0u)
+            {
+                ActiveProjectiles[projectileId] = this;
+            }
             transform.position = start;
+        }
+
+        private void OnDestroy()
+        {
+            if (projectileId != 0u && ActiveProjectiles.TryGetValue(projectileId, out var visual) && visual == this)
+            {
+                ActiveProjectiles.Remove(projectileId);
+            }
         }
 
         private void Update()
@@ -61,6 +95,8 @@ namespace TowerDefense.Runtime
             }
 
             transform.position = position;
+            travelCallback?.Invoke(previousPosition, position);
+            previousPosition = position;
             if (!arc)
             {
                 var direction = end - start;
@@ -73,7 +109,10 @@ namespace TowerDefense.Runtime
 
             if (t >= 1f)
             {
-                SpawnImpactMarker(end, impactColor, arc, impactRadius);
+                if (arc)
+                {
+                    SpawnImpactMarker(end, impactColor, true, impactRadius);
+                }
                 Destroy(gameObject);
             }
         }

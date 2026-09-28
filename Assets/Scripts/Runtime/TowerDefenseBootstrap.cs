@@ -13,6 +13,17 @@ namespace TowerDefense.Runtime
         private TopDownCameraController cameraController;
         private GameObject mapRoot;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void EnsureRuntimeBootstrap()
+        {
+            if (FindAnyObjectByType<TowerDefenseBootstrap>() != null)
+            {
+                return;
+            }
+
+            new GameObject("TowerDefenseBootstrap").AddComponent<TowerDefenseBootstrap>();
+        }
+
         private void Awake()
         {
             ConfigureRuntimePerformanceDefaults();
@@ -36,7 +47,7 @@ namespace TowerDefense.Runtime
             enemyManager.SetHordePrototype(hordeManager);
             var towerManager = new GameObject("TowerManager").AddComponent<TowerManager>();
             var activeWeapon = new GameObject("ActiveWeapon").AddComponent<ActiveWeaponController>();
-            activeWeapon.Initialize(enemyManager, input, towerManager);
+            activeWeapon.Initialize(enemyManager, input, towerManager, cameraController);
             var popups = new GameObject("WorldPopups").AddComponent<WorldPopupManager>();
             popups.Initialize(camera);
 
@@ -63,7 +74,7 @@ namespace TowerDefense.Runtime
         private static void ConfigureRuntimePerformanceDefaults()
         {
             QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = 240;
+            Application.targetFrameRate = -1;
         }
 
         private PathRoute LoadLevelMap(LevelDefinition level)
@@ -95,9 +106,10 @@ namespace TowerDefense.Runtime
 
         private static Camera CreateCamera()
         {
-            var go = new GameObject("Main Camera");
+            var camera = Camera.main;
+            var go = camera != null ? camera.gameObject : new GameObject("Main Camera");
             go.tag = "MainCamera";
-            var camera = go.AddComponent<Camera>();
+            camera ??= go.AddComponent<Camera>();
             camera.transform.position = new Vector3(0f, 24f, -20f);
             camera.transform.rotation = Quaternion.Euler(75f, 0f, 0f);
             camera.clearFlags = CameraClearFlags.SolidColor;
@@ -108,99 +120,48 @@ namespace TowerDefense.Runtime
 
         private static void CreateLight()
         {
-            var go = new GameObject("Sun");
-            var light = go.AddComponent<Light>();
+            var lights = FindObjectsByType<Light>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            Light light = null;
+            for (var i = 0; i < lights.Length; i++)
+            {
+                if (lights[i].type == LightType.Directional)
+                {
+                    light = lights[i];
+                    break;
+                }
+            }
+
+            var go = light != null ? light.gameObject : new GameObject("Sun");
+            light ??= go.AddComponent<Light>();
             light.type = LightType.Directional;
             light.intensity = 1.1f;
-            go.transform.rotation = Quaternion.Euler(55f, 35f, 0f);
+            go.transform.rotation = Quaternion.Euler(78f, 25f, 0f);
         }
 
         private static void CreateGround(Transform parent, LevelDefinition level)
         {
+            if (level != null && level.useCircularArena)
+            {
+                var arenaGround = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                arenaGround.name = "BuildableGround";
+                arenaGround.transform.SetParent(parent, false);
+                arenaGround.transform.position = level.groundCenter;
+                var groundRadius = Mathf.Max(2f, level.arenaRadius + 5f);
+                arenaGround.transform.localScale = new Vector3(groundRadius * 2f, 0.05f, groundRadius * 2f);
+                arenaGround.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(.035f, .045f, .05f));
+                RemovePrimitiveCollider(arenaGround);
+                return;
+            }
+
             var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "BuildableGround";
             ground.transform.SetParent(parent, false);
             ground.transform.position = level != null ? level.groundCenter : new Vector3(0f, -0.08f, 1.5f);
             ground.transform.localScale = level != null ? level.groundSize : new Vector3(82f, 0.1f, 50f);
-            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
-            CreateGroundTexture(parent, level);
+            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(.035f, .045f, .05f));
+            // A plain board supports the route without adding terrain detail.
         }
 
-        private static void CreateGroundTexture(Transform parent, LevelDefinition level)
-        {
-            var root = new GameObject("GroundTexture");
-            root.transform.SetParent(parent, false);
-            if (level != null && level.decorVariant == 2)
-            {
-                CreateLargeMapGroundTexture(root.transform, level.groundCenter, level.groundSize);
-                return;
-            }
-
-            var patches = new[]
-            {
-                new Vector3(-34f, 0f, -14f), new Vector3(-29f, 0f, 16f), new Vector3(-24f, 0f, -18f),
-                new Vector3(-17f, 0f, 1.5f), new Vector3(-8f, 0f, 16.5f), new Vector3(-5f, 0f, -16.5f),
-                new Vector3(9f, 0f, 15.5f), new Vector3(11f, 0f, -17f), new Vector3(19f, 0f, -12f),
-                new Vector3(26f, 0f, 17f), new Vector3(31f, 0f, -2f), new Vector3(35f, 0f, -17f),
-                new Vector3(-38f, 0f, 5f), new Vector3(38f, 0f, 9f), new Vector3(0f, 0f, 20f)
-            };
-
-            for (var i = 0; i < patches.Length; i++)
-            {
-                var size = 0.55f + Mathf.Abs(Mathf.Sin(i * 1.71f)) * 0.75f;
-                var color = i % 3 == 0
-                    ? new Color(0.23f, 0.29f, 0.19f)
-                    : new Color(0.34f, 0.41f, 0.27f);
-                CreateGroundPatch(root.transform, patches[i], size, color, i);
-            }
-
-            for (var i = 0; i < 42; i++)
-            {
-                var x = -38f + i * 1.85f;
-                var z = 20.5f + Mathf.Sin(i * 0.83f) * 1.1f;
-                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.22f + 0.08f * (i % 4), new Color(0.23f, 0.29f, 0.18f), i + 50);
-            }
-
-            for (var i = 0; i < 36; i++)
-            {
-                var x = -37f + i * 2.1f;
-                var z = -21.2f + Mathf.Sin(i * 1.12f) * 0.9f;
-                CreateGroundPatch(root.transform, new Vector3(x, 0f, z), 0.18f + 0.07f * (i % 5), new Color(0.22f, 0.28f, 0.17f), i + 100);
-            }
-        }
-
-        private static void CreateLargeMapGroundTexture(Transform parent, Vector3 center, Vector3 size)
-        {
-            var left = center.x - size.x * 0.5f + 4f;
-            var right = center.x + size.x * 0.5f - 4f;
-            var bottom = center.z - size.z * 0.5f + 4f;
-            var top = center.z + size.z * 0.5f - 4f;
-            for (var i = 0; i < 70; i++)
-            {
-                var x = Mathf.Lerp(left, right, Mathf.Abs(Mathf.Sin(i * 2.173f)));
-                var z = Mathf.Lerp(bottom, top, Mathf.Abs(Mathf.Sin(i * 1.417f + 0.31f)));
-                var avoidCenter = Mathf.Abs(z) < 19f && x > -48f && x < 48f;
-                if (avoidCenter)
-                {
-                    z += z >= 0f ? 10f : -10f;
-                }
-
-                var color = i % 4 == 0 ? new Color(0.22f, 0.28f, 0.17f) : new Color(0.33f, 0.4f, 0.26f);
-                CreateGroundPatch(parent, new Vector3(x, 0f, z), 0.25f + 0.12f * (i % 5), color, i + 200);
-            }
-        }
-
-        private static void CreateGroundPatch(Transform parent, Vector3 position, float size, Color color, int index)
-        {
-            var patch = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            patch.name = "GroundTexturePatch";
-            patch.transform.SetParent(parent, false);
-            patch.transform.position = position + Vector3.up * -0.015f;
-            patch.transform.rotation = Quaternion.Euler(0f, index * 23f, 0f);
-            patch.transform.localScale = new Vector3(size * (1.4f + 0.25f * (index % 3)), 0.018f, size * (0.55f + 0.18f * (index % 4)));
-            patch.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
-            RemovePrimitiveCollider(patch);
-        }
 
         private static void RemovePrimitiveCollider(GameObject target)
         {
@@ -236,16 +197,77 @@ namespace TowerDefense.Runtime
 
             var roadWidth = Mathf.Max(1f, level != null ? level.roadWidth : 5.4f);
             var waypointWidths = ResolveWaypointWidths(points, level?.pathWaypointWidths, roadWidth);
+            var useSquareCorners = level != null && level.useSquarePathCorners;
             route.SetWaypoints(points, waypointWidths);
-            CreatePathVisuals(parent, points, waypointWidths);
-            if (level?.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
+            route.SetSquareCorners(useSquareCorners);
+            if (level != null && level.useCircularArena)
             {
-                var secondaryWidths = ResolveWaypointWidths(level.secondaryPathWaypoints, null, roadWidth);
-                route.SetSecondaryWaypoints(level.secondaryPathWaypoints, secondaryWidths);
-                CreatePathVisuals(parent, level.secondaryPathWaypoints, secondaryWidths);
+                CreateCircularArenaVisual(parent, points[0], Mathf.Max(1f, level.arenaRadius));
+                return route;
             }
 
+            if (level?.secondaryPathWaypoints != null && level.secondaryPathWaypoints.Length > 1)
+            {
+                var secondaryWidths = ResolveWaypointWidths(
+                    level.secondaryPathWaypoints,
+                    level.secondaryPathWaypointWidths,
+                    roadWidth);
+                route.SetSecondaryWaypoints(level.secondaryPathWaypoints, secondaryWidths);
+            }
+            if (level?.tertiaryPathWaypoints != null && level.tertiaryPathWaypoints.Length > 1)
+            {
+                var tertiaryWidths = ResolveWaypointWidths(
+                    level.tertiaryPathWaypoints,
+                    level.tertiaryPathWaypointWidths,
+                    roadWidth);
+                route.SetTertiaryWaypoints(level.tertiaryPathWaypoints, tertiaryWidths);
+            }
+
+            RoadSurface.Create(parent, route, level);
             return route;
+        }
+
+        private static void CreateCircularArenaVisual(Transform parent, Vector3 center, float radius)
+        {
+            CreateArenaDisc(parent, "ArenaContactShadow", center, radius + 0.45f, 0.002f,
+                BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f)));
+            CreateArenaDisc(parent, "ArenaFloor", center, radius, 0.092f,
+                BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f)));
+
+            var boundary = new GameObject("ArenaBoundary");
+            boundary.transform.SetParent(parent, false);
+            var line = boundary.AddComponent<LineRenderer>();
+            const int segmentCount = 96;
+            line.useWorldSpace = true;
+            line.loop = true;
+            line.positionCount = segmentCount;
+            line.widthMultiplier = 0.22f;
+            line.numCornerVertices = 2;
+            line.material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            for (var i = 0; i < segmentCount; i++)
+            {
+                var angle = i * Mathf.PI * 2f / segmentCount;
+                line.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * radius, 0.165f, Mathf.Sin(angle) * radius));
+            }
+        }
+
+        private static void CreateArenaDisc(
+            Transform parent,
+            string name,
+            Vector3 center,
+            float radius,
+            float height,
+            Material material)
+        {
+            var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            disc.name = name;
+            disc.transform.SetParent(parent, false);
+            disc.transform.position = center + Vector3.up * height;
+            disc.transform.localScale = new Vector3(radius * 2f, 0.025f, radius * 2f);
+            disc.GetComponent<Renderer>().material = material;
+            RemovePrimitiveCollider(disc);
         }
 
         private static float[] ResolveWaypointWidths(Vector3[] points, float[] authoredWidths, float fallbackWidth)
@@ -261,175 +283,13 @@ namespace TowerDefense.Runtime
             return widths;
         }
 
-        private static void CreatePathVisuals(Transform parent, Vector3[] points, float[] waypointWidths)
-        {
-            for (var i = 1; i < points.Length; i++)
-            {
-                CreatePathSegment(parent, points[i - 1], points[i], waypointWidths[i - 1], waypointWidths[i]);
-            }
-
-            for (var i = 1; i < points.Length - 1; i++)
-            {
-                CreatePathCorner(parent, points[i], waypointWidths[i]);
-            }
-
-            CreatePathBoundary(parent, "PathBoundary_Left", points, 1f, waypointWidths);
-            CreatePathBoundary(parent, "PathBoundary_Right", points, -1f, waypointWidths);
-        }
-
-        private static void CreatePathSegment(Transform parent, Vector3 from, Vector3 to, float fromWidth, float toWidth)
-        {
-            var midpoint = (from + to) * 0.5f + Vector3.up * 0.09f;
-            var direction = to - from;
-            var forward = direction.normalized;
-            var averageWidth = (fromWidth + toWidth) * 0.5f;
-
-            CreateTaperedPathSurface(parent, "PathContactShadow", from, to, fromWidth + 0.7f, toWidth + 0.7f, 0.002f,
-                BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f)));
-            CreateTaperedPathSurface(parent, "PathVisual", from, to, fromWidth, toWidth, 0.092f,
-                BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f)));
-            CreateTaperedPathSurface(parent, "PathWornCenter", from, to, fromWidth * 0.34f, toWidth * 0.34f, 0.138f,
-                BootstrapMaterials.Get(new Color(0.42f, 0.31f, 0.2f)));
-
-            var side = Vector3.Cross(Vector3.up, forward);
-            if (Mathf.Abs(fromWidth - toWidth) < 0.01f)
-            {
-                CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, averageWidth, 1f);
-                CreatePathEdgeAO(parent, midpoint, forward, side, direction.magnitude, averageWidth, -1f);
-            }
-        }
-
-        private static void CreateTaperedPathSurface(
-            Transform parent,
-            string name,
-            Vector3 from,
-            Vector3 to,
-            float fromWidth,
-            float toWidth,
-            float height,
-            Material material)
-        {
-            var forward = (to - from).normalized;
-            var side = Vector3.Cross(Vector3.up, forward).normalized;
-            var gameObject = new GameObject(name);
-            gameObject.transform.SetParent(parent, false);
-            var mesh = new Mesh
-            {
-                name = $"{name}_Tapered",
-                vertices = new[]
-                {
-                    from + side * (fromWidth * 0.5f) + Vector3.up * height,
-                    from - side * (fromWidth * 0.5f) + Vector3.up * height,
-                    to + side * (toWidth * 0.5f) + Vector3.up * height,
-                    to - side * (toWidth * 0.5f) + Vector3.up * height
-                },
-                triangles = new[] { 0, 1, 2, 1, 3, 2 }
-            };
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            gameObject.AddComponent<MeshFilter>().sharedMesh = mesh;
-            gameObject.AddComponent<MeshRenderer>().sharedMaterial = material;
-        }
-
-        private static void CreatePathEdgeAO(Transform parent, Vector3 midpoint, Vector3 forward, Vector3 side, float length, float roadWidth, float sideSign)
-        {
-            var ao = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ao.name = "PathEdgeAO";
-            ao.transform.SetParent(parent, false);
-            ao.transform.position = midpoint + side * sideSign * (roadWidth * 0.5f + 0.12f) + Vector3.up * -0.078f;
-            ao.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            ao.transform.localScale = new Vector3(0.42f, 0.012f, length * 0.98f);
-            ao.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.22f, 0.28f, 0.18f));
-            RemovePrimitiveCollider(ao);
-        }
-
-        private static void CreatePathCorner(Transform parent, Vector3 position, float roadWidth)
-        {
-            var corner = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            corner.name = "PathCornerFill";
-            corner.transform.SetParent(parent, false);
-            corner.transform.position = position + Vector3.up * 0.092f;
-            corner.transform.localScale = new Vector3(roadWidth + 0.25f, 0.082f, roadWidth + 0.25f);
-            corner.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f));
-        }
-
-        private static void CreatePathBoundary(Transform parent, string name, Vector3[] points, float sideSign, float[] waypointWidths)
-        {
-            var boundary = new GameObject(name);
-            boundary.transform.SetParent(parent, false);
-            var line = boundary.AddComponent<LineRenderer>();
-            line.useWorldSpace = true;
-            line.positionCount = points.Length;
-            line.widthMultiplier = 0.22f;
-            line.numCornerVertices = 4;
-            line.numCapVertices = 2;
-            line.material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
-
-            for (var i = 0; i < points.Length; i++)
-            {
-                var bankOffset = waypointWidths[i] * 0.5f + 0.28f;
-                line.SetPosition(i, GetBoundaryPoint(points, i, sideSign, bankOffset) + Vector3.up * 0.165f);
-            }
-        }
-
-        private static Vector3 GetBoundaryPoint(Vector3[] points, int index, float sideSign, float bankOffset)
-        {
-            if (points.Length < 2)
-            {
-                return points[index];
-            }
-
-            if (index == 0)
-            {
-                return points[index] + GetSegmentSide(points[0], points[1]) * sideSign * bankOffset;
-            }
-
-            if (index == points.Length - 1)
-            {
-                return points[index] + GetSegmentSide(points[index - 1], points[index]) * sideSign * bankOffset;
-            }
-
-            var incomingSide = GetSegmentSide(points[index - 1], points[index]) * sideSign;
-            var outgoingSide = GetSegmentSide(points[index], points[index + 1]) * sideSign;
-            var miter = incomingSide + outgoingSide;
-            if (miter.sqrMagnitude < 0.001f)
-            {
-                return points[index] + incomingSide * bankOffset;
-            }
-
-            miter.Normalize();
-            var scale = bankOffset / Mathf.Max(0.25f, Mathf.Abs(Vector3.Dot(miter, incomingSide)));
-            return points[index] + miter * scale;
-        }
-
-        private static Vector3 GetSegmentSide(Vector3 from, Vector3 to)
-        {
-            var forward = (to - from).normalized;
-            return Vector3.Cross(Vector3.up, forward);
-        }
 
         private static void CreateMapDecor(Transform parent, LevelDefinition level)
         {
-            var root = new GameObject("MapDecor");
-            root.transform.SetParent(parent, false);
-            if (level != null && level.decorVariant == 2)
-            {
-                CreateLevelTwoDecor(root.transform);
-                return;
-            }
-
-            if (level != null && level.decorVariant == 3)
-            {
-                CreateLevelThreeDecor(root.transform);
-                return;
-            }
-
-            CreateTrees(root.transform);
-            CreateRuinedHouses(root.transform);
-            CreatePondAndVillageProps(root.transform);
-            CreateVillageFires(root.transform);
+            // The play space is intentionally a clean board: no trees, water,
+            // fires, huts, stones or other scenery should obscure the route.
+            // Decoration is visual-only, so omitting it leaves navigation,
+            // build placement and enemy physics unchanged.
         }
 
         private static void CreateLevelTwoDecor(Transform parent)
@@ -443,8 +303,8 @@ namespace TowerDefense.Runtime
             CreateRuinedHouse(parent, new Vector3(-44f, 0f, 18f), 0.9f, -8f);
             CreateRuinedHouse(parent, new Vector3(44f, 0f, -18f), 0.9f, 172f);
             CreateWell(parent, new Vector3(0f, 0f, 25f), 0.7f);
-            CreateDecorCube(parent, "DecorLevel2MarkerStoneA", new Vector3(-34f, 0.12f, 0f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
-            CreateDecorCube(parent, "DecorLevel2MarkerStoneB", new Vector3(34f, 0.12f, 0f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
+            CreateDecorCube(parent, "DecorLevel2MarkerStoneA", new Vector3(-34f, 0.12f, -4.3f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
+            CreateDecorCube(parent, "DecorLevel2MarkerStoneB", new Vector3(34f, 0.12f, 4.3f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
         }
 
         private static void CreateLevelThreeDecor(Transform parent)
@@ -683,7 +543,7 @@ namespace TowerDefense.Runtime
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy,
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
-                72f, 2.28f, 2, 4, new Color(0.05f, 0.45f, 0.08f), 0.6f);
+                72f, 2.28f, 2, 4, new Color(0.05f, 0.45f, 0.08f), 0.39f);
             var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support,
                 "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
@@ -788,6 +648,7 @@ namespace TowerDefense.Runtime
             wave.spawnInterval = 0.5f;
             wave.randomSpawnBurstMin = 3;
             wave.randomSpawnBurstMax = 8;
+            wave.enforceSpawnClearance = true;
             wave.entries = BuildLevelOneWaveEntries(runner, brute);
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -798,6 +659,7 @@ namespace TowerDefense.Runtime
             level.pathWaypoints = CreateLevelOnePath();
             level.groundCenter = new Vector3(0f, -0.08f, 1.5f);
             level.groundSize = new Vector3(82f, 0.1f, 50f);
+            level.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
             level.decorVariant = 1;
             level.cameraPosition = new Vector3(0f, 24f, -20f);
             level.cameraFieldOfView = 45f;
@@ -816,26 +678,42 @@ namespace TowerDefense.Runtime
 
             var levelTwoWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelTwoWave.id = "wave_02_placeholder";
-            levelTwoWave.totalEnemyCount = 500;
-            levelTwoWave.spawnInterval = 0.45f;
+            levelTwoWave.totalEnemyCount = 10000;
+            levelTwoWave.spawnInterval = 0.009f;
             levelTwoWave.randomSpawnBurstMin = 5;
             levelTwoWave.randomSpawnBurstMax = 12;
             levelTwoWave.useEndpointSeeking = true;
+            levelTwoWave.enforceSpawnClearance = true;
+            levelTwoWave.enemyScaleMultiplier = 0.7f;
+            levelTwoWave.enemyInertiaMultiplier = 1.35f;
+            levelTwoWave.enemyMassMultiplier = 1.3f;
+            levelTwoWave.collisionPressureMultiplier = 1.2f;
+            levelTwoWave.roadHalfWidth = 15f;
+            // Level 2 keeps the reference crowd physics, but navigation is constrained to
+            // the authored roads. Open-field flow remains available for a separate level.
+            levelTwoWave.hordeNavigationMode = HordeNavigationMode.Corridor;
+            levelTwoWave.hordePhysicsProfile = HordePhysicsProfile.CreateOrcReference();
             levelTwoWave.entries = new[]
             {
-                new WaveEntry { enemy = runner, count = 500 }
+                new WaveEntry { enemy = runner, count = 10000 }
             };
 
             var levelTwo = ScriptableObject.CreateInstance<LevelDefinition>();
             levelTwo.id = "level_02";
-            levelTwo.displayName = "Twin Serpent Road";
+            levelTwo.displayName = "Three-Lane Horde Test";
             levelTwo.startingLives = 12;
+            levelTwo.preventLifeLoss = true;
             levelTwo.wave = levelTwoWave;
             levelTwo.useDataHordePrototype = true;
             levelTwo.pathWaypoints = CreateLevelTwoPath();
             levelTwo.pathWaypointWidths = CreateLevelTwoPathWidths();
+            levelTwo.secondaryPathWaypoints = CreateLevelTwoUpperPath();
+            levelTwo.secondaryPathWaypointWidths = CreateLevelTwoPathWidths();
+            levelTwo.tertiaryPathWaypoints = CreateLevelTwoLowerPath();
+            levelTwo.tertiaryPathWaypointWidths = CreateLevelTwoPathWidths();
             levelTwo.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelTwo.groundSize = new Vector3(126f, 0.1f, 70f);
+            levelTwo.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
             levelTwo.decorVariant = 2;
             levelTwo.cameraPosition = new Vector3(0f, 42f, -32f);
             levelTwo.cameraFieldOfView = 50f;
@@ -850,7 +728,59 @@ namespace TowerDefense.Runtime
             levelTwo.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 12);
             levelTwo.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             levelTwo.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
-            levelTwo.recommendedTactics = "Horde validation road: observe the long straight, sharp corner, three-metre choke and ten-metre expansion before committing defenses.";
+            levelTwo.recommendedTactics = "Horde stress test: 10,000 heavier, high-inertia enemies split between three three-metre lanes before merging into a three-metre finish.";
+
+            var levelTwoPointOneWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelTwoPointOneWave.id = "wave_02_1_three_exit";
+            levelTwoPointOneWave.totalEnemyCount = 10000;
+            levelTwoPointOneWave.spawnInterval = 0.009f;
+            levelTwoPointOneWave.randomSpawnBurstMin = 5;
+            levelTwoPointOneWave.randomSpawnBurstMax = 12;
+            levelTwoPointOneWave.useEndpointSeeking = true;
+            levelTwoPointOneWave.enforceSpawnClearance = true;
+            levelTwoPointOneWave.enemyScaleMultiplier = 0.7f;
+            levelTwoPointOneWave.enemyInertiaMultiplier = 1.35f;
+            levelTwoPointOneWave.enemyMassMultiplier = 1.3f;
+            levelTwoPointOneWave.collisionPressureMultiplier = 1.2f;
+            levelTwoPointOneWave.roadHalfWidth = 15f;
+            levelTwoPointOneWave.hordeNavigationMode = HordeNavigationMode.Corridor;
+            levelTwoPointOneWave.hordePhysicsProfile = HordePhysicsProfile.CreateOrcReference();
+            levelTwoPointOneWave.entries = new[]
+            {
+                new WaveEntry { enemy = runner, count = 10000 }
+            };
+
+            var levelTwoPointOne = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelTwoPointOne.id = "level_02_1";
+            levelTwoPointOne.displayName = "Three-Exit Horde Flow Test";
+            levelTwoPointOne.startingLives = 12;
+            levelTwoPointOne.preventLifeLoss = true;
+            levelTwoPointOne.wave = levelTwoPointOneWave;
+            levelTwoPointOne.useDataHordePrototype = true;
+            levelTwoPointOne.pathWaypoints = CreateLevelTwoPath();
+            levelTwoPointOne.pathWaypointWidths = CreateLevelTwoPathWidths();
+            levelTwoPointOne.secondaryPathWaypoints = CreateLevelTwoThreeExitUpperPath();
+            levelTwoPointOne.secondaryPathWaypointWidths = CreateLevelTwoPathWidths();
+            levelTwoPointOne.tertiaryPathWaypoints = CreateLevelTwoThreeExitLowerPath();
+            levelTwoPointOne.tertiaryPathWaypointWidths = CreateLevelTwoPathWidths();
+            levelTwoPointOne.groundCenter = new Vector3(0f, -0.08f, 0f);
+            levelTwoPointOne.groundSize = new Vector3(126f, 0.1f, 70f);
+            levelTwoPointOne.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
+            levelTwoPointOne.decorVariant = 2;
+            levelTwoPointOne.cameraPosition = new Vector3(0f, 42f, -32f);
+            levelTwoPointOne.cameraFieldOfView = 50f;
+            levelTwoPointOne.cameraMinHeight = 10f;
+            levelTwoPointOne.cameraMaxHeight = 88f;
+            levelTwoPointOne.cameraPanSpeed = 38f;
+            levelTwoPointOne.cameraMouseDragSensitivity = 4.75f;
+            levelTwoPointOne.cameraMinBounds = new Vector2(-62f, -34f);
+            levelTwoPointOne.cameraMaxBounds = new Vector2(62f, 34f);
+            levelTwoPointOne.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelTwoPointOne.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelTwoPointOne.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 12);
+            levelTwoPointOne.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelTwoPointOne.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelTwoPointOne.recommendedTactics = "Control test: the same 10,000-enemy entrance and middle as Level 2, but each lane keeps an equal three-metre exit instead of merging.";
 
             var levelThreeWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelThreeWave.id = "wave_03_foundation";
@@ -858,6 +788,7 @@ namespace TowerDefense.Runtime
             levelThreeWave.spawnInterval = 0.34f;
             levelThreeWave.randomSpawnBurstMin = 9;
             levelThreeWave.randomSpawnBurstMax = 20;
+            levelThreeWave.enforceSpawnClearance = true;
             levelThreeWave.entries = BuildLevelThreeWaveEntries(runner, brute, shaman, vampire, harpy, zombie);
 
             var levelThree = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -868,6 +799,7 @@ namespace TowerDefense.Runtime
             levelThree.pathWaypoints = CreateLevelThreePath();
             levelThree.groundCenter = new Vector3(0f, -0.08f, 1f);
             levelThree.groundSize = new Vector3(150f, 0.1f, 84f);
+            levelThree.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
             levelThree.decorVariant = 3;
             levelThree.cameraPosition = new Vector3(0f, 50f, -38f);
             levelThree.cameraFieldOfView = 52f;
@@ -891,6 +823,7 @@ namespace TowerDefense.Runtime
             levelFourWave.randomSpawnBurstMin = 48;
             levelFourWave.randomSpawnBurstMax = 92;
             levelFourWave.useEndpointSeeking = true;
+            levelFourWave.enforceSpawnClearance = true;
             levelFourWave.entries = BuildLevelFourStressWaveEntries(runner, brute, shaman, vampire, harpy, zombie);
 
             var levelFour = ScriptableObject.CreateInstance<LevelDefinition>();
@@ -901,6 +834,7 @@ namespace TowerDefense.Runtime
             levelFour.pathWaypoints = CreateLevelFourPath();
             levelFour.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelFour.groundSize = new Vector3(230f, 0.1f, 132f);
+            levelFour.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
             levelFour.decorVariant = 4;
             levelFour.useDataHordePrototype = true;
             levelFour.cameraPosition = new Vector3(0f, 78f, -62f);
@@ -928,6 +862,7 @@ namespace TowerDefense.Runtime
             levelFiveWave.randomSpawnBurstMin = 55;
             levelFiveWave.randomSpawnBurstMax = 70;
             levelFiveWave.useEndpointSeeking = true;
+            levelFiveWave.enforceSpawnClearance = true;
             levelFiveWave.roadHalfWidth = 26.5f;
             levelFiveWave.entries = new[]
             {
@@ -943,6 +878,7 @@ namespace TowerDefense.Runtime
             levelFive.roadWidth = 54f;
             levelFive.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelFive.groundSize = new Vector3(400f, 0.1f, 360f);
+            levelFive.environmentTilePackage = EnvironmentTilePackageId.WeatheredRoad;
             levelFive.decorVariant = 4;
             levelFive.useDataHordePrototype = true;
             levelFive.cameraPosition = new Vector3(0f, 150f, -155f);
@@ -959,6 +895,110 @@ namespace TowerDefense.Runtime
             levelFive.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             levelFive.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
             levelFive.recommendedTactics = "Dedicated 100,000-enemy GPU stress test. The very long map and rapid batched spawn expose simulation, grid, rendering, combat-command, and frame-stability limits.";
+
+            var levelSixWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelSixWave.id = "wave_06_right_angle_collision_test";
+            levelSixWave.totalEnemyCount = 10000;
+            levelSixWave.spawnInterval = 0.009f;
+            levelSixWave.randomSpawnBurstMin = 5;
+            levelSixWave.randomSpawnBurstMax = 12;
+            levelSixWave.useEndpointSeeking = true;
+            levelSixWave.enforceSpawnClearance = true;
+            levelSixWave.enemyScaleMultiplier = 0.567f;
+            levelSixWave.enemyInertiaMultiplier = 1.7f;
+            levelSixWave.enemyMassMultiplier = 1.3f;
+            levelSixWave.collisionPressureMultiplier = 1.2f;
+            levelSixWave.spawnPackingMultiplier = 1.5f;
+            levelSixWave.randomEnemySpeedMin = 5f;
+            levelSixWave.randomEnemySpeedMax = 7f;
+            levelSixWave.colorEnemiesBySpeed = true;
+            levelSixWave.roadHalfWidth = 3f;
+            levelSixWave.entries = new[]
+            {
+                new WaveEntry { enemy = runner, count = 10000 }
+            };
+
+            var levelSix = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelSix.id = "level_06";
+            levelSix.displayName = "Right-Angle Collision Lab";
+            levelSix.startingLives = 12;
+            levelSix.preventLifeLoss = true;
+            levelSix.wave = levelSixWave;
+            levelSix.pathWaypoints = CreateLevelSixPath();
+            levelSix.pathWaypointWidths = CreateLevelSixPathWidths();
+            levelSix.roadWidth = 3f;
+            levelSix.useSquarePathCorners = true;
+            levelSix.groundCenter = new Vector3(0f, -0.08f, 3f);
+            levelSix.groundSize = new Vector3(160f, 0.1f, 72f);
+            levelSix.environmentTilePackage = EnvironmentTilePackageId.WeatheredRoad;
+            levelSix.decorVariant = 4;
+            levelSix.useDataHordePrototype = true;
+            levelSix.cameraPosition = new Vector3(0f, 54f, -43f);
+            levelSix.cameraFieldOfView = 52f;
+            levelSix.cameraMinHeight = 12f;
+            levelSix.cameraMaxHeight = 130f;
+            levelSix.cameraPanSpeed = 52f;
+            levelSix.cameraMouseDragSensitivity = 6f;
+            levelSix.cameraMinBounds = new Vector2(-78f, -34f);
+            levelSix.cameraMaxBounds = new Vector2(78f, 38f);
+            levelSix.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelSix.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelSix.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 20);
+            levelSix.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelSix.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelSix.recommendedTactics = "Collision lab: 10,000 high-inertia enemies enter through a six-metre opening before traversing the traced three-metre orthogonal route.";
+
+            var levelSevenWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelSevenWave.id = "wave_07_explosion_physics_test";
+            levelSevenWave.totalEnemyCount = 10000;
+            levelSevenWave.spawnInterval = 0.02f;
+            levelSevenWave.randomSpawnBurstMin = 6;
+            levelSevenWave.randomSpawnBurstMax = 10;
+            levelSevenWave.enforceSpawnClearance = true;
+            levelSevenWave.stationaryArena = true;
+            levelSevenWave.randomArenaMovement = false;
+            levelSevenWave.centerSeekingArena = true;
+            levelSevenWave.enemyScaleMultiplier = 0.7f;
+            levelSevenWave.enemyInertiaMultiplier = 1.4f;
+            levelSevenWave.enemyMassMultiplier = 1f;
+            levelSevenWave.collisionPressureMultiplier = 1.5f;
+            levelSevenWave.spawnPackingMultiplier = 1.05f;
+            levelSevenWave.enemySpeedMultiplier = 1.7f;
+            levelSevenWave.openingSpeedDuration = 10f;
+            levelSevenWave.openingSpeedMultiplier = 3f;
+            levelSevenWave.roadHalfWidth = 60f;
+            levelSevenWave.entries = BuildLevelSevenWaveEntries(runner, brute);
+
+            var levelSeven = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelSeven.id = "level_07";
+            levelSeven.displayName = "Explosion Physics Lab";
+            levelSeven.startingLives = 10000;
+            levelSeven.preventLifeLoss = true;
+            levelSeven.wave = levelSevenWave;
+            levelSeven.pathWaypoints = CreateLevelSevenPath();
+            levelSeven.pathWaypointWidths = new[] { 120f, 120f };
+            levelSeven.roadWidth = 120f;
+            levelSeven.useCircularArena = true;
+            levelSeven.arenaRadius = 60f;
+            levelSeven.groundCenter = new Vector3(0f, -0.08f, 0f);
+            levelSeven.groundSize = new Vector3(140f, 0.1f, 140f);
+            levelSeven.environmentTilePackage = EnvironmentTilePackageId.Arena;
+            levelSeven.decorVariant = 5;
+            levelSeven.useDataHordePrototype = true;
+            levelSeven.cameraPosition = new Vector3(0f, 104f, -80f);
+            levelSeven.cameraFieldOfView = 48f;
+            levelSeven.cameraMinHeight = 24f;
+            levelSeven.cameraMaxHeight = 270f;
+            levelSeven.cameraPanSpeed = 108f;
+            levelSeven.cameraMouseDragSensitivity = 6f;
+            levelSeven.cameraMinBounds = new Vector2(-70f, -70f);
+            levelSeven.cameraMaxBounds = new Vector2(70f, 70f);
+            levelSeven.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
+            levelSeven.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
+            levelSeven.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 20);
+            levelSeven.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
+            levelSeven.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
+            levelSeven.recommendedTactics = "Explosion lab: enemies continuously spawn around the edge of a sealed circular arena and converge on its center. Use the Shockwave Bomb to inspect radial knockback, impulse transfer, wall pressure, and crowd recovery.";
 
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
@@ -1673,7 +1713,7 @@ namespace TowerDefense.Runtime
             return new SampleContent
             {
                 Level = level,
-                Levels = new[] { level, levelTwo, levelThree, levelFour, levelFive },
+                Levels = new[] { level, levelTwo, levelTwoPointOne, levelThree, levelFour, levelFive, levelSix, levelSeven },
                 SkillTree = tree,
                 Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
             };
@@ -1698,18 +1738,50 @@ namespace TowerDefense.Runtime
         {
             return new[]
             {
-                new Vector3(-56f, 0f, 14f),
-                new Vector3(-34f, 0f, 14f),
-                new Vector3(-24f, 0f, 14f),
-                new Vector3(-24f, 0f, -5f),
-                new Vector3(-24f, 0f, -17f),
-                new Vector3(2f, 0f, -17f),
-                new Vector3(10f, 0f, -17f),
-                new Vector3(18f, 0f, -17f),
-                new Vector3(36f, 0f, -17f),
-                new Vector3(42f, 0f, -11f),
-                new Vector3(42f, 0f, 10f),
-                new Vector3(56f, 0f, 10f)
+                new Vector3(-56f, 0f, 0f),
+                new Vector3(-44f, 0f, 0f),
+                new Vector3(-34f, 0f, 0f),
+                new Vector3(-22f, 0f, 0f),
+                new Vector3(-8f, 0f, 0f),
+                new Vector3(8f, 0f, 0f),
+                new Vector3(22f, 0f, 0f),
+                new Vector3(34f, 0f, 0f),
+                new Vector3(44f, 0f, 0f),
+                new Vector3(56f, 0f, 0f)
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoUpperPath()
+        {
+            return new[]
+            {
+                new Vector3(-56f, 0f, 0f),
+                new Vector3(-44f, 0f, 0f),
+                new Vector3(-34f, 0f, 12f),
+                new Vector3(-22f, 0f, 19f),
+                new Vector3(-8f, 0f, 22f),
+                new Vector3(8f, 0f, 22f),
+                new Vector3(22f, 0f, 19f),
+                new Vector3(34f, 0f, 12f),
+                new Vector3(44f, 0f, 0f),
+                new Vector3(56f, 0f, 0f)
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoLowerPath()
+        {
+            return new[]
+            {
+                new Vector3(-56f, 0f, 0f),
+                new Vector3(-44f, 0f, 0f),
+                new Vector3(-34f, 0f, -12f),
+                new Vector3(-22f, 0f, -19f),
+                new Vector3(-8f, 0f, -22f),
+                new Vector3(8f, 0f, -22f),
+                new Vector3(22f, 0f, -19f),
+                new Vector3(34f, 0f, -12f),
+                new Vector3(44f, 0f, 0f),
+                new Vector3(56f, 0f, 0f)
             };
         }
 
@@ -1717,7 +1789,7 @@ namespace TowerDefense.Runtime
         {
             return new[]
             {
-                6f, 6f, 6f, 5f, 3f, 3f, 5f, 10f, 10f, 9f, 7f, 6f
+                30f, 18f, 3f, 3f, 3f, 3f, 3f, 3f, 3f, 3f
             };
         }
 
@@ -1794,6 +1866,76 @@ namespace TowerDefense.Runtime
             };
         }
 
+        private static Vector3[] CreateLevelSixPath()
+        {
+            return new[]
+            {
+                new Vector3(-72f, 0f, 30f),
+                new Vector3(-36.5f, 0f, 30f),
+                new Vector3(-36f, 0f, 30f),
+                new Vector3(-36f, 0f, 5f),
+                new Vector3(12f, 0f, 5f),
+                new Vector3(12f, 0f, -11f),
+                new Vector3(-18f, 0f, -11f),
+                new Vector3(-18f, 0f, -30f),
+                new Vector3(72f, 0f, -30f)
+            };
+        }
+
+        private static float[] CreateLevelSixPathWidths()
+        {
+            var widths = new float[9];
+            for (var i = 0; i < widths.Length; i++)
+            {
+                widths[i] = i < 2 ? 6f : 3f;
+            }
+
+            return widths;
+        }
+
+        private static Vector3[] CreateLevelSevenPath()
+        {
+            return new[]
+            {
+                Vector3.zero,
+                Vector3.zero
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoThreeExitUpperPath()
+        {
+            return new[]
+            {
+                new Vector3(-56f, 0f, 0f),
+                new Vector3(-44f, 0f, 0f),
+                new Vector3(-34f, 0f, 12f),
+                new Vector3(-22f, 0f, 19f),
+                new Vector3(-8f, 0f, 22f),
+                new Vector3(8f, 0f, 22f),
+                new Vector3(22f, 0f, 19f),
+                new Vector3(34f, 0f, 12f),
+                new Vector3(44f, 0f, 12f),
+                new Vector3(56f, 0f, 12f)
+            };
+        }
+
+        private static Vector3[] CreateLevelTwoThreeExitLowerPath()
+        {
+            return new[]
+            {
+                new Vector3(-56f, 0f, 0f),
+                new Vector3(-44f, 0f, 0f),
+                new Vector3(-34f, 0f, -12f),
+                new Vector3(-22f, 0f, -19f),
+                new Vector3(-8f, 0f, -22f),
+                new Vector3(8f, 0f, -22f),
+                new Vector3(22f, 0f, -19f),
+                new Vector3(34f, 0f, -12f),
+                new Vector3(44f, 0f, -12f),
+                new Vector3(56f, 0f, -12f)
+            };
+        }
+
         private static EnemyDefinition CreateEnemy(string id, string name, EnemyRole role, string shortDescription, string weaknessDescription, float hp, float speed, int lifeDamage, int killReward, Color color, float scale)
         {
             var enemy = ScriptableObject.CreateInstance<EnemyDefinition>();
@@ -1831,6 +1973,18 @@ namespace TowerDefense.Runtime
                     entries.Add(new WaveEntry { enemy = brute, count = bruteCount });
                     remainingBrutes -= bruteCount;
                 }
+            }
+
+            return entries.ToArray();
+        }
+
+        private static WaveEntry[] BuildLevelSevenWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
+        {
+            var entries = new List<WaveEntry>(200);
+            for (var group = 0; group < 100; group++)
+            {
+                entries.Add(new WaveEntry { enemy = runner, count = 80 });
+                entries.Add(new WaveEntry { enemy = brute, count = 20 });
             }
 
             return entries.ToArray();

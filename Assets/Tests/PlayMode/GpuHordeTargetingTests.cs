@@ -10,6 +10,23 @@ namespace TowerDefense.Tests
 {
     public sealed class GpuHordeTargetingTests
     {
+        private int visualPreference;
+        private bool hadVisualPreference;
+        [SetUp]
+        public void UseOriginalCollisionGeometry()
+        {
+            hadVisualPreference = PlayerPrefs.HasKey(GoblinPreviewAssets.PreferenceKey);
+            visualPreference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey);
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 0);
+        }
+
+        [TearDown]
+        public void RestoreVisualPreference()
+        {
+            if (hadVisualPreference) PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, visualPreference);
+            else PlayerPrefs.DeleteKey(GoblinPreviewAssets.PreferenceKey);
+        }
+
         [UnityTest]
         public IEnumerator OverflowFallback_KeepsAllAgentsMovingAndBreaksThePile()
         {
@@ -115,6 +132,123 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator HardContactIterations_SeparateDenseMixedSizeGroup()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int side = 5;
+            const int count = side * side;
+            var field = new HordeFlowField(
+                new[] { new Vector3(-12f, 0f, 0f), new Vector3(12f, 0f, 0f) },
+                null,
+                4f,
+                0.5f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var y = 0; y < side; y++)
+            {
+                for (var x = 0; x < side; x++)
+                {
+                    var index = y * side + x;
+                    states[index] = State(-2f + x * 0.25f, 10f, -10f, false);
+                    states[index].Position.y = -0.5f + y * 0.25f;
+                    states[index].Scale = index % 3 == 0 ? 0.493f : 0.34f;
+                    states[index].Mass = 1f;
+                    controls[index] = new Vector4(0f, 1f, 0f, 0f);
+                }
+            }
+
+            simulation.SpawnBatch(states, count);
+            for (var frame = 0; frame < 90; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count], false);
+                if (frame % 15 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+            for (var i = 0; i < count; i++)
+            {
+                for (var j = i + 1; j < count; j++)
+                {
+                    var requiredDistance = (states[i].Scale + states[j].Scale) * 1.035f;
+                    Assert.That(Vector2.Distance(states[i].Position, states[j].Position),
+                        Is.GreaterThanOrEqualTo(requiredDistance - 0.015f),
+                        $"Dense GPU bodies {i} and {j} still visibly overlap.");
+                }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator DenseQueue_FlowsThroughNarrowRightAngleWithoutDeadlock()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 20;
+            var field = new HordeFlowField(
+                new[]
+                {
+                    new Vector3(0f, 0f, 10f),
+                    Vector3.zero,
+                    new Vector3(20f, 0f, 0f)
+                },
+                null,
+                0.85f,
+                0.4f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                var row = i / 2;
+                states[i] = State((i & 1) == 0 ? -0.34f : 0.34f, 100f, -20f + row * 0.7f, false);
+                states[i].Position.y = 0.8f + row * 0.7f;
+                states[i].Velocity = new Vector2(0f, -4.8f);
+                states[i].Mass = 1f;
+                controls[i] = new Vector4(4.8f, 1f, 0f, 0f);
+            }
+
+            simulation.SpawnBatch(states, count);
+            for (var frame = 0; frame < 180; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count], false);
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+            var passedCorner = 0;
+            for (var i = 0; i < count; i++)
+            {
+                passedCorner += states[i].Status == 2u || states[i].Position.x > 2f ? 1 : 0;
+                for (var j = i + 1; j < count; j++)
+                {
+                    if (states[i].Status == 1u && states[j].Status == 1u)
+                    {
+                        Assert.That(Vector2.Distance(states[i].Position, states[j].Position),
+                            Is.GreaterThanOrEqualTo(0.68f));
+                    }
+                }
+            }
+
+            Assert.That(passedCorner, Is.GreaterThanOrEqualTo(4),
+                "The strict queue constraint deadlocked at a narrow right-angle turn.");
+        }
+
+        [UnityTest]
         public IEnumerator ActiveCompaction_ExcludesKilledSlotsFromDispatchList()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -141,6 +275,41 @@ namespace TowerDefense.Tests
             simulation.SynchronizeDiagnostics(diagnostics);
             simulation.Dispose();
             Assert.That(diagnostics[3], Is.EqualTo(1u));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator TargetedDamage_DoesNotKillTwelveHealthEnemyOrHitNeighbor()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(2, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new[]
+            {
+                State(-5f, 12f, -15f, false),
+                State(-4f, 12f, -14f, false)
+            };
+            simulation.SpawnBatch(states, states.Length);
+            simulation.QueueDamage(0, 10.9f);
+            simulation.Dispatch(
+                1f / 60f,
+                new[] { new Vector4(0f, 1f, 0f, 0f), new Vector4(0f, 1f, 0f, 0f) },
+                new Vector2[2]);
+            simulation.ReadStatesSynchronous(states, states.Length);
+            simulation.Dispose();
+
+            Assert.That(states[0].Status, Is.EqualTo(1u));
+            Assert.That(states[0].Health, Is.EqualTo(1.1f).Within(0.001f));
+            Assert.That(states[1].Status, Is.EqualTo(1u));
+            Assert.That(states[1].Health, Is.EqualTo(12f).Within(0.001f));
             yield return null;
         }
 
@@ -220,6 +389,7 @@ namespace TowerDefense.Tests
             var material = new Material(shader);
             Assert.That(material.HasProperty("_RareColor"), Is.True);
             Assert.That(material.HasProperty("_PackingScale"), Is.True);
+            Assert.That(material.HasProperty("_VisualScaleMultiplier"), Is.True);
             Assert.That(material.GetFloat("_PackingScale"), Is.EqualTo(1.04f).Within(0.001f));
             Object.DestroyImmediate(material);
         }
@@ -483,6 +653,35 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator AgentInExitCell_EmitsOneEscapeAndStaysRetiredAcrossBufferSwaps()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var field = new HordeFlowField(new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) }, null, 2.31f, 0.62f);
+            Assert.That(field.HasReachedExit(new Vector3(10f, 0f, 0f)), Is.True);
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                var states = new[] { State(10f, 100f, 0f, false) };
+                simulation.SpawnBatch(states, new[] { new Vector4(4f, 1f, 0f, 0f) }, 0, 1);
+                var escapes = 0;
+                var deadline = Time.realtimeSinceStartup + 0.5f;
+                do
+                {
+                    simulation.Dispatch(1f / 60f, null, null);
+                    yield return null;
+                    while (simulation.TryDequeueEvent(out var index, out var type))
+                        if (index == 0 && type == 2u) escapes++;
+                } while (Time.realtimeSinceStartup < deadline);
+                simulation.ReadStatesSynchronous(states, 1);
+                var diagnostics = new uint[7];
+                simulation.SynchronizeDiagnostics(diagnostics);
+                Assert.That(escapes, Is.EqualTo(1), "An arrival before movement must forward one escape, including across empty active-grid swaps.");
+                Assert.That(states[0].Status, Is.EqualTo(2u), "A retired body reappeared from a stale ping-pong buffer.");
+                Assert.That(diagnostics[3], Is.Zero, "An escaped body still occupies the active collision grid.");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator BatchedQueries_SelectAllModesAndRespectFlyingFilter()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -724,8 +923,12 @@ namespace TowerDefense.Tests
             simulation.Dispose();
 
             var minimumDistance = float.MaxValue;
+            var minimumX = float.PositiveInfinity;
+            var maximumX = float.NegativeInfinity;
             for (var i = 0; i < count; i++)
             {
+                minimumX = Mathf.Min(minimumX, states[i].Position.x);
+                maximumX = Mathf.Max(maximumX, states[i].Position.x);
                 for (var j = i + 1; j < count; j++)
                 {
                     minimumDistance = Mathf.Min(minimumDistance,
@@ -733,8 +936,114 @@ namespace TowerDefense.Tests
                 }
             }
 
-            Assert.That(minimumDistance, Is.GreaterThanOrEqualTo(0.66f),
+            Assert.That(minimumDistance, Is.GreaterThanOrEqualTo(0.70f),
                 $"Dense barricade queue compressed overlapping bodies to {minimumDistance:F3}m.");
+            // This 1.44m-wide center domain can hold THREE 0.70m-spaced
+            // columns. Requiring twelve two-column rows rejects a valid denser
+            // arrangement; retain the all-pairs body-spacing assertion above.
+            var minimumRows = Mathf.CeilToInt(count / 3f);
+            Assert.That(maximumX - minimumX, Is.GreaterThanOrEqualTo((minimumRows - 1) * 0.70f),
+                "The blocked crowd compressed beyond the corridor's packing capacity.");
+        }
+
+        [UnityTest]
+        public IEnumerator PackedGoblinQueue_StartsTogetherOnFirstTickAfterBlockerRemoval()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            const int count = 24;
+            var field = new HordeFlowField(
+                new[] { new Vector3(-12f, 0f, 0f), new Vector3(12f, 0f, 0f) },
+                null,
+                0.95f,
+                0.31f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                simulation.SetCollisionDiameter(0.29f);
+                var states = new GpuHordeSimulation.AgentState[count];
+                var controls = new Vector4[count];
+                for (var i = 0; i < count; i++)
+                {
+                    states[i] = State(-7f + (i / 3) * 0.65f, 100f, 0f, false);
+                    states[i].Position.y = ((i % 3) - 1) * 0.63f;
+                    states[i].Scale = 0.29f;
+                    states[i].Mass = 1f;
+                    states[i].Facing = Vector2.right;
+                    states[i].AttackDamage = 1f;
+                    states[i].AttackInterval = 0.15f;
+                    states[i].WallDamageMultiplier = 1f;
+                    controls[i] = new Vector4(3.84f, 1f, 0f, 0f);
+                }
+                simulation.SpawnBatch(states, controls, 0, count);
+                var blocker = new TestCombatTarget(Vector3.zero, 1000000f, 1000f,
+                    Vector3.forward, 2f, 0.15f);
+                var blockerList = new ICombatTarget[] { blocker };
+                for (var frame = 0; frame < 300; frame++)
+                {
+                    simulation.SynchronizeDynamicTargets(blockerList);
+                    simulation.Dispatch(1f / 60f, null, null, false);
+                    if ((frame & 31) == 0) yield return null;
+                }
+                simulation.ReadStatesSynchronous(states, count);
+                var stopped = new Vector2[count];
+                var stoppedGait = new float[count];
+                for (var i = 0; i < count; i++)
+                {
+                    stopped[i] = states[i].Position;
+                    stoppedGait[i] = states[i].AnimationDistance;
+                }
+
+                simulation.SynchronizeDynamicTargets(System.Array.Empty<ICombatTarget>());
+                simulation.Dispatch(1f / 60f, null, null, false);
+                simulation.ReadStatesSynchronous(states, count);
+                var moved = 0;
+                var runningVisuals = 0;
+                var minimumTravel = float.PositiveInfinity;
+                for (var i = 0; i < count; i++)
+                {
+                    var travel = states[i].Position.x - stopped[i].x;
+                    minimumTravel = Mathf.Min(minimumTravel, travel);
+                    if (travel > 0.003f) moved++;
+                    if (states[i].AnimationDistance > stoppedGait[i]) runningVisuals++;
+                    Assert.That(states[i].LocomotionSpeed,
+                        Is.EqualTo(Vector2.Distance(states[i].Position, stopped[i]) * 60f).Within(0.001f),
+                        "The gait speed must reflect actual travel, including a slow first step.");
+                }
+                var metrics = $"Queue release first tick: moved={moved}/{count}, running={runningVisuals}/{count}, min={minimumTravel:F5}m";
+                LogAssert.Expect(LogType.Log, metrics);
+                Debug.Log(metrics);
+                Assert.That(moved, Is.GreaterThanOrEqualTo(Mathf.CeilToInt(count * 0.95f)),
+                    "The released crowd must start as one body; a contact-bound edge body may fan sideways first.");
+                Assert.That(runningVisuals, Is.EqualTo(count), "The brace-to-run presentation must react on the first moving tick.");
+
+                var released = new Vector2[count];
+                for (var i = 0; i < count; i++) released[i] = states[i].Position;
+                // Exercise four-tick catch-up frames as well as the immediate
+                // normal-speed release above. Spacing must survive presentation
+                // on the final tick without polishing every intermediate tick.
+                for (var frame = 0; frame < 120; frame++)
+                    simulation.Dispatch(1f / 60f, null, null, false,
+                        contactIterationScale: 0.5f, updatePresentation: (frame & 3) == 3);
+                simulation.ReadStatesSynchronous(states, count);
+                var meanForwardSpeed = 0f;
+                var minimumForwardSpeed = float.PositiveInfinity;
+                for (var i = 0; i < count; i++)
+                {
+                    var speed = (states[i].Position.x - released[i].x) / 2f;
+                    meanForwardSpeed += speed / count;
+                    minimumForwardSpeed = Mathf.Min(minimumForwardSpeed, speed);
+                }
+                var diagnostics = new uint[7];
+                simulation.SynchronizeDiagnostics(diagnostics);
+                Assert.That(diagnostics[5], Is.Zero,
+                    $"A freely moving queue must preserve body spacing; measured {diagnostics[5]} collision pairs.");
+                Assert.That(meanForwardSpeed, Is.GreaterThan(1.5f),
+                    $"The released queue only averaged {meanForwardSpeed:F2}m/s.");
+                Assert.That(minimumForwardSpeed, Is.GreaterThan(0.5f),
+                    $"At least one free row remained nearly stopped at {minimumForwardSpeed:F2}m/s.");
+            }
+            LogAssert.NoUnexpectedReceived();
         }
 
         [UnityTest]
@@ -770,6 +1079,54 @@ namespace TowerDefense.Tests
                 deaths += states[i].Status == 3u ? 1 : 0;
             }
             Assert.That(deaths, Is.EqualTo(2), "The GPU projectile did not respect its pierce hit limit.");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator MovingProjectile_KeepsOneHitBudgetAcrossTravelSegments()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(3, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new[]
+            {
+                State(-5f, 10f, -15f, false),
+                State(-4f, 10f, -14f, false),
+                State(-3f, 10f, -13f, false)
+            };
+            var controls = new[]
+            {
+                new Vector4(0f, 1f, 0f, 0f),
+                new Vector4(0f, 1f, 0f, 0f),
+                new Vector4(0f, 1f, 0f, 0f)
+            };
+            simulation.SpawnBatch(states, states.Length);
+            var projectileId = simulation.CreateProjectileId();
+            Assert.That(simulation.QueueProjectile(
+                new Vector3(-6f, 0f, 0f), new Vector3(-4.5f, 0f, 0f), 0.2f, 20f, 0f, 2, true, false,
+                projectileId: projectileId, resetHitCount: true), Is.True);
+            simulation.Dispatch(1f / 60f, controls, new Vector2[3]);
+            Assert.That(simulation.QueueProjectile(
+                new Vector3(-4.5f, 0f, 0f), new Vector3(-2f, 0f, 0f), 0.2f, 20f, 0f, 2, true, false,
+                projectileId: projectileId, resetHitCount: false), Is.True);
+            simulation.Dispatch(1f / 60f, controls, new Vector2[3]);
+            simulation.ReadStatesSynchronous(states, states.Length);
+            simulation.Dispose();
+
+            var deaths = 0;
+            for (var i = 0; i < states.Length; i++)
+            {
+                deaths += states[i].Status == 3u ? 1 : 0;
+            }
+            Assert.That(deaths, Is.EqualTo(2), "The moving projectile exceeded or reset its total pierce budget.");
             yield return null;
         }
 
@@ -895,6 +1252,792 @@ namespace TowerDefense.Tests
                 Assert.That(states[i].Position.x - states[i - 1].Position.x, Is.GreaterThan(0.42f),
                     $"Enemies {i - 1} and {i} lost their physical collision spacing.");
             }
+        }
+
+        [UnityTest]
+        public IEnumerator ArenaShockwave_ReleasesTheWallRowBackTowardCenter()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 256;
+            const float arenaRadius = 12f;
+            var field = new HordeFlowField(
+                new[] { Vector3.zero, Vector3.zero },
+                null,
+                arenaRadius,
+                0.45f);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                var normalizedRadius = (i + 0.5f) / count;
+                var radius = Mathf.Lerp(1.1f, 3.4f, Mathf.Sqrt(normalizedRadius));
+                var angle = i * 2.3999632f;
+                states[i] = State(0f, 100f, 0f, false);
+                states[i].Position = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                states[i].Mass = i % 5 == 0 ? 3f : 1f;
+                controls[i] = new Vector4(i % 5 == 0 ? 2.3f : 5.35f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(
+                count,
+                field,
+                EnemyManager.GetDetailedEnemyMesh(),
+                out var simulation), Is.True);
+            simulation.SetCollisionDiameter(0.5f);
+            simulation.SetMovementDynamics(1.4f, 1.5f);
+            simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueAreaEffect(
+                Vector3.zero,
+                1f,
+                0f,
+                16f,
+                0,
+                0f,
+                0f,
+                1,
+                knockbackPropagationRadius: arenaRadius), Is.True);
+
+            var sawRiding = new bool[count];
+            var releaseFrames = new int[count];
+            var peakOverlapPairs = 0;
+            var peakOverlapFraction = 0f;
+            System.Array.Fill(releaseFrames, -1);
+            for (var frame = 0; frame < 300; frame++)
+            {
+                simulation.Dispatch(
+                    1f / 60f,
+                    controls,
+                    new Vector2[count],
+                    requestReadback: false,
+                    contactIterationScale: 1f);
+                if ((frame & 3) == 0)
+                {
+                    simulation.ReadStatesSynchronous(states, count);
+                    var sampledOverlapPairs = 0;
+                    for (var i = 0; i < count; i++)
+                    {
+                        var activeShockwaveState = Mathf.Abs(states[i].ShockwaveOutwardTimer) > 0.0001f;
+                        if (activeShockwaveState)
+                        {
+                            sawRiding[i] = true;
+                        }
+                        else if ((sawRiding[i] || states[i].ShockwaveExposure > 0.05f) &&
+                            releaseFrames[i] < 0)
+                        {
+                            sawRiding[i] = true;
+                            releaseFrames[i] = frame;
+                        }
+
+                        for (var other = i + 1; other < count; other++)
+                        {
+                            const float pairDiameter = 0.72f;
+                            var distance = Vector2.Distance(states[i].Position, states[other].Position);
+                            var overlapFraction = Mathf.Clamp01((pairDiameter - distance) / pairDiameter);
+                            if (overlapFraction <= 0.005f)
+                            {
+                                continue;
+                            }
+
+                            sampledOverlapPairs++;
+                            peakOverlapFraction = Mathf.Max(peakOverlapFraction, overlapFraction);
+                        }
+                    }
+                    peakOverlapPairs = Mathf.Max(peakOverlapPairs, sampledOverlapPairs);
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+            var pinnedCount = 0;
+            var ridingCount = 0;
+            var wallCount = 0;
+            var inwardMovingWallCount = 0;
+            var wallInwardSpeed = 0f;
+            var earliestReleaseFrame = int.MaxValue;
+            var latestReleaseFrame = int.MinValue;
+            var releasedCount = 0;
+            for (var i = 0; i < count; i++)
+            {
+                if (releaseFrames[i] >= 0)
+                {
+                    earliestReleaseFrame = Mathf.Min(earliestReleaseFrame, releaseFrames[i]);
+                    latestReleaseFrame = Mathf.Max(latestReleaseFrame, releaseFrames[i]);
+                    releasedCount++;
+                }
+
+                var radius = states[i].Position.magnitude;
+                if (states[i].ShockwaveOutwardTimer < -0.0001f)
+                {
+                    pinnedCount++;
+                }
+                else if (states[i].ShockwaveOutwardTimer > 0.0001f)
+                {
+                    ridingCount++;
+                }
+
+                var worldPosition = new Vector3(states[i].Position.x, 0f, states[i].Position.y);
+                var wallSample = field.GetWallRepulsion(worldPosition, 100f).magnitude;
+                var boundaryDistance = wallSample > 0f ? 100f * (1f - wallSample) : 100f;
+                if (boundaryDistance >= 0.8f)
+                {
+                    continue;
+                }
+
+                wallCount++;
+                var inward = radius > 0.0001f ? -states[i].Position / radius : Vector2.zero;
+                var inwardSpeed = Vector2.Dot(states[i].Velocity, inward);
+                wallInwardSpeed += inwardSpeed;
+                if (inwardSpeed > 0.15f)
+                {
+                    inwardMovingWallCount++;
+                }
+            }
+
+            TestContext.WriteLine(
+                $"wall={wallCount}, pinned={pinnedCount}, riding={ridingCount}, " +
+                $"inwardWall={inwardMovingWallCount}, averageWallInward=" +
+                $"{(wallCount > 0 ? wallInwardSpeed / wallCount : 0f):0.000}, " +
+                $"released={releasedCount}, releaseWindow=" +
+                $"{(releasedCount > 0 ? latestReleaseFrame - earliestReleaseFrame : -1)} frames, " +
+                $"sampledOverlapPairs={peakOverlapPairs}, deepest={peakOverlapFraction:P1}");
+
+            Assert.That(pinnedCount, Is.EqualTo(0), "Shockwave enemies remained pinned after recovery.");
+            Assert.That(wallCount, Is.LessThan(count / 20), "A persistent enemy row remained stuck to the arena wall.");
+            Assert.That(
+                releasedCount,
+                Is.GreaterThanOrEqualTo(Mathf.CeilToInt(count * 0.95f)),
+                "Too many shockwave enemies missed the synchronized return phase.");
+            Assert.That(
+                latestReleaseFrame - earliestReleaseFrame,
+                Is.LessThanOrEqualTo(48),
+                "Shockwave enemies still released in a visible radial sequence.");
+            Assert.That(
+                peakOverlapFraction,
+                Is.LessThan(0.5f),
+                "Shockwave agents merged through more than half of their physical diameter.");
+        }
+
+        [UnityTest]
+        public IEnumerator AcceleratedTicks_ShareOneContactIterationBudget()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 32;
+            var field = new HordeFlowField(
+                new[] { Vector3.zero, Vector3.zero },
+                null,
+                12f,
+                0.45f);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                var angle = i * Mathf.PI * 2f / count;
+                states[i] = State(0f, 100f, 0f, false);
+                states[i].Position = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 4f;
+                controls[i] = new Vector4(5f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(
+                count,
+                field,
+                EnemyManager.GetDetailedEnemyMesh(),
+                out var simulation), Is.True);
+            simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
+            simulation.SpawnBatch(states, count);
+            simulation.Dispatch(
+                1f / 60f,
+                controls,
+                new Vector2[count],
+                requestReadback: false,
+                contactIterationScale: 0.5f,
+                updatePresentation: false);
+
+            Assert.That(
+                simulation.LastContactIterationCount,
+                Is.EqualTo(32),
+                "Four accelerated ticks repeated the full per-tick contact budget.");
+            simulation.Dispose();
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ArenaShockwave_WallImpactReflectsImmediatelyTowardCenter()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const float arenaRadius = 12f;
+            var field = new HordeFlowField(
+                new[] { Vector3.zero, Vector3.zero },
+                null,
+                arenaRadius,
+                0.45f);
+            var states = new[] { State(10.5f, 100f, 0f, false) };
+            var controls = new[] { new Vector4(5f, 1f, 0f, 0f) };
+            Assert.That(GpuHordeSimulation.TryCreate(
+                1,
+                field,
+                EnemyManager.GetDetailedEnemyMesh(),
+                out var simulation), Is.True);
+            simulation.SetCollisionDiameter(0.5f);
+            simulation.SetMovementDynamics(1.4f, 1.5f);
+            simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
+            simulation.SpawnBatch(states, 1);
+            Assert.That(simulation.QueueAreaEffect(
+                Vector3.zero,
+                1f,
+                0f,
+                16f,
+                0,
+                0f,
+                0f,
+                1,
+                knockbackPropagationRadius: arenaRadius), Is.True);
+
+            var sawRiding = false;
+            var sawPinnedAtWall = false;
+            var maximumImmediateInwardSpeed = 0f;
+            var releaseFrame = -1;
+            var reflectedFrame = -1;
+            var releaseRadius = -1f;
+            var radiusAfterRelease = -1f;
+            for (var frame = 0; frame < 120; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[1], requestReadback: false);
+                simulation.ReadStatesSynchronous(states, 1);
+                sawRiding |= states[0].ShockwaveOutwardTimer > 0.0001f;
+                if (sawRiding && states[0].ShockwaveOutwardTimer <= 0.0001f && releaseFrame < 0)
+                {
+                    releaseFrame = frame;
+                    releaseRadius = states[0].Position.magnitude;
+                }
+                if (releaseFrame >= 0 && frame == releaseFrame + 12)
+                {
+                    radiusAfterRelease = states[0].Position.magnitude;
+                }
+                if (sawRiding)
+                {
+                    sawPinnedAtWall |= states[0].ShockwaveOutwardTimer < -0.0001f;
+                    var inward = -states[0].Position.normalized;
+                    var inwardSpeed = Vector2.Dot(
+                        states[0].Velocity + states[0].KnockbackVelocity,
+                        inward);
+                    maximumImmediateInwardSpeed = Mathf.Max(maximumImmediateInwardSpeed, inwardSpeed);
+                    if (inwardSpeed > 3f && reflectedFrame < 0)
+                    {
+                        reflectedFrame = frame;
+                    }
+                }
+
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.Dispose();
+            Assert.That(sawRiding, Is.True, "The test agent never met the shockwave.");
+            Assert.That(sawPinnedAtWall, Is.False, "Wall impact still entered a stationary recovery state.");
+            Assert.That(maximumImmediateInwardSpeed, Is.GreaterThan(3f),
+                "Wall impact did not redirect meaningful momentum toward the arena center.");
+            Assert.That(releaseFrame, Is.GreaterThanOrEqualTo(0),
+                "The wall impact never released shockwave control.");
+            Assert.That(reflectedFrame - releaseFrame, Is.InRange(0, 1),
+                "The enemy paused at the wall before receiving its inward reflection.");
+            Assert.That(radiusAfterRelease, Is.GreaterThanOrEqualTo(0f),
+                "The test did not sample the enemy after its wall impact.");
+            Assert.That(releaseRadius - radiusAfterRelease, Is.GreaterThan(0.65f),
+                "The enemy received velocity but remained visually stuck to the wall.");
+        }
+
+        [UnityTest]
+        public IEnumerator ArenaShockwave_BlockedRowReflectsBackThroughTheCrowd()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 8;
+            const float arenaRadius = 12f;
+            var field = new HordeFlowField(
+                new[] { Vector3.zero, Vector3.zero },
+                null,
+                arenaRadius,
+                0.45f);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                states[i] = State(6.1f + i * 0.69f, 100f, 0f, false);
+                controls[i] = new Vector4(5f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(
+                count,
+                field,
+                EnemyManager.GetDetailedEnemyMesh(),
+                out var simulation), Is.True);
+            simulation.SetCollisionDiameter(0.5f);
+            simulation.SetMovementDynamics(1.4f, 1.5f);
+            simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueAreaEffect(
+                Vector3.zero,
+                1f,
+                0f,
+                16f,
+                0,
+                0f,
+                0f,
+                1,
+                knockbackPropagationRadius: arenaRadius), Is.True);
+
+            var reflected = new bool[count];
+            var sawPinnedState = false;
+            var outerReflectionFrame = -1;
+            var outerReflectionRadius = -1f;
+            var outerRadiusAfterReflection = -1f;
+            var rowRadiiAtReflection = new float[count];
+            var rowRadiiAfterReflection = new float[count];
+            for (var frame = 0; frame < 240; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count], requestReadback: false);
+                simulation.ReadStatesSynchronous(states, count);
+                for (var i = 0; i < count; i++)
+                {
+                    sawPinnedState |= states[i].ShockwaveOutwardTimer < -0.0001f;
+                    if (states[i].ShockwaveExposure > 0.05f)
+                    {
+                        var inward = -states[i].Position.normalized;
+                        var inwardSpeed = Vector2.Dot(
+                            states[i].Velocity + states[i].KnockbackVelocity,
+                            inward);
+                        reflected[i] |= inwardSpeed > 2f;
+                        if (i == count - 1 && inwardSpeed > 2f && outerReflectionFrame < 0)
+                        {
+                            outerReflectionFrame = frame;
+                            outerReflectionRadius = states[i].Position.magnitude;
+                            for (var row = 0; row < count; row++)
+                            {
+                                rowRadiiAtReflection[row] = states[row].Position.magnitude;
+                            }
+                        }
+                    }
+                }
+                if (outerReflectionFrame >= 0 && frame == outerReflectionFrame + 12)
+                {
+                    outerRadiusAfterReflection = states[count - 1].Position.magnitude;
+                    for (var row = 0; row < count; row++)
+                    {
+                        rowRadiiAfterReflection[row] = states[row].Position.magnitude;
+                    }
+                }
+
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.Dispose();
+            Assert.That(sawPinnedState, Is.False,
+                "A blocked rider still entered the old waiting state.");
+            Assert.That(reflected, Is.All.True,
+                "The reflection stopped at the wall instead of travelling through the blocked row.");
+            Assert.That(outerRadiusAfterReflection, Is.GreaterThanOrEqualTo(0f),
+                "The test did not sample the wall enemy after reflection.");
+            Assert.That(
+                outerReflectionRadius - outerRadiusAfterReflection,
+                Is.GreaterThan(0.35f),
+                "The wall enemy waited for the row in front instead of pushing it inward.");
+            for (var i = 0; i < count; i++)
+            {
+                Assert.That(
+                    rowRadiiAtReflection[i] - rowRadiiAfterReflection[i],
+                    Is.GreaterThan(0.15f),
+                    $"Enemy {i} did not receive the inward push through the contact chain.");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ArenaShockwave_ReturningCrowdReformsWithinTenSeconds()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            const int count = 1024;
+            const float arenaRadius = 60f;
+            const float levelSevenBaseSpeed = 8.16f;
+            var field = new HordeFlowField(
+                new[] { Vector3.zero, Vector3.zero },
+                null,
+                arenaRadius,
+                0.62f);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                var normalizedRadius = (i + 0.5f) / count;
+                var radius = Mathf.Lerp(5f, 20f, Mathf.Sqrt(normalizedRadius));
+                var angle = i * 2.3999632f;
+                states[i] = State(0f, 100f, 0f, false);
+                states[i].Position = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                controls[i] = new Vector4(levelSevenBaseSpeed, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(
+                count,
+                field,
+                EnemyManager.GetDetailedEnemyMesh(),
+                out var simulation), Is.True);
+            simulation.SetCollisionDiameter(0.5f);
+            simulation.SetMovementDynamics(1.4f, 1.5f);
+            simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueAreaEffect(
+                Vector3.zero,
+                1f,
+                0f,
+                16f,
+                0,
+                0f,
+                0f,
+                1,
+                knockbackPropagationRadius: arenaRadius), Is.True);
+
+            // Three seconds for the wave to cross the 60 m arena, then ten
+            // seconds for normal-speed crowd recovery.
+            const int totalFrames = 13 * 60;
+            for (var frame = 0; frame < totalFrames; frame++)
+            {
+                simulation.Dispatch(
+                    1f / 60f,
+                    controls,
+                    new Vector2[count],
+                    requestReadback: false,
+                    contactIterationScale: 1f);
+                if ((frame % 120) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+            var reformedCount = 0;
+            var touching = new bool[count];
+            for (var i = 0; i < count; i++)
+            {
+                if (states[i].Position.magnitude <= 14f)
+                {
+                    reformedCount++;
+                }
+
+                for (var j = i + 1; j < count; j++)
+                {
+                    var pairDiameter = Mathf.Clamp(
+                        (states[i].Scale + states[j].Scale) * 1.06f,
+                        0.42f,
+                        0.825f);
+                    var touchingDistance = pairDiameter * 1.08f;
+                    if ((states[i].Position - states[j].Position).sqrMagnitude <=
+                        touchingDistance * touchingDistance)
+                    {
+                        touching[i] = true;
+                        touching[j] = true;
+                    }
+                }
+            }
+
+            var touchingCount = 0;
+            for (var i = 0; i < count; i++)
+            {
+                touchingCount += touching[i] ? 1 : 0;
+            }
+
+            Assert.That(reformedCount, Is.GreaterThanOrEqualTo(Mathf.CeilToInt(count * 0.9f)),
+                $"Only {reformedCount}/{count} enemies reformed near the center within ten seconds.");
+            Assert.That(touchingCount, Is.GreaterThanOrEqualTo(Mathf.CeilToInt(count * 0.8f)),
+                $"Only {touchingCount}/{count} enemies physically touched the reformed crowd.");
+        }
+
+        [UnityTest]
+        public IEnumerator MovingGoblinCrowd_TurnsWithoutContactJitter()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            const int count = 144;
+            var field = new HordeFlowField(new[]
+            {
+                new Vector3(-18f, 0f, 0f), Vector3.zero, new Vector3(0f, 0f, 18f)
+            }, null, 3.72f, 0.31f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                simulation.SetCollisionDiameter(0.29f);
+                var states = new GpuHordeSimulation.AgentState[count];
+                var controls = new Vector4[count];
+                for (var i = 0; i < count; i++)
+                {
+                    states[i] = State(-9f + (i / 6) * 0.34f, 100f, 0f, false);
+                    states[i].Position.y = ((i % 6) - 2.5f) * 0.34f;
+                    states[i].Scale = 0.29f;
+                    states[i].Mass = 1f;
+                    states[i].Facing = Vector2.right;
+                    controls[i] = new Vector4(3.84f, 1f, 0f, 0f);
+                }
+                simulation.SpawnBatch(states, controls, 0, count);
+                for (var frame = 0; frame < 90; frame++)
+                    simulation.Dispatch(1f / 60f, null, null, false);
+                var corrections = new System.Collections.Generic.List<float>();
+                var previousStep = new Vector2[count];
+                var travel = 0f;
+                var diagnostics = new uint[7];
+                for (var frame = 0; frame < 60; frame++)
+                {
+                    simulation.Dispatch(1f / 60f, null, null, false);
+                    simulation.ReadStatesSynchronous(states, count);
+                    for (var i = 0; i < count; i++)
+                    {
+                        var step = states[i].Position - states[i].StepStartPosition;
+                        // Solved velocity now equals actual displacement. Observe
+                        // changes in body travel directly rather than subtracting
+                        // that velocity and obtaining zero by construction.
+                        if (frame > 0) corrections.Add((step - previousStep[i]).magnitude);
+                        previousStep[i] = step;
+                        travel += step.magnitude;
+                    }
+                    if (frame % 15 == 0) yield return null;
+                }
+                corrections.Sort();
+                var meanJitter = 0f;
+                foreach (var correction in corrections) meanJitter += correction / corrections.Count;
+                var p95 = corrections[(int)(corrections.Count * 0.95f)];
+                simulation.SynchronizeDiagnostics(diagnostics);
+                Debug.Log($"Moving goblin turn: mean actual-step change={meanJitter:F5}m, p95={p95:F5}m, speed={travel / count:F2}m/s, collisions={diagnostics[5]}");
+                Assert.That(meanJitter, Is.LessThan(0.006f), "Contact corrections must not bounce bodies between successive ticks.");
+                Assert.That(p95, Is.LessThan(0.02f));
+                Assert.That(travel / count, Is.GreaterThan(1f), "Low jitter must come from smooth travel, not a frozen crowd.");
+                Assert.That(diagnostics[5], Is.Zero);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator RedGoblinQueue_TouchesBodiesAndSettlesWithoutRunningInPlace()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var hadPreference = PlayerPrefs.HasKey(GoblinPreviewAssets.PreferenceKey);
+            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey);
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            GpuHordeSimulation simulation = null;
+            try
+            {
+                const int count = 96;
+                var field = new HordeFlowField(new[] { new Vector3(-28, 0, 0), new Vector3(12, 0, 0) }, null, 0.95f, 0.31f);
+                Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out simulation), Is.True);
+                simulation.SetCollisionDiameter(0.29f);
+                var states = new GpuHordeSimulation.AgentState[count];
+                var controls = new Vector4[count];
+                for (var i = 0; i < count; i++)
+                {
+                    states[i] = State(-23f + (i / 3) * 0.65f, 100f, 0, false);
+                    states[i].Position.y = ((i % 3) - 1) * 0.63f;
+                    states[i].Scale = 0.29f;
+                    states[i].Mass = 1;
+                    states[i].Facing = Vector2.right;
+                    states[i].AttackInterval = 1f;
+                    states[i].WallDamageMultiplier = 1f;
+                    controls[i] = new Vector4(3.84f, 1, 0, 0);
+                }
+                simulation.SpawnBatch(states, count);
+                var blocker = new TestCombatTarget(Vector3.zero, 1000000, 1000, Vector3.forward, 2, 0.15f);
+                var targets = new ICombatTarget[] { blocker };
+                var settled = new GpuHordeSimulation.AgentState[count];
+                var maxStep = 0f;
+                var maximumStepBody = -1;
+                var maximumStepState = default(GpuHordeSimulation.AgentState);
+                for (var frame = 0; frame < 600; frame++)
+                {
+                    simulation.SynchronizeDynamicTargets(targets);
+                    simulation.Dispatch(1f / 60f, controls, null, false);
+                    if (frame == 539) simulation.ReadStatesSynchronous(settled, count);
+                    if (frame >= 540)
+                    {
+                        simulation.ReadStatesSynchronous(states, count);
+                        for (var i = 0; i < count; i++)
+                        {
+                            var step = Vector2.Distance(states[i].Position, states[i].StepStartPosition);
+                            if (step <= maxStep) continue;
+                            maxStep = step;
+                            maximumStepBody = i;
+                            maximumStepState = states[i];
+                        }
+                    }
+                    if (frame % 30 == 0) yield return null;
+                }
+                var nearest = new float[count];
+                var animationTravel = 0f;
+                for (var i = 0; i < count; i++)
+                {
+                    nearest[i] = float.MaxValue;
+                    animationTravel += states[i].AnimationDistance - settled[i].AnimationDistance;
+                    for (var j = 0; j < count; j++)
+                        if (i != j) nearest[i] = Mathf.Min(nearest[i], Vector2.Distance(states[i].Position, states[j].Position));
+                }
+                System.Array.Sort(nearest);
+                var heldCount = 0;
+                foreach (var state in states) if (state.Padding2 >= 1f) heldCount++;
+                Debug.Log($"Goblin queue: median spacing={nearest[count / 2]:F4}, minimum={nearest[0]:F4}, max settled step={maxStep:F5}, mean last-second gait travel={animationTravel / count:F4}, held={heldCount}/{count}, largest-step=#{maximumStepBody} p={maximumStepState.Position} start={maximumStepState.StepStartPosition} v={maximumStepState.Velocity} blocker={maximumStepState.Padding2} flags={maximumStepState.Flags}");
+                var bodyDiameter = GoblinPreviewAssets.BodyDiameter(0.29f, 0.29f);
+                Assert.That(nearest[count / 2], Is.GreaterThanOrEqualTo(bodyDiameter * 0.995f));
+                Assert.That(nearest[count / 2], Is.LessThan(bodyDiameter * 1.025f),
+                    "A held queue should make readable body contact, not preserve a large idle gap.");
+                Assert.That(nearest[0], Is.GreaterThan(bodyDiameter * 0.995f));
+                Assert.That(maxStep, Is.LessThan(0.015f));
+                Assert.That(animationTravel / count, Is.LessThan(0.08f));
+            }
+            finally
+            {
+                simulation?.Dispose();
+                if (hadPreference) PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+                else PlayerPrefs.DeleteKey(GoblinPreviewAssets.PreferenceKey);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator StagedSpawn_PreservesMovingAndDamagedAgentsAcrossBufferSwaps()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(20, 0, 0) }, null, 3, 0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(8, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                var states = new GpuHordeSimulation.AgentState[8];
+                var controls = new Vector4[8];
+                states[0] = State(-10, 100, 0, false);
+                controls[0] = new Vector4(2, 1, 0, 0);
+                simulation.SpawnBatch(states, controls, 0, 1);
+                for (var step = 0; step < 20; step++) simulation.Dispatch(1f / 60, null, null, false);
+                simulation.ReadStatesSynchronous(states, 1);
+                var firstPosition = states[0].Position;
+                simulation.QueueDamage(0, 25);
+                var culledBeforeSpawn = new uint[5];
+                var culledAfterSpawn = new uint[5];
+                for (var index = 1; index < states.Length; index++)
+                {
+                    // A new range must not upload stale copies of earlier slots.
+                    states[index] = State(-15 + index, 70 + index, 0, false);
+                    states[index].Position.y = 2;
+                    controls[index] = new Vector4(1, 1, 0, 0);
+                    simulation.ReadDrawArgsSynchronous(culledBeforeSpawn);
+                    simulation.SpawnBatch(states, controls, index, 1);
+                    simulation.ReadDrawArgsSynchronous(culledAfterSpawn);
+                    Assert.That(culledAfterSpawn, Is.EqualTo(culledBeforeSpawn),
+                        "Spawning between simulation ticks must not replace culled draw counts with the total population.");
+                    simulation.Dispatch(1f / 60, null, null, false);
+                }
+                simulation.ReadStatesSynchronous(states, states.Length);
+                Assert.That(states[0].Position.x, Is.GreaterThan(firstPosition.x));
+                Assert.That(states[0].Health, Is.EqualTo(75));
+                for (var index = 1; index < states.Length; index++)
+                {
+                    Assert.That(states[index].Status, Is.EqualTo(1));
+                    Assert.That(states[index].Health, Is.EqualTo(70 + index));
+                    Assert.That(states[index].Position.x, Is.GreaterThan(-15 + index));
+                }
+            }
+            yield return null;
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator StationaryGoblin_KeepsPresentationClockAndAnimatesLateralPush()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(20, 0, 0) }, null, 5, 0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                var states = new[] { State(0, 100, 0, false) };
+                var controls = new[] { new Vector4(0, 1, 0, 0) };
+                states[0].Velocity = Vector2.zero;
+                simulation.SpawnBatch(states, controls, 0, 1);
+                for (var step = 0; step < 60; step++) simulation.Dispatch(1f / 60, null, null, false);
+                simulation.ReadStatesSynchronous(states, 1);
+                Assert.That(states[0].PresentationTime, Is.EqualTo(1).Within(0.001f));
+                Assert.That(states[0].AnimationDistance, Is.LessThan(0.01f));
+                Assert.That(states[0].LocomotionSpeed, Is.LessThan(0.08f));
+                states[0].KnockbackVelocity = new Vector2(0, 2);
+                states[0].Padding = 0.5f;
+                var before = states[0].AnimationDistance;
+                simulation.SpawnBatch(states, controls, 0, 1);
+                for (var step = 0; step < 12; step++) simulation.Dispatch(1f / 60, null, null, false);
+                simulation.ReadStatesSynchronous(states, 1);
+                Assert.That(states[0].Position.y, Is.GreaterThan(0.05f));
+                Assert.That(states[0].AnimationDistance, Is.GreaterThan(before + 0.02f));
+                Assert.That(states[0].LocomotionSpeed, Is.GreaterThan(0.08f));
+            }
+            yield return null;
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator SpawnClearance_RejectsMovedQueriesAndDifferentPositions()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(20, 0, 0) }, null, 3, 0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(2, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                var states = new[] { State(-10, 100, 0, false), State(0, 100, 0, false) };
+                states[0].Scale = states[1].Scale = 0.2f;
+                var controls = new[] { new Vector4(4, 1, 0, 0), new Vector4(4, 1, 0, 0) };
+                simulation.SpawnBatch(states, controls, 0, 1);
+                var position = Vector3.zero;
+                Assert.That(simulation.TryGetSpawnClearance(position, 1, -1, out _, 0.4f), Is.False);
+                simulation.Dispatch(1f / 60, null, null, false);
+                UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+                yield return null;
+                // The first request predates the motion bound established by the
+                // first predictive dispatch, so it cannot authorize a spawn.
+                Assert.That(simulation.TryGetSpawnClearance(position, 1, -1, out _, 0.4f), Is.False);
+                simulation.Dispatch(1f / 60, null, null, false);
+                UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+                yield return null;
+                Assert.That(simulation.TryGetSpawnClearance(position, 1, -1, out var clear, 0.4f), Is.True);
+                Assert.That(clear, Is.True);
+                // These positions shared the old quarter-metre targeting cache key.
+                Assert.That(simulation.TryGetSpawnClearance(new Vector3(0.1f, 0, 0), 1, -1, out _, 0.4f), Is.False);
+                // Several fixed ticks can execute inside one render frame. Wall-clock age
+                // alone cannot establish that a formerly empty disk remains empty.
+                for (var i = 0; i < 8; i++) simulation.Dispatch(1f / 60, null, null, false);
+                Assert.That(simulation.TryGetSpawnClearance(position, 1, -1, out _, 0.4f), Is.False);
+                simulation.Dispatch(1f / 60, null, null, false);
+                UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+                yield return null;
+                // The caller's lane watermark invalidates observations of an earlier
+                // population even if the spawn happens in the same render frame.
+                simulation.SpawnBatch(states, controls, 1, 1);
+                Assert.That(simulation.TryGetSpawnClearance(position, 1, Time.frameCount, out _, 0.4f), Is.False);
+            }
+            LogAssert.NoUnexpectedReceived();
         }
 
         private sealed class TestCombatTarget : ICombatTarget, IOrientedCombatTarget

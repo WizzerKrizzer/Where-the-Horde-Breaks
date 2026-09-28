@@ -41,15 +41,15 @@ namespace TowerDefense.UI
         private Image activeWeaponIcon;
         private Image activeWeaponCooldownFill;
         private Text activeWeaponCooldownText;
+        private Text activeWeaponLabel;
         private GameObject selectedTowerPanel;
         private Text selectedTowerTitle;
         private Text selectedTowerBody;
         private readonly Button[] selectedTowerTargetButtons = new Button[4];
         private Button startBattleButton;
-        private Button devSpeed1Button;
-        private Button devSpeed2Button;
-        private Button devSpeed5Button;
-        private Button devSpeed10Button;
+        private Slider devSpeedSlider;
+        private Text devSpeedValueText;
+        private float selectedTestSpeed = 1f;
         private Button devRewardTestingButton;
         private Button devAutoActiveButton;
         private Button devBestBotButton;
@@ -104,6 +104,9 @@ namespace TowerDefense.UI
         private const float UpgradeTreeVerticalPanFreedom = 90f;
         private GameObject devPanel;
         private bool devPanelVisible;
+        private Button devLevelMapsButton;
+        private GameObject devLevelMapsDropdown;
+        private bool devLevelMapsDropdownVisible;
         private Button statsToggleButton;
         private Button codexToggleButton;
         private Button debugSpawnToggleButton;
@@ -238,6 +241,16 @@ namespace TowerDefense.UI
             }
 
             var delta = Time.unscaledDeltaTime;
+            if (delta > 0.25f)
+            {
+                // Scene and GPU initialization can produce one long frame. Do not let
+                // that stale sample keep the FPS display red after gameplay is smooth.
+                fpsAccumulatedTime = 0f;
+                fpsAccumulatedFrames = 0;
+                nextFpsRefreshTime = Time.realtimeSinceStartup + 0.5f;
+                return;
+            }
+
             fpsAccumulatedTime += delta;
             fpsAccumulatedFrames++;
             if (Time.realtimeSinceStartup < nextFpsRefreshTime)
@@ -308,10 +321,13 @@ namespace TowerDefense.UI
                 $"PERF  {latestFps:0} FPS   {backend}   {bottleneck}\n" +
                 $"CPU  {smoothedCpuFrameMs:0.00} ms  {cpuFrameLoad:0}%   process {processCpuPercent:0.0}%\n" +
                 $"GPU  {gpuTiming}\n" +
-                $"HORDE  {enemies.ActiveEnemyCount} active   {perf.VisibleDrawn} visible\n" +
+                $"HORDE  {enemies.ActiveEnemyCount} active   {perf.VisibleDrawn} in camera (unique)\n" +
                 $"GRID  {perf.MaxCellOccupancy}/96 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped\n" +
+                $"PHYSICAL  {perf.OverlapPairs} internal pairs >0.5%   {perf.MaximumOverlapFraction * 100f:0.0}% deepest\n" +
+                $"FLOW  {perf.OrdinaryBackwardSteps} reverse steps   {perf.MaximumOrdinaryBacktrack:0.000} max backtrack   " +
+                $"{perf.NormalizedNeighborSpacing:0.00} spacing   {perf.ActiveContactPairs} contacts\n" +
                 overflowWarning +
-                $"WORK  sim {perf.SimMs:0.00}   move {perf.MovementMs:0.00}   draw {perf.DrawMs:0.00} ms\n" +
+                $"CPU SUBMIT  sim {perf.SimMs:0.00}   move {perf.MovementMs:0.00}   draw {perf.DrawMs:0.00} ms\n" +
                 $"{SystemInfo.graphicsDeviceName}";
             nextPerfRefreshTime = Time.realtimeSinceStartup + 0.5f;
         }
@@ -400,6 +416,12 @@ namespace TowerDefense.UI
 
         private bool CloseCurrentOverlay()
         {
+            if (devLevelMapsDropdownVisible)
+            {
+                SetDevLevelMapsDropdownVisible(false);
+                return true;
+            }
+
             if (pausePanelVisible)
             {
                 SetPausePanelVisible(false);
@@ -612,7 +634,7 @@ namespace TowerDefense.UI
             var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
-            hint.text = "Hover for 0.3 seconds to inspect. Click a node to buy its next rank. Drag to pan. Mouse wheel zooms.";
+            hint.text = "Hover for 0.3 seconds to inspect. Click a node to buy its next rank. Right-click refunds one rank. Drag to pan. Mouse wheel zooms.";
 
             var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);
@@ -908,6 +930,15 @@ namespace TowerDefense.UI
             var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
             exit.callback.AddListener(_ => StopHoveringUpgradeNode(node));
             events.triggers.Add(exit);
+            var click = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+            click.callback.AddListener(data =>
+            {
+                if (data is PointerEventData pointer && pointer.button == PointerEventData.InputButton.Right)
+                {
+                    RefundUpgradeNode(node);
+                }
+            });
+            events.triggers.Add(click);
 
             // Buttons normally consume pointer input before it reaches the viewport.
             // Forward drag and wheel input from every node so inspecting a node never
@@ -1007,6 +1038,19 @@ namespace TowerDefense.UI
             pendingHoveredUpgradeNode = null;
             hoveredUpgradeNode = node;
             if (session.TryPurchaseUpgrade(node.id))
+            {
+                UpdateUpgradePanel();
+            }
+
+            UpdateSelectedUpgradeDetails();
+        }
+
+        private void RefundUpgradeNode(SkillNodeDefinition node)
+        {
+            selectedUpgradeNode = null;
+            pendingHoveredUpgradeNode = null;
+            hoveredUpgradeNode = node;
+            if (session.TryRefundUpgrade(node.id))
             {
                 UpdateUpgradePanel();
             }
@@ -1435,14 +1479,14 @@ namespace TowerDefense.UI
             var speedLabel = CreateText("DevSpeedTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(speedLabel.GetComponent<RectTransform>(), new Vector2(0f, -152f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             speedLabel.text = "TEST SPEED";
-            devSpeed1Button = CreateButton("DevSpeed1x", content.transform, "1x", new Vector2(-66f, -178f), new Vector2(38f, 22f), 11);
-            devSpeed2Button = CreateButton("DevSpeed2x", content.transform, "2x", new Vector2(-22f, -178f), new Vector2(38f, 22f), 11);
-            devSpeed5Button = CreateButton("DevSpeed5x", content.transform, "5x", new Vector2(22f, -178f), new Vector2(38f, 22f), 11);
-            devSpeed10Button = CreateButton("DevSpeed10x", content.transform, "10x", new Vector2(66f, -178f), new Vector2(38f, 22f), 11);
-            devSpeed1Button.onClick.AddListener(() => SetTestSpeed(1f));
-            devSpeed2Button.onClick.AddListener(() => SetTestSpeed(2f));
-            devSpeed5Button.onClick.AddListener(() => SetTestSpeed(5f));
-            devSpeed10Button.onClick.AddListener(() => SetTestSpeed(10f));
+            CreateButton("DevSpeedReset", content.transform, "1", new Vector2(-76f, -178f), new Vector2(24f, 22f), 11)
+                .onClick.AddListener(() => SetTestSpeed(1f));
+            devSpeedSlider = CreateSlider("DevSpeedSlider", content.transform, new Vector2(-4f, -178f), new Vector2(112f, 18f), 0.1f, 20f, selectedTestSpeed);
+            devSpeedSlider.onValueChanged.AddListener(SetTestSpeed);
+            devSpeedValueText = CreateText("DevSpeedValue", content.transform, Vector2.zero, TextAnchor.MiddleRight, 11);
+            ConfigureCenteredRect(devSpeedValueText.GetComponent<RectTransform>(), new Vector2(70f, -178f), new Vector2(36f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            devSpeedValueText.color = new Color(0.82f, 0.93f, 1f, 1f);
+            SetTestSpeed(selectedTestSpeed);
 
             var testingLabel = CreateText("DevTestingTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(testingLabel.GetComponent<RectTransform>(), new Vector2(0f, -208f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -1488,7 +1532,7 @@ namespace TowerDefense.UI
                 session.ToggleDevBestBot();
                 UpdateDevSpeedButtons();
             });
-            devBestBotRunAllButton = CreateButton("DevBestBotRunAll", content.transform, "RUN ALL 5", new Vector2(46f, -374f), new Vector2(86f, 24f), 10);
+            devBestBotRunAllButton = CreateButton("DevBestBotRunAll", content.transform, "RUN ALL 6", new Vector2(46f, -374f), new Vector2(86f, 24f), 10);
             devBestBotRunAllButton.onClick.AddListener(() =>
             {
                 session.StartAllDevBestBots();
@@ -1507,28 +1551,18 @@ namespace TowerDefense.UI
                     }
                 });
 
-            var levelsLabel = CreateText("DevLevelsTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(levelsLabel.GetComponent<RectTransform>(), new Vector2(0f, -430f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
-            levelsLabel.text = "LEVEL MAPS";
-            CreateButton("DevLoadLevel1", content.transform, "LEVEL 1", new Vector2(-46f, -456f), new Vector2(86f, 24f), 11)
-                .onClick.AddListener(() => session.SelectLevel("level_01"));
-            CreateButton("DevLoadLevel2", content.transform, "LEVEL 2", new Vector2(46f, -456f), new Vector2(86f, 24f), 11)
-                .onClick.AddListener(() => session.SelectLevel("level_02"));
-            CreateButton("DevLoadLevel3", content.transform, "LEVEL 3", new Vector2(-46f, -484f), new Vector2(86f, 24f), 11)
-                .onClick.AddListener(() => session.SelectLevel("level_03"));
-            CreateButton("DevLoadLevel4", content.transform, "10K TEST", new Vector2(46f, -484f), new Vector2(86f, 24f), 11)
-                .onClick.AddListener(() => session.SelectLevel("level_04"));
-            CreateButton("DevLoadLevel5", content.transform, "100K GPU STRESS TEST", new Vector2(0f, -512f), new Vector2(178f, 24f), 10)
-                .onClick.AddListener(() => session.SelectLevel("level_05"));
+            devLevelMapsButton = CreateButton("DevLevelMaps", content.transform, "LEVEL MAPS", new Vector2(0f, -438f), new Vector2(178f, 24f), 11);
+            devLevelMapsButton.onClick.AddListener(() => SetDevLevelMapsDropdownVisible(!devLevelMapsDropdownVisible));
+            CreateDevLevelMapsDropdown(content.transform);
 
             var saveLabel = CreateText("DevSaveTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
-            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -552f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(saveLabel.GetComponent<RectTransform>(), new Vector2(0f, -474f), new Vector2(178f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             saveLabel.text = "DEV SAVES";
 
             for (var slot = 1; slot <= 3; slot++)
             {
                 var capturedSlot = slot;
-                var rowY = -552f - slot * 26f;
+                var rowY = -474f - slot * 26f;
                 var status = CreateText($"DevSaveSlotStatus{slot}", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 9);
                 ConfigureCenteredRect(status.GetComponent<RectTransform>(), new Vector2(0f, rowY), new Vector2(46f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
                 devSaveSlotStatusTexts[slot] = status;
@@ -1548,18 +1582,18 @@ namespace TowerDefense.UI
                 });
             }
 
-            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -662f), new Vector2(178f, 24f), 12)
+            CreateButton("RefundUpgrades", content.transform, "RESET UPGRADES", new Vector2(0f, -586f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.RefundAndResetUpgrades());
-            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -690f), new Vector2(178f, 24f), 12)
+            CreateButton("ClearCurrencies", content.transform, "CLEAR CURRENCIES", new Vector2(0f, -614f), new Vector2(178f, 24f), 12)
                 .onClick.AddListener(() => session.ClearCurrencies());
-            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -718f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetRewardProgress", content.transform, "RESET CLEAR REWARDS", new Vector2(0f, -642f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ClearLevelRewardProgress());
-            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -746f), new Vector2(178f, 24f), 11)
+            CreateButton("ResetBalanceTestProgress", content.transform, "RESET TEST STATS", new Vector2(0f, -670f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.ResetBalanceTestProgress());
-            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -774f), new Vector2(178f, 24f), 11)
+            CreateButton("AutoResolveRun", content.transform, "AUTO RESOLVE RUN", new Vector2(0f, -698f), new Vector2(178f, 24f), 11)
                 .onClick.AddListener(() => session.AutoResolveRun());
             var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
-            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -800f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -724f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
             autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
 
@@ -1643,6 +1677,11 @@ namespace TowerDefense.UI
         private void ToggleDevPanel()
         {
             devPanelVisible = !devPanelVisible;
+            if (!devPanelVisible)
+            {
+                SetDevLevelMapsDropdownVisible(false);
+            }
+
             if (devPanelVisible)
             {
                 UpdateDevSaveSlotIndicators();
@@ -1652,6 +1691,75 @@ namespace TowerDefense.UI
             {
                 devPanel.SetActive(devPanelVisible && !IsUpgradePanelOpen());
             }
+        }
+
+        private void CreateDevLevelMapsDropdown(Transform parent)
+        {
+            var levels = session.AllLevels;
+            var count = levels != null ? levels.Count : 0;
+            var height = Mathf.Max(36f, count * 28f + 8f);
+            devLevelMapsDropdown = CreatePanel(
+                "DevLevelMapsDropdown",
+                parent,
+                new Vector2(0f, -454f),
+                new Vector2(194f, height),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f));
+
+            for (var i = 0; i < count; i++)
+            {
+                var level = levels[i];
+                var levelId = level.id;
+                var button = CreateButton(
+                    $"DevLoadLevel{i + 1}",
+                    devLevelMapsDropdown.transform,
+                    GetDevLevelMapLabel(level, i),
+                    new Vector2(0f, -18f - i * 28f),
+                    new Vector2(178f, 24f),
+                    10);
+                button.onClick.AddListener(() =>
+                {
+                    session.SelectLevel(levelId);
+                    SetDevLevelMapsDropdownVisible(false);
+                });
+            }
+
+            devLevelMapsDropdown.SetActive(false);
+        }
+
+        private void SetDevLevelMapsDropdownVisible(bool visible)
+        {
+            devLevelMapsDropdownVisible = visible && devLevelMapsDropdown != null;
+            if (devLevelMapsDropdown == null)
+            {
+                return;
+            }
+
+            devLevelMapsDropdown.SetActive(devLevelMapsDropdownVisible);
+            if (devLevelMapsDropdownVisible)
+            {
+                devLevelMapsDropdown.transform.SetAsLastSibling();
+            }
+        }
+
+        private static string GetDevLevelMapLabel(LevelDefinition level, int index)
+        {
+            if (level == null)
+            {
+                return $"LEVEL {index + 1}";
+            }
+
+            return level.id switch
+            {
+                "level_02" => "LEVEL 2 - CHOKE QUEUE",
+                "level_02_1" => "LEVEL 2.1 - THREE EXITS",
+                "level_03" => "LEVEL 3",
+                "level_04" => "LEVEL 4 - 10K TEST",
+                "level_05" => "LEVEL 5 - 100K TEST",
+                "level_06" => "LEVEL 6 - 90 DEG TEST",
+                "level_07" => "LEVEL 7 - EXPLOSION TEST",
+                _ => $"LEVEL {index + 1}"
+            };
         }
 
         private void ToggleStatsPanel()
@@ -1761,7 +1869,7 @@ namespace TowerDefense.UI
             var activeHeader = CreateText("StatsActiveHeader", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(activeHeader.GetComponent<RectTransform>(), new Vector2(98f, -40f), new Vector2(150f, 18f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             activeHeader.text = "ACTIVE";
-            activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, "Volley of Arrows", new Vector2(98f, -60f), new Vector2(150f, 24f), 10);
+            activeWeaponStatsButton = CreateButton("Stats_ActiveWeapon", statsPanel.transform, activeWeapon.DisplayName, new Vector2(98f, -60f), new Vector2(150f, 24f), 10);
 
             statsEmptyTowerText = CreateText("StatsNoTowers", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-96f, -62f), new Vector2(176f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -2012,16 +2120,36 @@ namespace TowerDefense.UI
 
         private void SetTestSpeed(float speed)
         {
-            Time.timeScale = speed;
+            selectedTestSpeed = Mathf.Clamp(speed, 0.1f, 20f);
+            if (pausePanelVisible)
+            {
+                timeScaleBeforePause = selectedTestSpeed;
+            }
+            else
+            {
+                Time.timeScale = selectedTestSpeed;
+            }
+
             UpdateDevSpeedButtons();
         }
 
         private void UpdateDevSpeedButtons()
         {
-            HighlightSpeedButton(devSpeed1Button, Mathf.Approximately(Time.timeScale, 1f));
-            HighlightSpeedButton(devSpeed2Button, Mathf.Approximately(Time.timeScale, 2f));
-            HighlightSpeedButton(devSpeed5Button, Mathf.Approximately(Time.timeScale, 5f));
-            HighlightSpeedButton(devSpeed10Button, Mathf.Approximately(Time.timeScale, 10f));
+            if (!pausePanelVisible && !Mathf.Approximately(Time.timeScale, 0f))
+            {
+                selectedTestSpeed = Mathf.Clamp(Time.timeScale, 0.1f, 20f);
+            }
+
+            if (devSpeedSlider != null && !Mathf.Approximately(devSpeedSlider.value, selectedTestSpeed))
+            {
+                devSpeedSlider.SetValueWithoutNotify(selectedTestSpeed);
+            }
+
+            if (devSpeedValueText != null)
+            {
+                devSpeedValueText.text = $"{selectedTestSpeed:0.0}x";
+            }
+
             HighlightToggleButton(devToggleButton, devPanelVisible);
             HighlightToggleButton(statsToggleButton, statsPanelVisible);
             HighlightToggleButton(codexToggleButton, codexPanelVisible);
@@ -2143,7 +2271,7 @@ namespace TowerDefense.UI
             {
                 var label = activeWeaponStatsButton.GetComponentInChildren<Text>();
                 var activePercent = totalDamage <= 0f ? 0f : activeWeapon.TotalDamageDealt / totalDamage * 100f;
-                label.text = $"Volley of Arrows  {activeWeapon.TotalDamageDealt:0}  {activePercent:0}%";
+                label.text = $"{activeWeapon.DisplayName}  {activeWeapon.TotalDamageDealt:0}  {activePercent:0}%";
                 label.color = Color.white;
             }
         }
@@ -2244,8 +2372,16 @@ namespace TowerDefense.UI
                     AddTurretCodexEntries(entries);
                     break;
                 case CodexSector.ActiveWeapons:
-                    entries.Add(new CodexEntry("volley_of_arrows", "Volley of Arrows",
-                        $"Volley of Arrows\n\nManual burst weapon. Fires into a target area and damages only a capped number of enemies inside it, so timing and target choice matter.\n\nWeakness: Limited by cooldown and pierce cap; wasted shots hurt when enemies are spread out or only a few targets are inside the radius.\n\nDamage: {activeWeapon.Damage:0.0} per target\nRadius: {activeWeapon.Radius:0.0}\nPierce cap: {activeWeapon.MaxTargets}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nProjectile: area volley\nRole: manual burst damage"));
+                    if (activeWeapon.KnockbackDistance > 0f)
+                    {
+                        entries.Add(new CodexEntry("shockwave_bomb", activeWeapon.DisplayName,
+                            $"{activeWeapon.DisplayName}\n\nA physics-test explosive with a lethal damage-only core and a fast expanding knockback wave. Enemies outside the visible core take no damage.\n\nDamage: {activeWeapon.Damage:0.0}\nDamage radius: {activeWeapon.Radius:0.0}\nKnockback reach: +{activeWeapon.KnockbackPropagationRadius:0.0}\nTargets: all reached by the shockwave\nKnockback: {activeWeapon.KnockbackDistance:0.0}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nRole: crowd physics test"));
+                    }
+                    else
+                    {
+                        entries.Add(new CodexEntry("volley_of_arrows", activeWeapon.DisplayName,
+                            $"{activeWeapon.DisplayName}\n\nManual burst weapon. Fires into a target area and damages only a capped number of enemies inside it, so timing and target choice matter.\n\nWeakness: Limited by cooldown and pierce cap; wasted shots hurt when enemies are spread out or only a few targets are inside the radius.\n\nDamage: {activeWeapon.Damage:0.0} per target\nRadius: {activeWeapon.Radius:0.0}\nPierce cap: {activeWeapon.MaxTargets}\nCooldown: {activeWeapon.CooldownSeconds:0.0}s\nProjectile: area volley\nRole: manual burst damage"));
+                    }
                     break;
                 case CodexSector.Enemies:
                     AddEnemyCodexEntries(entries, includeBosses: false);
@@ -3958,12 +4094,12 @@ namespace TowerDefense.UI
             activeWeaponCooldownFill.fillMethod = Image.FillMethod.Vertical;
             activeWeaponCooldownFill.fillOrigin = (int)Image.OriginVertical.Bottom;
 
-            var label = CreateText("Label", root.transform, new Vector2(0f, 11f), TextAnchor.MiddleCenter, 10);
-            label.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0f);
-            label.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0f);
-            label.GetComponent<RectTransform>().pivot = new Vector2(0.5f, 0.5f);
-            label.GetComponent<RectTransform>().sizeDelta = new Vector2(110f, 18f);
-            label.text = "Active";
+            activeWeaponLabel = CreateText("Label", root.transform, new Vector2(0f, 11f), TextAnchor.MiddleCenter, 10);
+            activeWeaponLabel.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0f);
+            activeWeaponLabel.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0f);
+            activeWeaponLabel.GetComponent<RectTransform>().pivot = new Vector2(0.5f, 0.5f);
+            activeWeaponLabel.GetComponent<RectTransform>().sizeDelta = new Vector2(110f, 18f);
+            activeWeaponLabel.text = "Active";
 
             activeWeaponCooldownText = CreateText("CooldownText", root.transform, new Vector2(0f, 51f), TextAnchor.MiddleCenter, 13);
             activeWeaponCooldownText.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0f);
@@ -3980,6 +4116,10 @@ namespace TowerDefense.UI
             }
 
             activeWeaponIcon.color = activeWeapon.IsReady ? new Color(1f, 0.5f, 0.16f, 1f) : new Color(0.45f, 0.45f, 0.45f, 1f);
+            if (activeWeaponLabel != null)
+            {
+                activeWeaponLabel.text = activeWeapon.KnockbackDistance > 0f ? "LMB: EXPLODE" : "Active";
+            }
             activeWeaponCooldownFill.fillAmount = activeWeapon.CanFire ? 1f - activeWeapon.CooldownProgress : 1f;
             activeWeaponCooldownFill.enabled = !activeWeapon.IsReady;
             activeWeaponCooldownText.text = activeWeapon.AutoFireEnabled
@@ -4045,6 +4185,56 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(text.GetComponent<RectTransform>(), Vector2.zero, size, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             text.text = label;
             return button;
+        }
+
+        private static Slider CreateSlider(string name, Transform parent, Vector2 anchoredPosition, Vector2 size, float minValue, float maxValue, float value)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            ConfigureCenteredRect(rect, anchoredPosition, size, new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+
+            var background = CreateImage("Background", go.transform, Vector2.zero, size, new Color(0.06f, 0.16f, 0.26f, 1f));
+            var backgroundRect = background.GetComponent<RectTransform>();
+            ConfigureCenteredRect(backgroundRect, Vector2.zero, size, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+            var fillArea = new GameObject("Fill Area");
+            fillArea.transform.SetParent(go.transform, false);
+            var fillAreaRect = fillArea.AddComponent<RectTransform>();
+            fillAreaRect.anchorMin = Vector2.zero;
+            fillAreaRect.anchorMax = Vector2.one;
+            fillAreaRect.offsetMin = new Vector2(4f, 0f);
+            fillAreaRect.offsetMax = new Vector2(-4f, 0f);
+
+            var fill = CreateImage("Fill", fillArea.transform, Vector2.zero, size, new Color(0.25f, 0.7f, 1f, 1f));
+            var fillRect = fill.GetComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+
+            var handleArea = new GameObject("Handle Slide Area");
+            handleArea.transform.SetParent(go.transform, false);
+            var handleAreaRect = handleArea.AddComponent<RectTransform>();
+            handleAreaRect.anchorMin = Vector2.zero;
+            handleAreaRect.anchorMax = Vector2.one;
+            handleAreaRect.offsetMin = new Vector2(5f, -1f);
+            handleAreaRect.offsetMax = new Vector2(-5f, 1f);
+
+            var handle = CreateImage("Handle", handleArea.transform, Vector2.zero, new Vector2(8f, 14f), new Color(0.9f, 0.96f, 1f, 1f));
+            var handleRect = handle.GetComponent<RectTransform>();
+            ConfigureCenteredRect(handleRect, Vector2.zero, new Vector2(8f, 14f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+            var slider = go.AddComponent<Slider>();
+            slider.minValue = minValue;
+            slider.maxValue = maxValue;
+            slider.wholeNumbers = false;
+            slider.fillRect = fillRect;
+            slider.handleRect = handleRect;
+            slider.targetGraphic = handle;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.value = Mathf.Clamp(value, minValue, maxValue);
+            return slider;
         }
 
         private static ColorBlock CreateButtonColors()

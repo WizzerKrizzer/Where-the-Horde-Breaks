@@ -1,0 +1,27 @@
+{
+  "source": "C:\\Users\\Svetoslav\\Downloads\\Meshy_AI_Meshy_Merged_Animations.glb",
+  "animation_source": "C:\\Users\\Svetoslav\\Downloads\\Meshy_AI_Meshy_Merged_Animations.glb",
+  "retargeted": false,
+  "animation": "Charged_Slash",
+  "clip": "ChargedSlash",
+  "vertices": 11218,
+  "triangles": 15175,
+  "frames": 68,
+  "duration": 2.2666666507720947,
+  "atlas": [
+    256,
+    2980
+  ],
+  "bounds": [
+    [
+      -1.1612500564814736,
+      0.0,
+      -1.1065574070809228
+    ],
+    [
+      1.1612500564814736,
+      2.4,
+      1.1065574070809228
+    ]
+  ]
+}

@@ -135,11 +135,11 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (TryFireAtHordeTarget())
+            if (TryFireAtHordeTarget(out var hordeTargetIndex))
             {
                 if (definition.doubleShotChance > 0f && Random.value < definition.doubleShotChance)
                 {
-                    TryFireAtHordeTarget();
+                    TryFireAtSecondHordeTarget(hordeTargetIndex);
                 }
 
                 cooldown = definition.fireInterval / fireRateMultiplier;
@@ -169,14 +169,22 @@ namespace TowerDefense.Runtime
             ProjectileActor.Spawn(this, definition, target, enemies, definition.damage * damageMultiplier, projectileColor);
         }
 
-        private bool TryFireAtHordeTarget()
+        private bool TryFireAtHordeTarget(out int targetIndex)
         {
+            targetIndex = -1;
             if (enemies == null || definition == null)
             {
                 return false;
             }
 
-            if (!enemies.TryGetHordeTargetPosition(transform.position, definition.range, definition.canHitFlying, targetingMode, out var targetPosition))
+            if (!enemies.TryGetHordeTargetSnapshot(
+                    transform.position,
+                    definition.range,
+                    definition.canHitFlying,
+                    targetingMode,
+                    out targetIndex,
+                    out var targetPosition,
+                    out var targetVelocity))
             {
                 return false;
             }
@@ -187,6 +195,26 @@ namespace TowerDefense.Runtime
                 var duration = GetHordeShotDuration(targetPosition);
                 StartCoroutine(ApplyDelayedHordeSplash(targetPosition, damage, duration));
                 SpawnHordeShotVisual(targetPosition, duration);
+                return true;
+            }
+
+            if (!enemies.TryReserveHordeDamage(targetIndex, damage))
+            {
+                return false;
+            }
+
+            if (definition.id == "ballista")
+            {
+                SpawnHordePiercingShot(targetIndex, targetPosition, targetVelocity, damage);
+                return true;
+            }
+
+            if (definition.pierce <= 0)
+            {
+                var duration = GetHordeShotDuration(targetPosition);
+                var impactPosition = PredictHordeImpactPosition(targetPosition, targetVelocity, duration);
+                StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration));
+                SpawnHordeShotVisual(impactPosition, duration);
                 return true;
             }
 
@@ -202,11 +230,114 @@ namespace TowerDefense.Runtime
                 splash: false);
             if (!queued)
             {
+                enemies.ReleaseReservedHordeDamage(targetIndex, damage);
                 return false;
             }
+            enemies.ReleaseReservedHordeDamage(targetIndex, damage);
             RecordDamage(damage);
             SpawnHordeShotVisual(targetPosition, GetHordeShotDuration(targetPosition));
             return true;
+        }
+
+        private bool TryFireAtSecondHordeTarget(int excludedTargetIndex)
+        {
+            if (enemies == null || definition == null)
+            {
+                return false;
+            }
+
+            if (definition.pierce > 0 || !enemies.TryGetSecondaryHordeTargetSnapshot(
+                    transform.position,
+                    definition.range,
+                    definition.canHitFlying,
+                    targetingMode,
+                    out var targetIndex,
+                    out var targetPosition,
+                    out var targetVelocity))
+            {
+                return false;
+            }
+
+            var damage = definition.damage * damageMultiplier;
+            if (targetIndex == excludedTargetIndex || !enemies.TryReserveHordeDamage(targetIndex, damage))
+            {
+                return false;
+            }
+            var duration = GetHordeShotDuration(targetPosition);
+            var impactPosition = PredictHordeImpactPosition(targetPosition, targetVelocity, duration);
+            StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration));
+            SpawnHordeShotVisual(impactPosition, duration);
+            return true;
+        }
+
+        private IEnumerator ApplyDelayedHordeDirectHit(int targetIndex, float damage, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (enemies == null)
+            {
+                yield break;
+            }
+
+            RecordDamage(enemies.ResolveReservedHordeDamage(targetIndex, damage));
+        }
+
+        private void SpawnHordePiercingShot(int reservedTargetIndex, Vector3 targetPosition, Vector3 targetVelocity, float damage)
+        {
+            var start = transform.position + Vector3.up * 0.82f;
+            var targetDuration = Vector3.Distance(start, targetPosition + Vector3.up * 0.45f) /
+                                 Mathf.Max(0.01f, definition.projectileSpeed);
+            var predictedTarget = PredictHordeImpactPosition(targetPosition, targetVelocity, targetDuration) + Vector3.up * 0.45f;
+            var flatDirection = predictedTarget - start;
+            flatDirection.y = 0f;
+            if (flatDirection.sqrMagnitude < 0.001f)
+            {
+                flatDirection = transform.forward;
+            }
+            flatDirection.Normalize();
+
+            var travelDistance = Mathf.Max(definition.range * 1.5f, Vector3.Distance(start, predictedTarget) + 2f);
+            var end = start + flatDirection * travelDistance;
+            end.y = predictedTarget.y;
+            var duration = travelDistance / Mathf.Max(0.01f, definition.projectileSpeed);
+            var projectileId = enemies.CreateHordeProjectileId();
+            var firstSegment = true;
+            HordeProjectileVisual.Spawn(
+                start,
+                end,
+                Color.yellow,
+                false,
+                duration,
+                0.12f,
+                (segmentStart, segmentEnd) =>
+                {
+                    enemies.QueueHordeProjectile(
+                        segmentStart,
+                        segmentEnd,
+                        0.2f,
+                        damage,
+                        0f,
+                        Mathf.Max(1, definition.pierce + 1),
+                        definition.canHitFlying,
+                        splash: false,
+                        projectileId: projectileId,
+                        resetHitCount: firstSegment);
+                    firstSegment = false;
+                },
+                projectileId);
+            StartCoroutine(ReleaseHordeReservationAfterFlight(reservedTargetIndex, damage, targetDuration + 0.12f));
+            RecordDamage(damage);
+        }
+
+        private IEnumerator ReleaseHordeReservationAfterFlight(int targetIndex, float damage, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            enemies?.ReleaseReservedHordeDamage(targetIndex, damage);
+        }
+
+        private static Vector3 PredictHordeImpactPosition(Vector3 targetPosition, Vector3 targetVelocity, float duration)
+        {
+            targetVelocity.y = 0f;
+            return targetPosition + targetVelocity * Mathf.Max(0f, duration);
         }
 
         private IEnumerator ApplyDelayedHordeSplash(Vector3 targetPosition, float damage, float delay)

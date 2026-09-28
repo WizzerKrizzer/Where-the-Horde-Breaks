@@ -179,6 +179,66 @@ namespace TowerDefense.Tests
         }
 
         [Test]
+        public void TryRefundLatestRank_ReturnsOnlyMostRecentRankCost()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "damage",
+                    maxRanks = 3,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 60);
+            var progression = new ProgressionService(tree, profile);
+
+            progression.TryPurchase("damage");
+            progression.TryPurchase("damage");
+
+            Assert.True(progression.TryRefundLatestRank("damage"));
+            Assert.That(profile.GetCurrency(CurrencyType.KillEssence), Is.EqualTo(50));
+            Assert.That(progression.GetPurchasedRank("damage"), Is.EqualTo(1));
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent), Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void TryRefundLatestRank_KeepsPurchasedDependentsValid()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "core",
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "tower_limit",
+                    prerequisiteNodeIds = new[] { "core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 30);
+            var progression = new ProgressionService(tree, profile);
+
+            progression.TryPurchase("core");
+            progression.TryPurchase("tower_limit");
+
+            Assert.False(progression.CanRefundLatestRank("core"));
+            Assert.False(progression.TryRefundLatestRank("core"));
+            Assert.True(progression.TryRefundLatestRank("tower_limit"));
+            Assert.True(progression.TryRefundLatestRank("core"));
+        }
+
+        [Test]
         public void GetEffectTotal_FiltersPerTypeTowerLimitByTarget()
         {
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();

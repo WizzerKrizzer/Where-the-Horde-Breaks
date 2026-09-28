@@ -1,0 +1,584 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using NUnit.Framework;
+using TowerDefense.Runtime;
+using TowerDefense.Simulation;
+using UnityEngine;
+using UnityEngine.TestTools;
+using UnityEngine.SceneManagement;
+using UnityEngine.Profiling;
+using UnityEngine.Rendering;
+
+namespace TowerDefense.Tests
+{
+    public sealed class CrowdMergeValidationTests
+    {
+        [UnityTest, Explicit("Checks GPU timestamp support for acceptance profiling")]
+        public IEnumerator HardwareFrameTiming_Probe()
+        {
+            var samples = new FrameTiming[1];
+            var sampler = CustomSampler.Create("CrowdGpuProbe", true);
+            var recorder = sampler.GetRecorder();
+            recorder.enabled = true;
+            var command = new CommandBuffer();
+            var renderTarget = new RenderTexture(1920,1080,24);
+            var camera = Camera.main;
+            var previousTarget = camera.targetTexture;
+            camera.targetTexture = renderTarget;
+            var markerGpu = new List<float>();
+            var cpu = new List<float>();
+            var gpu = new List<float>();
+            ulong last = 0;
+            for (var i = 0; i < 180; i++)
+            {
+                command.Clear(); command.BeginSample(sampler); Graphics.ExecuteCommandBuffer(command);
+                camera.Render();
+                command.Clear(); command.EndSample(sampler); Graphics.ExecuteCommandBuffer(command);
+                FrameTimingManager.CaptureFrameTimings();
+                yield return null;
+                if (recorder.gpuSampleBlockCount > 0) markerGpu.Add(recorder.gpuElapsedNanoseconds / 1000000f);
+                if (FrameTimingManager.GetLatestTimings(1, samples) == 0 || samples[0].frameStartTimestamp == last) continue;
+                last = samples[0].frameStartTimestamp;
+                if (samples[0].cpuFrameTime > 0) cpu.Add((float)samples[0].cpuFrameTime);
+                if (samples[0].gpuFrameTime > 0) gpu.Add((float)samples[0].gpuFrameTime);
+            }
+            Directory.CreateDirectory("Logs/MergeValidation");
+            File.WriteAllText("Logs/MergeValidation/timing-probe.txt", $"Enabled={FrameTimingManager.IsFeatureEnabled()} CPU {Timing(cpu)} GPU {Timing(gpu)} MarkerGPU {Timing(markerGpu)}");
+            camera.targetTexture = previousTarget;
+            renderTarget.Release(); UnityEngine.Object.Destroy(renderTarget);
+            command.Dispose(); recorder.enabled = false;
+            Assert.That(gpu.Count + markerGpu.Count, Is.GreaterThan(0), "Hardware GPU timing must be available before the final acceptance run.");
+        }
+
+        [UnityTest, Timeout(480000), Explicit("One full real-wave validation, including the merge and the 1800-body tail")]
+        public IEnumerator ActualTenThousand_ThroughMergeAndTail()
+        {
+            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var timeScale = Time.timeScale;
+            var vsync = QualitySettings.vSyncCount;
+            var frameRate = Application.targetFrameRate;
+            var random = UnityEngine.Random.state;
+            HordeEnemyManager horde = null;
+            GameObject timerObject = null;
+            CrowdGpuFrameTimer gpuTimer = null;
+            RenderTexture target = null;
+            try
+            {
+                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = -1;
+                Time.timeScale = 1;
+                UnityEngine.Random.InitState(761905);
+                yield return SceneManager.LoadSceneAsync("Main");
+                var level = SampleContent.Create().Levels[1];
+                var bootstrap = UnityEngine.Object.FindAnyObjectByType<TowerDefenseBootstrap>();
+                var route = (PathRoute)typeof(TowerDefenseBootstrap).GetMethod("LoadLevelMap", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(bootstrap, new object[] { level });
+                horde = UnityEngine.Object.FindAnyObjectByType<HordeEnemyManager>();
+                UnityEngine.Object.FindAnyObjectByType<TopDownCameraController>().enabled = false;
+                var camera = Camera.main;
+                camera.transform.rotation = Quaternion.Euler(75, 0, 0);
+                camera.transform.position = new Vector3(43, 22, -6);
+                target = new RenderTexture(1920, 1080, 24);
+                camera.targetTexture = target;
+                timerObject = new GameObject("Crowd GPU frame timer");
+                gpuTimer = timerObject.AddComponent<CrowdGpuFrameTimer>();
+                horde.BeginWave(level.wave, route);
+                var simulation = (GpuHordeSimulation)typeof(HordeEnemyManager).GetField("gpuSimulation", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde);
+                var states = new GpuHordeSimulation.AgentState[10000];
+                var previous = new GpuHordeSimulation.AgentState[10000];
+                var frames = new List<float>();
+                var allFrames = new List<float>();
+                var cpuFrames = new List<float>();
+                var gpuFrames = new List<float>();
+                var closeFrames = new List<float>();
+                var overviewFrames = new List<float>();
+                var timing = new FrameTiming[1];
+                ulong lastTiming = 0;
+                var frameLog = new System.Text.StringBuilder("frame,wallMs,cpuMs,gpuScopeMs,gpuScopeFrame,ticks,close,observationPreviousFrame\n");
+                var catchupFrames = 0;
+                var largestTickCount = 0;
+                var closeView = false;
+                var previousView = false;
+                var spawningFrames = new List<float>();
+                var settledFrames = new List<float>();
+                var tailFrames = new List<float>();
+                var diagnostics = new uint[7];
+                var report = new System.Text.StringBuilder("elapsed,spawned,alive,pairs,depth,actualSpeed,forwardSpeed,spawnCpuMs\n");
+                var begin = Time.realtimeSinceStartupAsDouble;
+                var sampleTime = begin;
+                var previousTime = begin;
+                var maxPairs = 0u;
+                var maxDropped = 0u;
+                var maxOccupancy = 0u;
+                var maxCpuPairs = 0;
+                var mergeSamples = 0;
+                var tailSamples = 0;
+                var forwardSum = 0f;
+                var skipFrame = false;
+                var capture = 0;
+                var stagnantSamples = 0;
+                var nextCheckpoint = begin + 10;
+                Directory.CreateDirectory("Logs/MergeValidation");
+                while (Time.realtimeSinceStartupAsDouble - begin < 420)
+                {
+                    FrameTimingManager.CaptureFrameTimings();
+                    yield return null;
+                    previousView = closeView;
+                    closeView = ((int)((Time.realtimeSinceStartupAsDouble - begin) / 5) & 1) != 0;
+                    camera.transform.position = closeView ? new Vector3(43, 3.5f, -2.5f) : new Vector3(43, 22, -6);
+                    camera.transform.LookAt(new Vector3(43, 0.2f, 0));
+                    if (previousView != closeView) simulation.RefreshVisibilityForAudit();
+                    simulation.Draw(EnemyManager.GetLowEnemyMesh(), 0);
+                    camera.Render();
+                    gpuTimer.End();
+                    var now = Time.realtimeSinceStartupAsDouble;
+                    float cpuMs = 0, gpuMs = gpuTimer.Milliseconds;
+                    if (gpuMs > 0) gpuFrames.Add(gpuMs);
+                    if (FrameTimingManager.GetLatestTimings(1, timing) > 0 && timing[0].frameStartTimestamp != lastTiming)
+                    {
+                        lastTiming = timing[0].frameStartTimestamp;
+                        cpuMs = (float)timing[0].cpuFrameTime;
+                        if (cpuMs > 0) cpuFrames.Add(cpuMs);
+                    }
+                    if (horde.TotalSpawned > 500)
+                    {
+                        allFrames.Add(Time.unscaledDeltaTime * 1000);
+                        (previousView ? closeFrames : overviewFrames).Add(Time.unscaledDeltaTime * 1000);
+                        largestTickCount = Math.Max(largestTickCount, horde.SimulationTicksLastFrame);
+                        if (horde.SimulationTicksLastFrame > 1) catchupFrames++;
+                        frameLog.AppendLine(FormattableString.Invariant($"{Time.frameCount},{Time.unscaledDeltaTime*1000:F4},{cpuMs:F4},{gpuMs:F4},{Time.frameCount-3},{horde.SimulationTicksLastFrame},{previousView},{skipFrame}"));
+                    }
+                    if (!skipFrame && horde.TotalSpawned > 500)
+                    {
+                        frames.Add(Time.unscaledDeltaTime * 1000);
+                        if (horde.TotalSpawned < 10000) spawningFrames.Add(Time.unscaledDeltaTime * 1000);
+                        else settledFrames.Add(Time.unscaledDeltaTime * 1000);
+                        if (horde.TotalSpawned == 10000 && horde.ActiveCount < 2500) tailFrames.Add(Time.unscaledDeltaTime * 1000);
+                    }
+                    skipFrame = false;
+                    if (now < sampleTime) continue;
+                    sampleTime = now + 0.5;
+                    if (now >= nextCheckpoint)
+                    {
+                        nextCheckpoint = now + 10;
+                        File.WriteAllText("Logs/MergeValidation/frames.csv", frameLog.ToString());
+                        File.WriteAllText("Logs/MergeValidation/timing-checkpoint.txt", $"elapsed={now-begin:F1}s\nAll {Timing(allFrames)}\nCPU {Timing(cpuFrames)}\nGPU scope {Timing(gpuFrames)}\nClose {Timing(closeFrames)}\nOverview {Timing(overviewFrames)}");
+                    }
+                    simulation.SynchronizeDiagnostics(diagnostics);
+                    simulation.ReadStatesSynchronous(states, horde.TotalSpawned);
+                    var speed = 0f;
+                    var forward = 0f;
+                    var count = 0;
+                    var atMerge = 0;
+                    for (var i = 0; i < horde.TotalSpawned; i++)
+                    {
+                        if (states[i].Status != 1 || previous[i].Status != 1) continue;
+                        var delta = states[i].Position - previous[i].Position;
+                        speed += delta.magnitude / (float)(now - previousTime);
+                        forward += delta.x / (float)(now - previousTime);
+                        count++;
+                        if (states[i].Position.x > 35 && states[i].Position.x < 48) atMerge++;
+                    }
+                    speed /= Mathf.Max(1, count);
+                    forward /= Mathf.Max(1, count);
+                    // Same occupied body area as the old 1000-body criterion; actual circles are larger.
+                    if (atMerge * Mathf.Pow(GoblinPreviewAssets.ContactRadiusPerScale / 0.5f, 2) > 1000)
+                    {
+                        mergeSamples++;
+                        forwardSum += forward;
+                    }
+                    if (horde.TotalSpawned == 10000 && horde.ActiveCount < 2500) tailSamples++;
+                    maxPairs = Math.Max(maxPairs, diagnostics[5]);
+                    maxDropped = Math.Max(maxDropped, diagnostics[1]);
+                    maxOccupancy = Math.Max(maxOccupancy, diagnostics[2]);
+                    stagnantSamples = horde.TotalSpawned == 10000 && count > 1000 && speed < 0.05f
+                        ? stagnantSamples + 1 : 0;
+                    report.AppendLine(FormattableString.Invariant($"{now-begin:F2},{horde.TotalSpawned},{horde.ActiveCount},{diagnostics[5]},{diagnostics[6]/1000000f:F6},{speed:F3},{forward:F3},{horde.Performance.SpawnMs:F3}"));
+                    File.WriteAllText("Logs/MergeValidation/actual.csv", report.ToString());
+                    if ((capture == 0 && atMerge * Mathf.Pow(GoblinPreviewAssets.ContactRadiusPerScale / 0.5f, 2) > 1500) || (capture == 1 && horde.TotalSpawned == 10000) || (capture == 2 && tailSamples > 0))
+                    {
+                        maxCpuPairs = Math.Max(maxCpuPairs, Pairs(states).pairs);
+                        CaptureViews(simulation, states, $"actual-{capture}");
+                        if (capture == 1)
+                        {
+                            var snapshot = new AuditSnapshot { States = states, Controls = (Vector4[])typeof(HordeEnemyManager).GetField("gpuControls", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde) };
+                            File.WriteAllText("Logs/MergeValidation/peak-snapshot.json", JsonUtility.ToJson(snapshot));
+                        }
+                        capture++;
+                    }
+                    Array.Copy(states, previous, states.Length);
+                    previousTime = now;
+                    skipFrame = true; // synchronous observation is reported separately from rendered throughput
+                    if (horde.TotalSpawned == 10000 && horde.ActiveCount < 1700) break;
+                    if (stagnantSamples >= 10) break; // fail fast on a frozen but separated horde
+                }
+                File.WriteAllText("Logs/MergeValidation/actual.csv", report.ToString());
+                File.WriteAllText("Logs/MergeValidation/frames.csv", frameLog.ToString());
+                var summary = $"1920x1080, camera.Render on every measured frame\nspawned={horde.TotalSpawned}, remaining={horde.ActiveCount}, mergeSamples={mergeSamples}, tailSamples={tailSamples}, maxPairs={maxPairs}, CPU={maxCpuPairs}, forward={forwardSum/Mathf.Max(1,mergeSamples):F3}m/s, occupancy={maxOccupancy}, dropped={maxDropped}\nAll including observation/capture stalls: {Timing(allFrames)}\nCPU hardware frame: {Timing(cpuFrames)}\nGPU timestamp scope (simulation + camera, 3-frame delay): {Timing(gpuFrames)}\nClose: {Timing(closeFrames)}\nOverview: {Timing(overviewFrames)}\nCatchup frames={catchupFrames}, maximum ticks/frame={largestTickCount}\nWithout observation/capture stalls: {Timing(frames)}\nSpawning: {Timing(spawningFrames)}\nAfter spawning: {Timing(settledFrames)}\nTail: {Timing(tailFrames)}\n";
+                File.WriteAllText("Logs/MergeValidation/actual.txt", summary);
+                var finalSnapshot = new AuditSnapshot { States = states, Controls = (Vector4[])typeof(HordeEnemyManager).GetField("gpuControls", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde) };
+                File.WriteAllText("Logs/MergeValidation/final-snapshot.json", JsonUtility.ToJson(finalSnapshot));
+                UnityEngine.Debug.Log(summary);
+                Assert.That(stagnantSamples, Is.LessThan(10), $"The remaining {horde.ActiveCount} bodies stopped for five seconds.");
+                Assert.That(gpuFrames.Count, Is.GreaterThan(100), "Acceptance requires completed GPU timestamp scopes.");
+                Assert.That(horde.TotalSpawned, Is.EqualTo(10000));
+                Assert.That(mergeSamples, Is.GreaterThan(5));
+                Assert.That(tailSamples, Is.GreaterThan(0));
+                Assert.That(maxPairs, Is.Zero);
+                Assert.That(maxDropped, Is.Zero);
+                Assert.That(maxCpuPairs, Is.Zero);
+                Assert.That(forwardSum / Mathf.Max(1, mergeSamples), Is.GreaterThan(0.8f));
+                gpuFrames.Sort();
+                Assert.That(gpuFrames[gpuFrames.Count * 95 / 100], Is.LessThan(20f));
+                allFrames.Sort();
+                Assert.That(allFrames[allFrames.Count * 95 / 100], Is.LessThan(20f));
+                frames.Sort();
+                Assert.That(frames[frames.Count * 95 / 100], Is.LessThan(20f));
+                settledFrames.Sort();
+                tailFrames.Sort();
+                Assert.That(settledFrames[settledFrames.Count * 95 / 100], Is.LessThan(20f));
+                Assert.That(tailFrames[tailFrames.Count * 95 / 100], Is.LessThan(20f));
+            }
+            finally
+            {
+                if (gpuTimer != null) gpuTimer.End();
+                if (timerObject != null) UnityEngine.Object.Destroy(timerObject);
+                horde?.StopWave();
+                if (target != null)
+                {
+                    if (Camera.main != null && Camera.main.targetTexture == target) Camera.main.targetTexture = null;
+                    target.Release();
+                    UnityEngine.Object.Destroy(target);
+                }
+                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+                QualitySettings.vSyncCount = vsync;
+                Application.targetFrameRate = frameRate;
+                Time.timeScale = timeScale;
+                UnityEngine.Random.state = random;
+            }
+        }
+
+        private static string Timing(List<float> values)
+        {
+            if (values.Count == 0) return "no samples";
+            values.Sort();
+            var sum = 0.0;
+            foreach (var value in values) sum += value;
+            return $"n={values.Count}, mean={sum/values.Count:F3}ms, p95={values[values.Count*95/100]:F3}ms, max={values[values.Count-1]:F3}ms";
+        }
+
+        [UnityTest]
+        public IEnumerator DenseThreeStreamMerge_StageAudit() => StageAudit(false);
+
+        [UnityTest]
+        public IEnumerator TightlyPackedThreeStreamMerge_StageAudit() => StageAudit(true);
+
+        private IEnumerator StageAudit(bool tight)
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required");
+            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            try
+            {
+                // The last three incoming segments and shared outlet of level 2.
+                var primary = new[] { new Vector3(22, 0, 0), new Vector3(44, 0, 0), new Vector3(64, 0, 0) };
+                var upper = new[] { new Vector3(22, 0, 19), new Vector3(34, 0, 12), new Vector3(44, 0, 0), new Vector3(64, 0, 0) };
+                var lower = new[] { new Vector3(22, 0, -19), new Vector3(34, 0, -12), new Vector3(44, 0, 0), new Vector3(64, 0, 0) };
+                var field = new HordeFlowField(primary, upper, 2.85f, 0.62f,
+                    new[] { 2.85f, 2.85f, 2.85f }, new[] { 2.85f, 2.85f, 2.85f, 2.85f }, lower,
+                    new[] { 2.85f, 2.85f, 2.85f, 2.85f });
+                Directory.CreateDirectory("Logs/MergeValidation");
+                var seed = new List<GpuHordeSimulation.AgentState>();
+                for (var row = 0; row < (tight ? 78 : 65); row++)
+                for (var col = 0; col < (tight ? 33 : 28); col++)
+                {
+                    var spacing = tight ? 0.444f : 0.51f;
+                    var p = new Vector2(32 + col * spacing + (row % 2) * spacing * 0.5f, -17 + row * spacing * 0.86862745f);
+                    if (!field.IsWalkable(new Vector3(p.x, 0, p.y))) continue;
+                    seed.Add(new GpuHordeSimulation.AgentState { Position = p, StepStartPosition = p,
+                        Scale = 0.22f, Status = 1, Health = 100, Mass = 1.3f, SlowMultiplier = 1,
+                        Facing = Vector2.right });
+                }
+                var states = seed.ToArray();
+                var count = states.Length;
+                var controls = new Vector4[count];
+                for (var i = 0; i < count; i++) controls[i] = new Vector4(4.8f, 1, 0, 0);
+                Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+                using (simulation)
+                {
+                    simulation.SlidingMotionAcceptance = Environment.GetEnvironmentVariable("CROWD_SLIDING") != "0";
+                    simulation.ReverseMotionReservation = Environment.GetEnvironmentVariable("CROWD_REVERSE") == "1";
+                    simulation.SetCollisionDiameter(0.203f * GoblinPreviewAssets.ContactRadiusPerScale / 0.5f);
+                    simulation.SetMovementDynamics(1.35f, 1.2f);
+                    simulation.SpawnBatch(states, controls, 0, count);
+                    var report = new System.Text.StringBuilder($"Dense merge count={count}; seed pairs={Pairs(states).pairs}\n");
+                    var timer = Stopwatch.StartNew();
+                    var phaseStart = 0.0;
+                    var frame = 0;
+                    var corrections = new List<float>();
+                    var previous = new Vector2[count];
+                    var previousStep = new Vector2[count];
+                    var previousAcceleration = new Vector2[count];
+                    var alternating = new List<float>();
+                    var maxInterpolatedPairs = 0;
+                    var midpoints = new GpuHordeSimulation.AgentState[count];
+                    var integrated = new Vector2[count];
+                    var travel = 0f;
+                    var maxPairs = 0;
+                    var deepest = 0f;
+                    simulation.MovementStageObserver = stage =>
+                    {
+                        simulation.ReadStatesSynchronous(states, count);
+                        var elapsed = timer.Elapsed.TotalMilliseconds;
+                        var pairs = Pairs(states);
+                        report.AppendLine($"tick={frame} stage={stage} pairs={pairs.pairs} depth={pairs.depth:P2} synchronized-ms={elapsed - phaseStart:F3}");
+                        phaseStart = timer.Elapsed.TotalMilliseconds;
+                        if (stage == "integrated") for (var i = 0; i < count; i++) integrated[i] = states[i].Position;
+                    };
+                    var observer = simulation.MovementStageObserver;
+                    for (frame = 0; frame < 180; frame++)
+                    {
+                        simulation.MovementStageObserver = frame % 30 == 29 ? observer : null;
+                        phaseStart = timer.Elapsed.TotalMilliseconds;
+                        simulation.Dispatch(1f / 60, null, null, false, 0.5f, (frame & 3) == 3);
+                        simulation.ReadStatesSynchronous(states, count);
+                        if (frame >= 120)
+                        {
+                            var pairs = Pairs(states);
+                            maxPairs = Math.Max(maxPairs, pairs.pairs);
+                            deepest = Mathf.Max(deepest, pairs.depth);
+                            for (var i = 0; i < count; i++)
+                            {
+                                var step = states[i].Position - previous[i];
+                                travel += step.magnitude / count;
+                                var acceleration = step - previousStep[i];
+                                corrections.Add(acceleration.magnitude);
+                                alternating.Add(Vector2.Dot(acceleration, previousAcceleration[i]) < 0
+                                    ? Mathf.Min(acceleration.magnitude, previousAcceleration[i].magnitude) : 0);
+                            }
+                        }
+                        for (var i = 0; i < count; i++)
+                        {
+                            previousAcceleration[i] = states[i].Position - previous[i] - previousStep[i];
+                            previousStep[i] = states[i].Position - previous[i];
+                            previous[i] = states[i].Position;
+                            midpoints[i] = states[i];
+                            midpoints[i].Position = (states[i].Position + states[i].StepStartPosition) * 0.5f;
+                        }
+                        if (frame % 12 == 0) maxInterpolatedPairs = Math.Max(maxInterpolatedPairs, Pairs(midpoints).pairs);
+                        if (frame % 15 == 0) yield return null;
+                    }
+                    File.WriteAllLines("Logs/MergeValidation/positions.csv", Array.ConvertAll(states, state => FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Velocity.x},{state.Velocity.y}")));
+                    CaptureViews(simulation, states, "short");
+                    corrections.Sort();
+                    var p95 = corrections[corrections.Count * 95 / 100];
+                    alternating.Sort();
+                    var alternating95 = alternating[alternating.Count * 95 / 100];
+                    report.AppendLine($"RESULT speed={travel:F3}m/s p95-step-change={p95:F5}m p95-alternating-change={alternating95:F5}m max-pairs={maxPairs} interpolated-pairs={maxInterpolatedPairs} depth={deepest:P2} elapsed={timer.Elapsed.TotalSeconds:F2}s");
+                    Directory.CreateDirectory("Logs/MergeValidation");
+                    File.WriteAllText("Logs/MergeValidation/short.txt", report.ToString());
+                    UnityEngine.Debug.Log(report.ToString());
+                    Assert.That(maxPairs, Is.Zero, "Every sampled tick must preserve the diagnostic body diameter.");
+                    Assert.That(travel, Is.GreaterThan(0.8f));
+                    // Bound both abrupt changes (including real braking/turning)
+                    // and changes that reverse sign on consecutive ticks.
+                    // At the seeded 0.22 scale, cap p95 changes at 5% of the
+                    // diagnostic body diameter; reversal is checked separately.
+                    Assert.That(p95, Is.LessThan(0.22f * 1.04f * 0.05f));
+                    Assert.That(alternating95, Is.LessThan(0.008f));
+                    Assert.That(maxInterpolatedPairs, Is.Zero);
+                }
+            }
+            finally { PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference); }
+        }
+
+        [Serializable]
+        internal sealed class AuditSnapshot
+        {
+            public GpuHordeSimulation.AgentState[] States;
+            public Vector4[] Controls;
+        }
+
+        [UnityTest, Explicit("Forensic replay of the captured real-wave merge without rerunning spawning")]
+        public IEnumerator CapturedRealMerge_ProgressAudit()
+        {
+            var snapshotPath = Environment.GetEnvironmentVariable("CROWD_SNAPSHOT");
+            Assert.That(File.Exists(snapshotPath), Is.True, "Set CROWD_SNAPSHOT to the saved peak-snapshot.json.");
+            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var report = new System.Text.StringBuilder("trial,tick,alive,speed,forward,stopped,pairs,depth\n");
+            try
+            {
+                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                yield return SceneManager.LoadSceneAsync("Main");
+                var level = SampleContent.Create().Levels[1];
+                var bootstrap = UnityEngine.Object.FindAnyObjectByType<TowerDefenseBootstrap>();
+                var route = (PathRoute)typeof(TowerDefenseBootstrap).GetMethod("LoadLevelMap", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(bootstrap, new object[] { level });
+                var horde = UnityEngine.Object.FindAnyObjectByType<HordeEnemyManager>();
+                horde.BeginWave(level.wave, route);
+                var field = (HordeFlowField)typeof(HordeEnemyManager).GetField("flowField", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde);
+                var diameter = (float)typeof(HordeEnemyManager).GetField("activeCollisionDiameter", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde);
+                horde.StopWave();
+                for (var trial = 0; trial < 2; trial++)
+                {
+                    var snapshot = JsonUtility.FromJson<AuditSnapshot>(File.ReadAllText(snapshotPath));
+                    var states = snapshot.States;
+                    // This one body was born inside #9071 in the rejected run. Remove it
+                    // only from this forensic fixture to isolate motion from invalid spawning.
+                    states[9182].Status = 0;
+                    Assert.That(Pairs(states).pairs, Is.Zero);
+                    Assert.That(GpuHordeSimulation.TryCreate(states.Length, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+                    using (simulation)
+                    {
+                        simulation.SetCollisionDiameter(diameter);
+                        simulation.SetMovementDynamics(level.wave.enemyInertiaMultiplier, level.wave.collisionPressureMultiplier);
+                        simulation.SlidingMotionAcceptance = trial == 1;
+                        simulation.SpawnBatch(states, snapshot.Controls, 0, states.Length);
+                        for (var tick = 0; tick < 360; tick++)
+                        {
+                            simulation.Dispatch(1f/60, null, null, false, .5f, (tick&3)==3);
+                            if (tick%30 != 29) continue;
+                            simulation.ReadStatesSynchronous(states, states.Length);
+                            var count = 0; var stopped = 0; var speed = 0f; var forward = 0f;
+                            foreach (var state in states)
+                            {
+                                if (state.Status != 1) continue;
+                                count++;
+                                var velocity = (state.Position-state.StepStartPosition)*60;
+                                speed += velocity.magnitude;
+                                forward += Vector2.Dot(velocity, field.GetDirection(new Vector3(state.Position.x, 0, state.Position.y)));
+                                if (velocity.magnitude < .05f) stopped++;
+                            }
+                            var pairs = Pairs(states);
+                            report.AppendLine(FormattableString.Invariant($"{trial},{tick},{count},{speed/count:F4},{forward/count:F4},{stopped},{pairs.pairs},{pairs.depth:F6}"));
+                            Assert.That(pairs.pairs, Is.Zero);
+                            yield return null;
+                        }
+                        File.WriteAllText($"Logs/MergeValidation/replay-{trial}-snapshot.json", JsonUtility.ToJson(new AuditSnapshot { States=states, Controls=snapshot.Controls }));
+                    }
+                }
+            }
+            finally
+            {
+                Directory.CreateDirectory("Logs/MergeValidation");
+                File.WriteAllText("Logs/MergeValidation/replay.csv", report.ToString());
+                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+            }
+        }
+
+        internal static void CaptureViews(GpuHordeSimulation simulation, GpuHordeSimulation.AgentState[] states, string label)
+        {
+            var camera = Camera.main;
+            var created = camera == null;
+            if (created)
+            {
+                var obj = new GameObject("Crowd audit camera");
+                obj.tag = "MainCamera";
+                camera = obj.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.12f, 0.14f, 0.17f);
+            }
+            var position = camera.transform.position;
+            var rotation = camera.transform.rotation;
+            var oldTarget = camera.targetTexture;
+            var oldActive = RenderTexture.active;
+            var target = new RenderTexture(1920, 1080, 24);
+            var lines = new Material(Shader.Find("Hidden/Internal-Colored"));
+            lines.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            lines.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            lines.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            lines.SetInt("_ZWrite", 0);
+            lines.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+            try
+            {
+                camera.targetTexture = target;
+                for (var view = 0; view < 2; view++)
+                {
+                    camera.transform.position = view == 0 ? new Vector3(43, 22, -6) : new Vector3(43, 3.5f, -2.5f);
+                    camera.transform.LookAt(new Vector3(43, 0.2f, 0));
+                    simulation.RefreshVisibilityForAudit();
+                    simulation.SetPresentationInterpolation(0.5f);
+                    simulation.Draw(EnemyManager.GetLowEnemyMesh(), 0);
+                    camera.Render();
+                    RenderTexture.active = target;
+                    SaveImage($"Logs/MergeValidation/{label}-{view}.png");
+                    GL.PushMatrix();
+                    GL.LoadProjectionMatrix(camera.projectionMatrix);
+                    GL.modelview = camera.worldToCameraMatrix;
+                    lines.SetPass(0);
+                    GL.Begin(GL.LINES);
+                    GL.Color(new Color(0.15f, 1f, 0.85f, 0.65f));
+                    foreach (var state in states)
+                    {
+                        if (state.Status != 1) continue;
+                        var p = Vector2.Lerp(state.StepStartPosition, state.Position, 0.5f);
+                        var radius = GoblinPreviewAssets.BodyDiameter(state.Scale, state.Scale) * 0.5f;
+                        for (var segment = 0; segment < 32; segment++)
+                        {
+                            var a = segment * Mathf.PI / 16;
+                            var b = (segment + 1) * Mathf.PI / 16;
+                            GL.Vertex3(p.x + Mathf.Cos(a) * radius, 0.12f, p.y + Mathf.Sin(a) * radius);
+                            GL.Vertex3(p.x + Mathf.Cos(b) * radius, 0.12f, p.y + Mathf.Sin(b) * radius);
+                        }
+                    }
+                    GL.End();
+                    GL.PopMatrix();
+                    SaveImage($"Logs/MergeValidation/{label}-{view}-outlines.png");
+                }
+            }
+            finally
+            {
+                simulation.SetPresentationInterpolation(1);
+                camera.transform.SetPositionAndRotation(position, rotation);
+                camera.targetTexture = oldTarget;
+                RenderTexture.active = oldActive;
+                simulation.RefreshVisibilityForAudit();
+                UnityEngine.Object.Destroy(lines);
+                target.Release();
+                UnityEngine.Object.Destroy(target);
+                if (created) UnityEngine.Object.Destroy(camera.gameObject);
+            }
+        }
+
+        private static void SaveImage(string path)
+        {
+            var image = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
+            image.ReadPixels(new Rect(0, 0, 1920, 1080), 0, 0);
+            image.Apply();
+            File.WriteAllBytes(path, image.EncodeToPNG());
+            UnityEngine.Object.Destroy(image);
+        }
+
+        internal static (int pairs, float depth) Pairs(GpuHordeSimulation.AgentState[] states)
+        {
+            var buckets = new Dictionary<Vector2Int, List<int>>();
+            var pairs = 0;
+            var deepest = 0f;
+            for (var i = 0; i < states.Length; i++)
+            {
+                if (states[i].Status != 1) continue;
+                var p = states[i].Position;
+                var cell = new Vector2Int(Mathf.FloorToInt(p.x / 0.8f), Mathf.FloorToInt(p.y / 0.8f));
+                for (var y = -1; y <= 1; y++) for (var x = -1; x <= 1; x++)
+                {
+                    if (!buckets.TryGetValue(cell + new Vector2Int(x, y), out var list)) continue;
+                    foreach (var j in list)
+                    {
+                        var diameter = GoblinPreviewAssets.BodyDiameter(states[i].Scale, states[j].Scale);
+                        var depth = 1 - Vector2.Distance(p, states[j].Position) / diameter;
+                        if (depth > 0.005f) pairs++;
+                        deepest = Mathf.Max(deepest, depth);
+                    }
+                }
+                if (!buckets.TryGetValue(cell, out var own)) buckets[cell] = own = new List<int>();
+                own.Add(i);
+            }
+            return (pairs, deepest);
+        }
+    }
+}

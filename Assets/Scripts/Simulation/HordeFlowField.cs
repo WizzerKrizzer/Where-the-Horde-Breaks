@@ -23,6 +23,7 @@ namespace TowerDefense.Simulation
         private readonly int width;
         private readonly int height;
         private readonly bool[] walkable;
+        private readonly float[] boundaryDistances;
         private readonly float[] integration;
         private readonly float[] potential;
         private readonly Vector2[] directions;
@@ -35,6 +36,7 @@ namespace TowerDefense.Simulation
         private readonly float startHalfWidth;
         private readonly float exitHalfWidth;
         private readonly bool preferCorridorDirections;
+        private readonly ExitSource[] exitSources;
 
         public Vector3 Exit { get; }
         public float CellSize => cellSize;
@@ -42,13 +44,28 @@ namespace TowerDefense.Simulation
         public int Width => width;
         public int Height => height;
 
+        public readonly struct BoundarySegment
+        {
+            public readonly Vector3 From;
+            public readonly Vector3 To;
+
+            public BoundarySegment(Vector3 from, Vector3 to)
+            {
+                From = from;
+                To = to;
+            }
+        }
+
         public HordeFlowField(
             IReadOnlyList<Vector3> primaryRoute,
             IReadOnlyList<Vector3> secondaryRoute,
             float roadHalfWidth,
             float requestedCellSize = 0.65f,
             IReadOnlyList<float> primaryWaypointHalfWidths = null,
-            IReadOnlyList<float> secondaryWaypointHalfWidths = null)
+            IReadOnlyList<float> secondaryWaypointHalfWidths = null,
+            IReadOnlyList<Vector3> tertiaryRoute = null,
+            IReadOnlyList<float> tertiaryWaypointHalfWidths = null,
+            bool useSquareCorners = false)
         {
             if (primaryRoute == null || primaryRoute.Count < 2)
             {
@@ -60,7 +77,9 @@ namespace TowerDefense.Simulation
                 cellSize,
                 Mathf.Max(
                     GetMaximumHalfWidth(primaryWaypointHalfWidths, roadHalfWidth),
-                    GetMaximumHalfWidth(secondaryWaypointHalfWidths, roadHalfWidth)));
+                    Mathf.Max(
+                        GetMaximumHalfWidth(secondaryWaypointHalfWidths, roadHalfWidth),
+                        GetMaximumHalfWidth(tertiaryWaypointHalfWidths, roadHalfWidth))));
             primaryStart = primaryRoute[0];
             startForward = FlatDirection(primaryRoute[0], primaryRoute[1]);
             startHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, 0, roadHalfWidth);
@@ -68,10 +87,19 @@ namespace TowerDefense.Simulation
             Exit = primaryRoute[^1];
             exitForward = FlatDirection(primaryRoute[^2], primaryRoute[^1]);
             exitHalfWidth = GetWaypointHalfWidth(primaryWaypointHalfWidths, primaryRoute.Count - 1, roadHalfWidth);
+            exitSources = BuildExitSources(
+                primaryRoute,
+                primaryWaypointHalfWidths,
+                secondaryRoute,
+                secondaryWaypointHalfWidths,
+                tertiaryRoute,
+                tertiaryWaypointHalfWidths,
+                roadHalfWidth);
             var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             IncludeBounds(primaryRoute, ref min, ref max);
             IncludeBounds(secondaryRoute, ref min, ref max);
+            IncludeBounds(tertiaryRoute, ref min, ref max);
             var padding = corridorHalfWidth + cellSize * 2f;
             min -= Vector2.one * padding;
             max += Vector2.one * padding;
@@ -79,6 +107,8 @@ namespace TowerDefense.Simulation
             width = Mathf.Max(1, Mathf.CeilToInt((max.x - min.x) / cellSize));
             height = Mathf.Max(1, Mathf.CeilToInt((max.y - min.y) / cellSize));
             walkable = new bool[width * height];
+            boundaryDistances = new float[walkable.Length];
+            Array.Fill(boundaryDistances, float.NegativeInfinity);
             integration = new float[walkable.Length];
             potential = new float[walkable.Length];
             directions = new Vector2[walkable.Length];
@@ -87,17 +117,159 @@ namespace TowerDefense.Simulation
             Array.Fill(corridorDirectionDistanceSq, float.PositiveInfinity);
             clearance = new byte[walkable.Length];
 
-            RasterizeRoute(primaryRoute, roadHalfWidth, primaryWaypointHalfWidths);
-            RasterizeRoute(secondaryRoute, roadHalfWidth, secondaryWaypointHalfWidths);
+            RasterizeRoute(primaryRoute, roadHalfWidth, primaryWaypointHalfWidths, useSquareCorners);
+            RasterizeRoute(secondaryRoute, roadHalfWidth, secondaryWaypointHalfWidths, useSquareCorners);
+            RasterizeRoute(tertiaryRoute, roadHalfWidth, tertiaryWaypointHalfWidths, useSquareCorners);
+            if (useSquareCorners)
+            {
+                RasterizeSquareCorners(primaryRoute, roadHalfWidth, primaryWaypointHalfWidths);
+                RasterizeSquareCorners(secondaryRoute, roadHalfWidth, secondaryWaypointHalfWidths);
+                RasterizeSquareCorners(tertiaryRoute, roadHalfWidth, tertiaryWaypointHalfWidths);
+            }
+            BuildClearance();
+            BuildIntegration();
+            // A complete width profile gives every corridor cell an explicit route
+            // tangent. The harmonic solve is expensive on large stress-test maps and
+            // its result is not sampled by BuildDirections in this mode.
+            if (!preferCorridorDirections)
+            {
+                BuildPotential();
+            }
+            BuildDirections();
+        }
+
+        /// <summary>
+        /// Builds a full rectangular navigation surface instead of rasterizing a
+        /// road. The entrance and exit remain narrow gates, but bodies are free
+        /// to use the complete board between them.
+        /// </summary>
+        public static HordeFlowField CreateOpenField(
+            Vector3 center,
+            Vector2 size,
+            Vector3 entrance,
+            Vector3 exit,
+            float gateHalfWidth,
+            float requestedCellSize = 0.65f,
+            IReadOnlyList<Bounds> staticObstacles = null)
+        {
+            return new HordeFlowField(
+                new OpenFieldDefinition(center, size, entrance, exit, gateHalfWidth, requestedCellSize, staticObstacles));
+        }
+
+        private readonly struct OpenFieldDefinition
+        {
+            public readonly Vector3 Center;
+            public readonly Vector2 Size;
+            public readonly Vector3 Entrance;
+            public readonly Vector3 Exit;
+            public readonly float GateHalfWidth;
+            public readonly float CellSize;
+            public readonly IReadOnlyList<Bounds> StaticObstacles;
+
+            public OpenFieldDefinition(
+                Vector3 center,
+                Vector2 size,
+                Vector3 entrance,
+                Vector3 exit,
+                float gateHalfWidth,
+                float cellSize,
+                IReadOnlyList<Bounds> staticObstacles)
+            {
+                Center = center;
+                Size = size;
+                Entrance = entrance;
+                Exit = exit;
+                GateHalfWidth = gateHalfWidth;
+                CellSize = cellSize;
+                StaticObstacles = staticObstacles;
+            }
+        }
+
+        private HordeFlowField(OpenFieldDefinition definition)
+        {
+            if (definition.Size.x <= 0f || definition.Size.y <= 0f)
+            {
+                throw new ArgumentException("An open field needs a positive board size.", nameof(definition));
+            }
+
+            cellSize = Mathf.Max(0.25f, definition.CellSize);
+            corridorHalfWidth = Mathf.Max(cellSize, definition.GateHalfWidth);
+            primaryStart = definition.Entrance;
+            startForward = FlatDirection(definition.Entrance, definition.Exit);
+            exitForward = startForward;
+            startHalfWidth = Mathf.Max(cellSize, definition.GateHalfWidth);
+            Exit = definition.Exit;
+            exitHalfWidth = Mathf.Max(cellSize, definition.GateHalfWidth);
+            exitSources = new[]
+            {
+                new ExitSource(Exit, exitForward, exitHalfWidth)
+            };
+            preferCorridorDirections = false;
+
+            var halfSize = definition.Size * 0.5f;
+            var min = new Vector2(definition.Center.x - halfSize.x, definition.Center.z - halfSize.y);
+            var max = new Vector2(definition.Center.x + halfSize.x, definition.Center.z + halfSize.y);
+            origin = new Vector3(min.x, 0f, min.y);
+            width = Mathf.Max(1, Mathf.CeilToInt((max.x - min.x) / cellSize));
+            height = Mathf.Max(1, Mathf.CeilToInt((max.y - min.y) / cellSize));
+            walkable = new bool[width * height];
+            boundaryDistances = new float[walkable.Length];
+            integration = new float[walkable.Length];
+            potential = new float[walkable.Length];
+            directions = new Vector2[walkable.Length];
+            corridorDirections = new Vector2[walkable.Length];
+            corridorDirectionDistanceSq = new float[walkable.Length];
+            clearance = new byte[walkable.Length];
+            Array.Fill(corridorDirectionDistanceSq, float.PositiveInfinity);
+
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var point = CellCenter(x, y);
+                    var edgeDistance = Mathf.Min(
+                        Mathf.Min(point.x - min.x, max.x - point.x),
+                        Mathf.Min(point.z - min.y, max.y - point.z));
+                    if (definition.StaticObstacles != null)
+                    {
+                        for (var obstacleIndex = 0; obstacleIndex < definition.StaticObstacles.Count; obstacleIndex++)
+                        {
+                            edgeDistance = Mathf.Min(
+                                edgeDistance,
+                                SignedDistanceToObstacle(point, definition.StaticObstacles[obstacleIndex]));
+                        }
+                    }
+                    var index = Index(x, y);
+                    boundaryDistances[index] = edgeDistance;
+                    walkable[index] = edgeDistance >= 0f;
+                }
+            }
+
             BuildClearance();
             BuildIntegration();
             BuildPotential();
             BuildDirections();
         }
 
+        private static float SignedDistanceToObstacle(Vector3 point, Bounds obstacle)
+        {
+            var min = obstacle.min;
+            var max = obstacle.max;
+            var outsideX = Mathf.Max(min.x - point.x, 0f, point.x - max.x);
+            var outsideZ = Mathf.Max(min.z - point.z, 0f, point.z - max.z);
+            if (outsideX > 0f || outsideZ > 0f)
+            {
+                return Mathf.Sqrt(outsideX * outsideX + outsideZ * outsideZ);
+            }
+
+            return -Mathf.Min(
+                Mathf.Min(point.x - min.x, max.x - point.x),
+                Mathf.Min(point.z - min.z, max.z - point.z));
+        }
+
         public bool IsWalkable(Vector3 worldPosition)
         {
-            return TryWorldToCell(worldPosition, out var x, out var y) && walkable[Index(x, y)];
+            return TryWorldToCell(worldPosition, out _, out _) && SampleBoundaryDistance(worldPosition) >= 0f;
         }
 
         public Vector3 GetDirection(Vector3 worldPosition)
@@ -107,7 +279,8 @@ namespace TowerDefense.Simulation
                 return exitForward;
             }
 
-            if (integration[Index(x, y)] <= 0.001f)
+            var cellIntegration = integration[Index(x, y)];
+            if (cellIntegration >= 0f && cellIntegration <= 0.001f)
             {
                 return exitForward;
             }
@@ -145,12 +318,18 @@ namespace TowerDefense.Simulation
             }
 
             var value = integration[Index(x, y)];
-            return float.IsInfinity(value) ? Vector3.Distance(worldPosition, Exit) : value;
+            return value < 0f || float.IsInfinity(value) ? Vector3.Distance(worldPosition, Exit) : value;
         }
 
         public bool HasReachedExit(Vector3 worldPosition)
         {
-            return TryWorldToCell(worldPosition, out var x, out var y) && integration[Index(x, y)] <= 0.001f;
+            if (!TryWorldToCell(worldPosition, out var x, out var y))
+            {
+                return false;
+            }
+
+            var value = integration[Index(x, y)];
+            return value >= 0f && value <= 0.001f;
         }
 
         /// <summary>
@@ -164,16 +343,19 @@ namespace TowerDefense.Simulation
                 return Vector3.zero;
             }
 
-            var distance = SampleClearanceDistance(x, y);
+            var distance = SampleBoundaryDistance(worldPosition);
             if (distance >= influenceDistance)
             {
                 return Vector3.zero;
             }
 
+            var sampleOffset = cellSize * 0.5f;
             var gradient = new Vector3(
-                SampleClearanceDistance(x + 1, y) - SampleClearanceDistance(x - 1, y),
+                SampleBoundaryDistance(worldPosition + Vector3.right * sampleOffset) -
+                SampleBoundaryDistance(worldPosition - Vector3.right * sampleOffset),
                 0f,
-                SampleClearanceDistance(x, y + 1) - SampleClearanceDistance(x, y - 1));
+                SampleBoundaryDistance(worldPosition + Vector3.forward * sampleOffset) -
+                SampleBoundaryDistance(worldPosition - Vector3.forward * sampleOffset));
             if (gradient.sqrMagnitude < 0.0001f)
             {
                 return Vector3.zero;
@@ -194,8 +376,8 @@ namespace TowerDefense.Simulation
                     var index = Index(x, y);
                     var center = potential[index];
                     var wallGradient = new Vector2(
-                        SampleClearanceDistance(x + 1, y) - SampleClearanceDistance(x - 1, y),
-                        SampleClearanceDistance(x, y + 1) - SampleClearanceDistance(x, y - 1));
+                        SampleBoundaryDistanceCell(x + 1, y) - SampleBoundaryDistanceCell(x - 1, y),
+                        SampleBoundaryDistanceCell(x, y + 1) - SampleBoundaryDistanceCell(x, y - 1));
                     if (wallGradient.sqrMagnitude > 0.0001f)
                     {
                         wallGradient.Normalize();
@@ -206,10 +388,74 @@ namespace TowerDefense.Simulation
                         ? -1f
                         : integration[index];
                     cellData[index] = new Vector4(
-                        SampleClearanceDistance(x, y),
+                        Mathf.Max(0f, boundaryDistances[index]),
                         integrationValue,
                         potential[index],
-                        walkable[index] ? 1f : 0f);
+                        boundaryDistances[index]);
+                }
+            }
+        }
+
+        public void GetBoundarySegments(List<BoundarySegment> destination, float outwardOffset = 0f)
+        {
+            if (destination == null)
+            {
+                return;
+            }
+
+            destination.Clear();
+            for (var y = 0; y < height - 1; y++)
+            {
+                for (var x = 0; x < width - 1; x++)
+                {
+                    var bottomLeft = CellCenter(x, y);
+                    var bottomRight = CellCenter(x + 1, y);
+                    var topRight = CellCenter(x + 1, y + 1);
+                    var topLeft = CellCenter(x, y + 1);
+                    var points = new Vector3[4];
+                    var count = 0;
+                    AddCrossing(bottomLeft, bottomRight, OffsetDistance(x, y), OffsetDistance(x + 1, y));
+                    AddCrossing(bottomRight, topRight, OffsetDistance(x + 1, y), OffsetDistance(x + 1, y + 1));
+                    AddCrossing(topRight, topLeft, OffsetDistance(x + 1, y + 1), OffsetDistance(x, y + 1));
+                    AddCrossing(topLeft, bottomLeft, OffsetDistance(x, y + 1), OffsetDistance(x, y));
+
+                    if (count == 2)
+                    {
+                        destination.Add(new BoundarySegment(points[0], points[1]));
+                    }
+                    else if (count == 4)
+                    {
+                        var centerDistance = (OffsetDistance(x, y) +
+                                              OffsetDistance(x + 1, y) +
+                                              OffsetDistance(x + 1, y + 1) +
+                                              OffsetDistance(x, y + 1)) * 0.25f;
+                        if (centerDistance >= 0f)
+                        {
+                            destination.Add(new BoundarySegment(points[0], points[3]));
+                            destination.Add(new BoundarySegment(points[1], points[2]));
+                        }
+                        else
+                        {
+                            destination.Add(new BoundarySegment(points[0], points[1]));
+                            destination.Add(new BoundarySegment(points[2], points[3]));
+                        }
+                    }
+
+                    void AddCrossing(Vector3 from, Vector3 to, float fromDistance, float toDistance)
+                    {
+                        if ((fromDistance >= 0f) == (toDistance >= 0f))
+                        {
+                            return;
+                        }
+
+                        var amount = fromDistance / (fromDistance - toDistance);
+                        points[count++] = Vector3.Lerp(from, to, Mathf.Clamp01(amount));
+                    }
+
+                    float OffsetDistance(int sampleX, int sampleY)
+                    {
+                        return boundaryDistances[Index(sampleX, sampleY)] + Mathf.Max(0f, outwardOffset);
+                    }
                 }
             }
         }
@@ -237,10 +483,16 @@ namespace TowerDefense.Simulation
             }
 
             var displacement = desired - current;
-            var inwardNormal = GetWallRepulsion(current, cellSize * 2f);
+            var desiredDistance = SampleBoundaryDistance(desired);
+            var inwardNormal = GetBoundaryNormal(desired);
             if (inwardNormal.sqrMagnitude > 0.0001f)
             {
-                inwardNormal.Normalize();
+                var projected = desired + inwardNormal * (Mathf.Max(0f, -desiredDistance) + 0.002f);
+                if (IsWalkable(projected))
+                {
+                    return projected;
+                }
+
                 var outwardAmount = Mathf.Min(0f, Vector3.Dot(displacement, inwardNormal));
                 var slide = current + displacement - inwardNormal * outwardAmount;
                 if (IsWalkable(slide))
@@ -295,7 +547,8 @@ namespace TowerDefense.Simulation
         private void RasterizeRoute(
             IReadOnlyList<Vector3> route,
             float defaultRadius,
-            IReadOnlyList<float> waypointHalfWidths)
+            IReadOnlyList<float> waypointHalfWidths,
+            bool useSquareCorners)
         {
             if (route == null || route.Count < 2)
             {
@@ -309,22 +562,60 @@ namespace TowerDefense.Simulation
                     var point = CellCenter(x, y);
                     for (var segment = 1; segment < route.Count; segment++)
                     {
+                        var from = route[segment - 1];
+                        var to = route[segment];
                         var distanceSq = DistanceToSegmentSquared(
                             point,
-                            route[segment - 1],
-                            route[segment],
+                            from,
+                            to,
                             out var segmentT);
-                        var segmentRadius = Mathf.Lerp(
-                            GetWaypointHalfWidth(waypointHalfWidths, segment - 1, defaultRadius),
-                            GetWaypointHalfWidth(waypointHalfWidths, segment, defaultRadius),
-                            segmentT);
-                        var radiusSq = segmentRadius * segmentRadius;
-                        if (distanceSq > radiusSq)
+                        var fromRadius = GetWaypointHalfWidth(
+                            waypointHalfWidths,
+                            segment - 1,
+                            defaultRadius);
+                        var toRadius = GetWaypointHalfWidth(
+                            waypointHalfWidths,
+                            segment,
+                            defaultRadius);
+                        if (IsOrthogonalTurn(route, segment) && Mathf.Abs(fromRadius - toRadius) > 0.001f)
+                        {
+                            toRadius = fromRadius;
+                        }
+
+                        var segmentRadius = Mathf.Lerp(fromRadius, toRadius, segmentT);
+                        var index = Index(x, y);
+                        var boundaryDistance = segmentRadius - Mathf.Sqrt(distanceSq);
+                        if (useSquareCorners)
+                        {
+                            var direction = to - from;
+                            direction.y = 0f;
+                            var lengthSq = direction.sqrMagnitude;
+                            if (lengthSq > 0.0001f)
+                            {
+                                var rawT = Vector3.Dot(point - from, direction) / lengthSq;
+                                var length = Mathf.Sqrt(lengthSq);
+                                var perpendicularDistance = Vector3.Distance(point, from + direction * rawT);
+                                if (rawT < 0f && IsSquareJoint(route, segment - 1))
+                                {
+                                    boundaryDistance = Mathf.Min(
+                                        segmentRadius - perpendicularDistance,
+                                        rawT * length);
+                                }
+                                else if (rawT > 1f && IsSquareJoint(route, segment))
+                                {
+                                    boundaryDistance = Mathf.Min(
+                                        segmentRadius - perpendicularDistance,
+                                        (1f - rawT) * length);
+                                }
+                            }
+                        }
+
+                        boundaryDistances[index] = Mathf.Max(boundaryDistances[index], boundaryDistance);
+                        if (boundaryDistance < 0f)
                         {
                             continue;
                         }
 
-                        var index = Index(x, y);
                         walkable[index] = true;
                         if (distanceSq < corridorDirectionDistanceSq[index])
                         {
@@ -334,6 +625,84 @@ namespace TowerDefense.Simulation
                     }
                 }
             }
+        }
+
+        private void RasterizeSquareCorners(
+            IReadOnlyList<Vector3> route,
+            float defaultRadius,
+            IReadOnlyList<float> waypointHalfWidths)
+        {
+            if (route == null || route.Count < 3)
+            {
+                return;
+            }
+
+            for (var corner = 1; corner < route.Count - 1; corner++)
+            {
+                if (!IsOrthogonalTurn(route, corner))
+                {
+                    continue;
+                }
+
+                var center = route[corner];
+                var incomingRadius = GetWaypointHalfWidth(waypointHalfWidths, corner - 1, defaultRadius);
+                var outgoingRadius = GetWaypointHalfWidth(waypointHalfWidths, corner, defaultRadius);
+                var incoming = FlatDirection(route[corner - 1], route[corner]);
+                var outgoing = FlatDirection(route[corner], route[corner + 1]);
+                var direction2 = new Vector2(outgoing.x, outgoing.z);
+                for (var y = 0; y < height; y++)
+                {
+                    for (var x = 0; x < width; x++)
+                    {
+                        var point = CellCenter(x, y);
+                        var offset = point - center;
+                        var alongIncoming = Mathf.Abs(Vector3.Dot(offset, incoming));
+                        var alongOutgoing = Mathf.Abs(Vector3.Dot(offset, outgoing));
+                        var boundaryDistance = Mathf.Min(
+                            outgoingRadius - alongIncoming,
+                            incomingRadius - alongOutgoing);
+                        var index = Index(x, y);
+                        boundaryDistances[index] = Mathf.Max(boundaryDistances[index], boundaryDistance);
+                        if (alongIncoming > outgoingRadius || alongOutgoing > incomingRadius)
+                        {
+                            continue;
+                        }
+
+                        walkable[index] = true;
+                        var distanceSq = (point - center).sqrMagnitude;
+                        if (distanceSq < corridorDirectionDistanceSq[index])
+                        {
+                            corridorDirectionDistanceSq[index] = distanceSq;
+                            corridorDirections[index] = direction2;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static bool IsOrthogonalTurn(IReadOnlyList<Vector3> route, int cornerIndex)
+        {
+            if (route == null || cornerIndex <= 0 || cornerIndex >= route.Count - 1)
+            {
+                return false;
+            }
+
+            var incoming = FlatDirection(route[cornerIndex - 1], route[cornerIndex]);
+            var outgoing = FlatDirection(route[cornerIndex], route[cornerIndex + 1]);
+            return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.01f;
+        }
+
+        private static bool IsSquareJoint(IReadOnlyList<Vector3> route, int cornerIndex)
+        {
+            if (route == null || cornerIndex <= 0 || cornerIndex >= route.Count - 1)
+            {
+                return false;
+            }
+
+            var incoming = FlatDirection(route[cornerIndex - 1], route[cornerIndex]);
+            var outgoing = FlatDirection(route[cornerIndex], route[cornerIndex + 1]);
+            var alignment = Vector3.Dot(incoming, outgoing);
+            return Mathf.Abs(alignment) < 0.01f || alignment > 0.999f;
         }
 
         private void BuildClearance()
@@ -388,39 +757,30 @@ namespace TowerDefense.Simulation
         {
             Array.Fill(integration, Unreachable);
             var heap = new MinHeap(integration.Length);
-            // Seed a full cross-section, not a single exit point. This prevents every
-            // stream from converging into one line as it approaches the end of the road.
-            for (var y = 0; y < height; y++)
+            // Every authored route endpoint is an equal integration source. Level 2
+            // deliberately has three routes ending at one choke. Level 2.1 keeps the
+            // same opening but exposes three independent exits; seeding only the
+            // primary route would silently make the other two routes dead ends.
+            for (var sourceIndex = 0; sourceIndex < exitSources.Length; sourceIndex++)
             {
-                for (var x = 0; x < width; x++)
-                {
-                    var index = Index(x, y);
-                    if (!walkable[index])
-                    {
-                        continue;
-                    }
-
-                    var fromExit = CellCenter(x, y) - Exit;
-                    fromExit.y = 0f;
-                    var longitudinal = Vector3.Dot(fromExit, exitForward);
-                    var lateral = fromExit - exitForward * longitudinal;
-                    if (Mathf.Abs(longitudinal) > cellSize * 0.7f ||
-                        lateral.sqrMagnitude > exitHalfWidth * exitHalfWidth)
-                    {
-                        continue;
-                    }
-
-                    integration[index] = 0f;
-                    directions[index] = new Vector2(exitForward.x, exitForward.z);
-                    heap.Push(index, 0f);
-                }
+                SeedExitCrossSection(exitSources[sourceIndex], heap);
             }
 
-            if (heap.Count == 0 && TryWorldToCell(Exit, out var exitX, out var exitY) && IsWalkableCell(exitX, exitY))
+            if (heap.Count == 0)
             {
-                var exitIndex = Index(exitX, exitY);
-                integration[exitIndex] = 0f;
-                heap.Push(exitIndex, 0f);
+                for (var sourceIndex = 0; sourceIndex < exitSources.Length; sourceIndex++)
+                {
+                    var source = exitSources[sourceIndex];
+                    if (!TryWorldToCell(source.Position, out var exitX, out var exitY) || !IsWalkableCell(exitX, exitY))
+                    {
+                        continue;
+                    }
+
+                    var exitIndex = Index(exitX, exitY);
+                    integration[exitIndex] = 0f;
+                    directions[exitIndex] = new Vector2(source.Forward.x, source.Forward.z);
+                    heap.Push(exitIndex, 0f);
+                }
             }
 
             while (heap.Count > 0)
@@ -457,6 +817,84 @@ namespace TowerDefense.Simulation
                     integration[next] = candidate;
                     heap.Push(next, candidate);
                 }
+            }
+        }
+
+        private void SeedExitCrossSection(ExitSource source, MinHeap heap)
+        {
+            // Seed a full exit cross-section rather than a single point. This keeps
+            // the available road width usable all the way to the endpoint.
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var index = Index(x, y);
+                    if (!walkable[index])
+                    {
+                        continue;
+                    }
+
+                    var fromExit = CellCenter(x, y) - source.Position;
+                    fromExit.y = 0f;
+                    var longitudinal = Vector3.Dot(fromExit, source.Forward);
+                    var lateral = fromExit - source.Forward * longitudinal;
+                    if (Mathf.Abs(longitudinal) > cellSize * 0.7f ||
+                        lateral.sqrMagnitude > source.HalfWidth * source.HalfWidth)
+                    {
+                        continue;
+                    }
+
+                    integration[index] = 0f;
+                    directions[index] = new Vector2(source.Forward.x, source.Forward.z);
+                    heap.Push(index, 0f);
+                }
+            }
+        }
+
+        private static ExitSource[] BuildExitSources(
+            IReadOnlyList<Vector3> primaryRoute,
+            IReadOnlyList<float> primaryWidths,
+            IReadOnlyList<Vector3> secondaryRoute,
+            IReadOnlyList<float> secondaryWidths,
+            IReadOnlyList<Vector3> tertiaryRoute,
+            IReadOnlyList<float> tertiaryWidths,
+            float fallbackHalfWidth)
+        {
+            var sources = new List<ExitSource>(3);
+            AddExitSource(sources, primaryRoute, primaryWidths, fallbackHalfWidth);
+            AddExitSource(sources, secondaryRoute, secondaryWidths, fallbackHalfWidth);
+            AddExitSource(sources, tertiaryRoute, tertiaryWidths, fallbackHalfWidth);
+            return sources.ToArray();
+        }
+
+        private static void AddExitSource(
+            List<ExitSource> sources,
+            IReadOnlyList<Vector3> route,
+            IReadOnlyList<float> waypointWidths,
+            float fallbackHalfWidth)
+        {
+            if (route == null || route.Count < 2)
+            {
+                return;
+            }
+
+            var endpoint = route[route.Count - 1];
+            var forward = FlatDirection(route[route.Count - 2], endpoint);
+            var halfWidth = GetWaypointHalfWidth(waypointWidths, route.Count - 1, fallbackHalfWidth);
+            sources.Add(new ExitSource(endpoint, forward, halfWidth));
+        }
+
+        private readonly struct ExitSource
+        {
+            public readonly Vector3 Position;
+            public readonly Vector3 Forward;
+            public readonly float HalfWidth;
+
+            public ExitSource(Vector3 position, Vector3 forward, float halfWidth)
+            {
+                Position = position;
+                Forward = forward;
+                HalfWidth = halfWidth;
             }
         }
 
@@ -660,6 +1098,44 @@ namespace TowerDefense.Simulation
             return Mathf.Max(0f, clearance[Index(x, y)] - 0.5f) * cellSize;
         }
 
+        private float SampleBoundaryDistance(Vector3 worldPosition)
+        {
+            var gridX = (worldPosition.x - origin.x) / cellSize - 0.5f;
+            var gridY = (worldPosition.z - origin.z) / cellSize - 0.5f;
+            var x0 = Mathf.FloorToInt(gridX);
+            var y0 = Mathf.FloorToInt(gridY);
+            var tx = gridX - x0;
+            var ty = gridY - y0;
+            var bottom = Mathf.Lerp(
+                SampleBoundaryDistanceCell(x0, y0),
+                SampleBoundaryDistanceCell(x0 + 1, y0),
+                tx);
+            var top = Mathf.Lerp(
+                SampleBoundaryDistanceCell(x0, y0 + 1),
+                SampleBoundaryDistanceCell(x0 + 1, y0 + 1),
+                tx);
+            return Mathf.Lerp(bottom, top, ty);
+        }
+
+        private float SampleBoundaryDistanceCell(int x, int y)
+        {
+            return x >= 0 && y >= 0 && x < width && y < height
+                ? boundaryDistances[Index(x, y)]
+                : -corridorHalfWidth;
+        }
+
+        private Vector3 GetBoundaryNormal(Vector3 worldPosition)
+        {
+            var sampleOffset = cellSize * 0.5f;
+            var normal = new Vector3(
+                SampleBoundaryDistance(worldPosition + Vector3.right * sampleOffset) -
+                SampleBoundaryDistance(worldPosition - Vector3.right * sampleOffset),
+                0f,
+                SampleBoundaryDistance(worldPosition + Vector3.forward * sampleOffset) -
+                SampleBoundaryDistance(worldPosition - Vector3.forward * sampleOffset));
+            return normal.sqrMagnitude > 0.0001f ? normal.normalized : Vector3.zero;
+        }
+
         private Vector3 FindNavigableDirection(Vector3 position, Vector3 preferred)
         {
             var probeDistance = cellSize * 0.7f;
@@ -750,6 +1226,7 @@ namespace TowerDefense.Simulation
             float segmentT,
             float blendDistance)
         {
+            blendDistance = Mathf.Max(1.5f, blendDistance * 2.4f);
             var current = FlatDirection(route[segment - 1], route[segment]);
             var current2 = new Vector2(current.x, current.z);
             var segmentLength = Vector3.Distance(route[segment - 1], route[segment]);

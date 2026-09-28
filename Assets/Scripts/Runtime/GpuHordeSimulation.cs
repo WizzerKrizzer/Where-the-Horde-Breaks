@@ -14,22 +14,26 @@ namespace TowerDefense.Runtime
     /// </summary>
     internal sealed class GpuHordeSimulation : IDisposable
     {
+        internal const float ShockwavePropagationSpeed = 20f;
         private const int ThreadGroupSize = 64;
         private const int CellCapacity = 96;
         private const int MaxTargetQueries = 512;
         private const int MaxAreaCommands = 256;
         private const int MaxProjectileCommands = 256;
+        private const int TrackedProjectileCapacity = 2048;
         private const int MaxDynamicTargets = 256;
         private const int DynamicTargetCellCapacity = 8;
         private const int MaxDynamicTargetCommands = MaxDynamicTargets * 2;
         private const int ExtraCombatEventCapacity = 262144;
         private const float ReadbackInterval = 0.08f;
+        private const int DiagnosticsCount = 12;
 
-        [StructLayout(LayoutKind.Sequential)]
+        [Serializable, StructLayout(LayoutKind.Sequential)]
         internal struct AgentState
         {
             public Vector2 Position;
             public Vector2 Velocity;
+            public Vector2 KnockbackVelocity;
             public float Scale;
             public float Tint;
             public uint Status;
@@ -43,7 +47,10 @@ namespace TowerDefense.Runtime
             public float BurnDamagePerSecond;
             public float BurnTimer;
             public float Mass;
-            public float Padding3;
+            public float ShockwaveExposure;
+            public Vector2 ShockwaveCenter;
+            public float ShockwaveOutwardTimer;
+            public float ShockwaveReturnTimer;
             public float MaxHealth;
             public float Armor;
             public float PhysicalResistance;
@@ -56,6 +63,12 @@ namespace TowerDefense.Runtime
             public float AttackTimer;
             public uint CombatFlags;
             public uint DefinitionIndex;
+            // Resolved travel drives gait; a separate clock keeps braced bodies alive.
+            public float AnimationDistance;
+            public Vector2 Facing;
+            public Vector2 StepStartPosition;
+            public float LocomotionSpeed;
+            public float PresentationTime;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -65,7 +78,8 @@ namespace TowerDefense.Runtime
             public float Range;
             public uint Mode;
             public uint CanHitFlying;
-            public Vector3 Padding;
+            public int ExcludedIndex;
+            public Vector2 Padding;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -75,6 +89,10 @@ namespace TowerDefense.Runtime
             public Vector2 Velocity;
             public int Index;
             public float Score;
+            public Vector2 SecondPosition;
+            public Vector2 SecondVelocity;
+            public int SecondIndex;
+            public float SecondScore;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -172,7 +190,16 @@ namespace TowerDefense.Runtime
             public float SlowMultiplier;
             public float SlowDuration;
             public float SlowCapacity;
-            public float Padding;
+            public float InnerRadius;
+        }
+
+        private struct PendingShockwave
+        {
+            public Vector2 Center;
+            public float BaseRadius;
+            public float CurrentRadius;
+            public float MaximumRadius;
+            public float Knockback;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -189,7 +216,9 @@ namespace TowerDefense.Runtime
             public float BurnDamagePerSecond;
             public float BurnDuration;
             public uint MaxBurnStacks;
-            public float Padding;
+            public uint ProjectileId;
+            public uint ResetHitCount;
+            public Vector2 Padding;
         }
 
         private readonly struct TargetQueryKey : IEquatable<TargetQueryKey>
@@ -199,36 +228,51 @@ namespace TowerDefense.Runtime
             private readonly int range;
             private readonly byte mode;
             private readonly byte canHitFlying;
+            private readonly int excludedIndex;
+            private readonly bool exact;
 
-            public TargetQueryKey(Vector3 position, float queryRange, TowerTargetingMode targetingMode, bool hitsFlying)
+            public TargetQueryKey(Vector3 position, float queryRange, TowerTargetingMode targetingMode, bool hitsFlying, int excludedTarget, bool exact = false)
             {
-                x = Mathf.RoundToInt(position.x * 4f);
-                y = Mathf.RoundToInt(position.z * 4f);
-                range = Mathf.RoundToInt(queryRange * 4f);
+                this.exact = exact;
+                x = exact ? BitConverter.SingleToInt32Bits(position.x) : Mathf.RoundToInt(position.x * 4f);
+                y = exact ? BitConverter.SingleToInt32Bits(position.z) : Mathf.RoundToInt(position.z * 4f);
+                range = exact ? BitConverter.SingleToInt32Bits(queryRange) : Mathf.RoundToInt(queryRange * 4f);
                 mode = (byte)targetingMode;
                 canHitFlying = hitsFlying ? (byte)1 : (byte)0;
+                excludedIndex = excludedTarget;
             }
 
             public bool Equals(TargetQueryKey other) =>
-                x == other.x && y == other.y && range == other.range && mode == other.mode && canHitFlying == other.canHitFlying;
+                x == other.x && y == other.y && range == other.range && mode == other.mode &&
+                canHitFlying == other.canHitFlying && excludedIndex == other.excludedIndex && exact == other.exact;
 
             public override bool Equals(object obj) => obj is TargetQueryKey other && Equals(other);
-            public override int GetHashCode() => HashCode.Combine(x, y, range, mode, canHitFlying);
+            public override int GetHashCode() => HashCode.Combine(x, y, range, mode, canHitFlying, excludedIndex, exact);
         }
 
         private readonly struct CachedTarget
         {
             public readonly int Index;
             public readonly int Frame;
+            public readonly float UnscaledTime;
             public readonly Vector2 Position;
             public readonly Vector2 Velocity;
+            public readonly int SecondIndex;
+            public readonly Vector2 SecondPosition;
+            public readonly Vector2 SecondVelocity;
+            public readonly double TravelBudget;
 
-            public CachedTarget(int index, int frame, Vector2 position, Vector2 velocity)
+            public CachedTarget(int index, int frame, float unscaledTime, Vector2 position, Vector2 velocity, int secondIndex, Vector2 secondPosition, Vector2 secondVelocity, double travelBudget)
             {
                 Index = index;
                 Frame = frame;
+                UnscaledTime = unscaledTime;
                 Position = position;
                 Velocity = velocity;
+                SecondIndex = secondIndex;
+                SecondPosition = secondPosition;
+                SecondVelocity = secondVelocity;
+                TravelBudget = travelBudget;
             }
         }
 
@@ -249,13 +293,47 @@ namespace TowerDefense.Runtime
         private readonly int cellCount;
         private readonly ComputeShader compute;
         private readonly int clearKernel;
+        private readonly int spawnKernel;
+        private readonly GraphicsBuffer spawnStates;
+        private readonly GraphicsBuffer spawnControls;
         private readonly int clearDiagnosticsKernel;
         private readonly int gridKernel;
         private readonly int simulateKernel;
+        private readonly int contactKernel;
+        private readonly int contactCellsKernel;
+        private readonly int prepareMotionKernel;
+        private bool stationaryArena;
+        private float maximumDesiredSpeed = 0.25f;
+        private float maximumMotionDistance;
+        private double motionTravelBudget;
+        private float maximumGoblinDiameter;
+        private float MaximumPairDiameter => Mathf.Max(collisionDiameter * 1.55f, maximumGoblinDiameter);
+        private const int FullMotionProjectionIterations = 24;
+        private const int FullMotionReservationSweeps = 16;
+        private const int LargeCrowdThreshold = 2500;
+        private const int LargeCrowdProjectionIterations = 6;
+        private const int LargeCrowdReservationSweeps = 2;
+        // The far sprite LOD is a deliberately simple horde token. It should
+        // cover the crowd cleanly, not enlarge into a second shadow layer.
+        private const float FarLodVisibilityScale = 1.08f;
+        // Above this height players can read the authored limb animation. Below it,
+        // the compact LOD communicates only collective direction and travel.
+        private const float SimplifiedGoblinLodMaxHeightPixels = 96f;
+        private readonly int constrainMotionKernel;
+        private readonly int commitMotionKernel;
+        private readonly int reserveMotionKernel;
+        private readonly GraphicsBuffer acceptedMotion;
+        private readonly GraphicsBuffer motionNeighbors;
+        private readonly GraphicsBuffer motionNeighborCounts;
+        private readonly GraphicsBuffer motionObstacles;
+        private readonly GraphicsBuffer motionA;
+        private readonly GraphicsBuffer motionB;
+        private readonly int measureOverlapsKernel;
         private readonly int targetQueryKernel;
         private readonly int damageKernel;
         private readonly int statusKernel;
         private readonly int areaEffectKernel;
+        private readonly int unlimitedAreaEffectsKernel;
         private readonly int clearVisibilityKernel;
         private readonly int cullVisibleKernel;
         private readonly int finalizeActiveKernel;
@@ -281,6 +359,8 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer statusCommands;
         private readonly GraphicsBuffer areaEffectCommands;
         private readonly GraphicsBuffer projectileCommands;
+        private readonly GraphicsBuffer projectileHitCounts;
+        private readonly GraphicsBuffer agentLastProjectileIds;
         private readonly GraphicsBuffer hordeEvents;
         private readonly GraphicsBuffer eventCount;
         private readonly GraphicsBuffer dynamicTargets;
@@ -291,18 +371,27 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer dynamicTargetDamage;
         private readonly GraphicsBuffer dynamicTargetLastAttacker;
         private readonly GraphicsBuffer visibleIndices;
-        private readonly GraphicsBuffer lodVisibleIndices;
         private readonly GraphicsBuffer lodIndirectArgs;
+        private readonly GraphicsBuffer variantIndirectArgs;
+        private readonly GraphicsBuffer variantLodIndirectArgs;
         private readonly GraphicsBuffer activeIndices;
         private readonly GraphicsBuffer activeDispatchArgs;
         private readonly Material material;
         private readonly MaterialPropertyBlock properties = new();
         private readonly MaterialPropertyBlock lodProperties = new();
+        private readonly MaterialPropertyBlock variantProperties = new();
+        private readonly MaterialPropertyBlock variantLodProperties = new();
         private readonly Mesh lowDetailMesh;
         private readonly Mesh stableRenderMesh;
+        private readonly Mesh variantRenderMesh;
+        private readonly Mesh variantLodRenderMesh;
+        private readonly Mesh hordeSpriteMesh;
+        private readonly Texture2D hordeSpriteTexture;
         private readonly Bounds drawBounds;
         private readonly uint[] drawArgs = new uint[5];
         private readonly uint[] lodDrawArgs = new uint[5];
+        private readonly uint[] variantDrawArgs = new uint[5];
+        private readonly uint[] variantLodDrawArgs = new uint[5];
         private readonly AgentState[] singleStateUpload = new AgentState[1];
         private readonly Vector4[] singleControlUpload = new Vector4[1];
         private readonly List<PendingTargetQuery> pendingTargetQueries = new(MaxTargetQueries);
@@ -315,6 +404,8 @@ namespace TowerDefense.Runtime
         private readonly DamageCommand[] damageUpload;
         private readonly StatusCommand[] statusUpload;
         private readonly List<AreaEffectCommand> queuedAreaEffects = new(MaxAreaCommands);
+        private readonly List<PendingShockwave> pendingShockwaves = new(32);
+        private float shockwaveContactBoostTimer;
         private readonly AreaEffectCommand[] areaEffectUpload = new AreaEffectCommand[MaxAreaCommands];
         private readonly List<ProjectileCommand> queuedProjectiles = new(MaxProjectileCommands);
         private readonly ProjectileCommand[] projectileUpload = new ProjectileCommand[MaxProjectileCommands];
@@ -329,6 +420,10 @@ namespace TowerDefense.Runtime
         private int dynamicTargetCommandCount;
         private readonly Vector2 gridCenter;
         private readonly float gridDiagonal;
+        private readonly float gridCellSize;
+        private readonly int gridWidth;
+        private readonly int gridHeight;
+        private float collisionDiameter;
         private GraphicsBuffer readStates;
         private GraphicsBuffer writeStates;
         private bool disposed;
@@ -339,19 +434,78 @@ namespace TowerDefense.Runtime
         private uint processedEventCount;
         private float nextDiagnosticsReadbackTime;
         private int activeHighWaterMark;
+        private float presentationAlpha = 1f;
+        private float lastSimulationDelta;
         private uint simulationFrameIndex;
+        private uint nextProjectileId = 1u;
+        private bool centerSeekingArena;
+        private float movementSpeedMultiplier = 1f;
+        private bool referenceCrowd;
+        private int referenceContactIterations;
 
         public uint OverflowCellCount { get; private set; }
         public uint DroppedAgentCount { get; private set; }
         public uint MaximumCellOccupancy { get; private set; }
         public uint GpuActiveCount { get; private set; }
         public uint VisibleAgentCount { get; private set; }
+        public uint OverlapPairCount { get; private set; }
+        public float MaximumOverlapFraction { get; private set; }
+        public uint OrdinaryBackwardStepCount { get; private set; }
+        public float MaximumOrdinaryBacktrack { get; private set; }
+        public float NormalizedNeighborSpacing { get; private set; }
+        public uint ActiveContactPairCount { get; private set; }
+        internal int LastContactIterationCount { get; private set; }
+        // Test-only observation point. Null in the player; readbacks are supplied by the test.
+        internal Action<string> MovementStageObserver { get; set; }
+        internal bool ReverseMotionReservation { get; set; }
+        internal bool SlidingMotionAcceptance { get; set; } = true;
+
+        public void SetMovementSpeedMultiplier(float multiplier)
+        {
+            movementSpeedMultiplier = Mathf.Max(0f, multiplier);
+        }
+
+        public void SetHordePhysicsProfile(HordePhysicsProfile profile)
+        {
+            referenceCrowd = profile != null && profile.useReferenceCrowdRules;
+            referenceContactIterations = referenceCrowd
+                ? Mathf.Clamp(profile.contactIterations, 1, 32)
+                : 0;
+            var contactDiameterMultiplier = Mathf.Clamp(
+                profile != null ? profile.contactDiameterMultiplier : 1f,
+                0.55f,
+                1.5f);
+            compute.SetInt("_ReferenceCrowd", referenceCrowd ? 1 : 0);
+            compute.SetFloat("_ReferenceLateralContactResponse", profile != null
+                ? Mathf.Clamp01(profile.lateralContactResponse)
+                : 1f);
+            compute.SetFloat("_ReferenceExternalForceRecovery", profile != null
+                ? Mathf.Max(0.01f, profile.externalForceRecovery)
+                : 0.8f);
+            compute.SetFloat("_MinimumContactDiameterMultiplier", hordeSpriteMesh != null
+                ? HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier * contactDiameterMultiplier
+                : 0.82f * contactDiameterMultiplier);
+            material.SetFloat("_PackingScale", profile != null
+                ? Mathf.Clamp(profile.spritePackingScale, 0.9f, 1.35f)
+                : 1.18f);
+
+            if (referenceCrowd)
+            {
+                compute.SetFloat("_FlowAcceleration", Mathf.Max(0.1f, profile.flowAcceleration));
+                compute.SetFloat("_CollisionAcceleration", Mathf.Max(0.1f, profile.collisionAcceleration));
+                compute.SetFloat("_VelocityDamping", Mathf.Max(0.01f, profile.velocityDamping));
+                compute.SetFloat("_FlowAlignment", 1f);
+            }
+        }
 
         private GpuHordeSimulation(int agentCapacity, HordeFlowField field, Mesh mesh)
         {
             capacity = agentCapacity;
             eventCapacity = capacity + ExtraCombatEventCapacity;
             cellCount = field.Width * field.Height;
+            gridCellSize = field.CellSize;
+            gridWidth = field.Width;
+            gridHeight = field.Height;
             var sourceCompute = Resources.Load<ComputeShader>("HordeSimulation");
             var shader = Resources.Load<Shader>("HordeIndirect");
             if (sourceCompute == null || shader == null)
@@ -361,21 +515,82 @@ namespace TowerDefense.Runtime
 
             compute = UnityEngine.Object.Instantiate(sourceCompute);
             material = new Material(shader) { enableInstancing = true };
-            lowDetailMesh = EnemyManager.GetLowEnemyMesh();
+            hordeSpriteTexture = Resources.Load<Texture2D>(HordeRaiderSpriteAssets.TextureResourcePath);
+            if (hordeSpriteTexture != null)
+            {
+                // The card is an atlas, not a pixel-art texture. Bilinear sampling
+                // keeps the painted outline smooth, while Clamp prevents a frame
+                // from sampling an unrelated direction at the texture boundary.
+                hordeSpriteTexture.wrapMode = TextureWrapMode.Clamp;
+                hordeSpriteTexture.filterMode = FilterMode.Bilinear;
+                hordeSpriteMesh = HordeRaiderSpriteAssets.CreateGroundCard();
+                material.SetFloat("_HordeSpriteEnabled", 1f);
+                material.SetTexture("_HordeSpriteAtlas", hordeSpriteTexture);
+                material.SetFloat("_HordeSpriteStride", 5.5f);
+                material.SetFloat("_PackingScale", 1.18f);
+            }
+            else
+            {
+                // Keep the game runnable if Unity has not yet imported the new art.
+                // The next domain reload automatically takes the sprite path.
+                hordeSpriteMesh = null;
+                material.SetFloat("_HordeSpriteEnabled", 0f);
+            }
+            lowDetailMesh = hordeSpriteMesh != null ? hordeSpriteMesh : EnemyManager.GetLowEnemyMesh();
             stableRenderMesh = lowDetailMesh;
-            material.SetColor("_BaseColor", new Color(0.1f, 0.9f, 0.18f, 1f));
-            material.SetColor("_SlowColor", new Color(0.2f, 0.62f, 1f, 1f));
-            material.SetColor("_RareColor", new Color(0.62f, 0.16f, 0.82f, 1f));
+            // These colours are tuned against the cool road material: each is
+            // readable at horde zoom without turning the ground into a second UI.
+            material.SetColor("_BaseColor", new Color(0.08f, 0.82f, 0.29f, 1f));
+            material.SetColor("_SlowColor", new Color(0.16f, 0.50f, 1f, 1f));
+            material.SetColor("_RareColor", new Color(0.82f, 0.18f, 0.96f, 1f));
+            material.SetColor("_SpeedColor0", new Color(0.96f, 0.16f, 0.10f, 1f));
+            material.SetColor("_SpeedColor1", new Color(1f, 0.45f, 0.05f, 1f));
+            material.SetColor("_SpeedColor2", new Color(1f, 0.86f, 0.12f, 1f));
+            material.SetColor("_SpeedColor3", new Color(0.08f, 0.82f, 0.29f, 1f));
+            material.SetFloat("_UseSpeedColors", 0f);
             properties.SetFloat("_LightingVariation", 1f);
             lodProperties.SetFloat("_LightingVariation", 1f);
+            variantProperties.SetFloat("_LightingVariation", 1f);
+            variantLodProperties.SetFloat("_LightingVariation", 1f);
+            properties.SetFloat("_VisualScaleMultiplier", 1f);
+            properties.SetFloat("_HordeSpriteFarLod", 0f);
+            // Mipmapped authored art is stable at overview zoom. Do not replace it
+            // with a green procedural token: that changed the enemy's colour and
+            // made the horde read as terrain instead of individual opponents.
+            lodProperties.SetFloat("_HordeSpriteFarLod", 0f);
+            variantProperties.SetFloat("_HordeSpriteFarLod", 0f);
+            variantLodProperties.SetFloat("_HordeSpriteFarLod", 0f);
+            // The low-poly model takes fewer pixels at distance. A modest visual
+            // compensation preserves a readable crowd without increasing physics
+            // radii or rendering the full mesh for every distant agent.
+            lodProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+            variantProperties.SetFloat("_VisualScaleMultiplier", 1f);
+            variantLodProperties.SetFloat("_VisualScaleMultiplier", 1f);
             clearKernel = compute.FindKernel("ClearGrid");
+            spawnKernel = compute.FindKernel("ApplySpawns");
+            spawnStates = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, Marshal.SizeOf<AgentState>());
+            spawnControls = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
             clearDiagnosticsKernel = compute.FindKernel("ClearDiagnostics");
             gridKernel = compute.FindKernel("BuildGrid");
             simulateKernel = compute.FindKernel("Simulate");
+            contactKernel = compute.FindKernel("ResolveContacts");
+            contactCellsKernel = compute.FindKernel("ResolveContactCells");
+            prepareMotionKernel = compute.FindKernel("PrepareMotion");
+            constrainMotionKernel = compute.FindKernel("ConstrainMotion");
+            commitMotionKernel = compute.FindKernel("CommitMotion");
+            reserveMotionKernel = compute.FindKernel("ReserveMotionCells");
+            acceptedMotion = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
+            motionNeighbors = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity * 128, sizeof(float) * 4);
+            motionNeighborCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
+            motionObstacles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
+            motionA = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
+            motionB = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
+            measureOverlapsKernel = compute.FindKernel("MeasureOverlaps");
             targetQueryKernel = compute.FindKernel("QueryTargets");
             damageKernel = compute.FindKernel("ApplyDamageCommands");
             statusKernel = compute.FindKernel("ApplyStatusCommands");
             areaEffectKernel = compute.FindKernel("ApplyAreaEffect");
+            unlimitedAreaEffectsKernel = compute.FindKernel("ApplyUnlimitedAreaEffects");
             clearVisibilityKernel = compute.FindKernel("ClearVisibility");
             cullVisibleKernel = compute.FindKernel("CullVisible");
             finalizeActiveKernel = compute.FindKernel("FinalizeActiveDispatch");
@@ -396,13 +611,15 @@ namespace TowerDefense.Runtime
             cellCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount, sizeof(uint));
             cellAgents = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount * CellCapacity, sizeof(uint));
             indirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
-            diagnostics = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 5, sizeof(uint));
+            diagnostics = new GraphicsBuffer(GraphicsBuffer.Target.Structured, DiagnosticsCount, sizeof(uint));
             targetQueries = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxTargetQueries, Marshal.SizeOf<TargetQuery>());
             targetResults = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxTargetQueries, Marshal.SizeOf<TargetResult>());
             damageCommands = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, Marshal.SizeOf<DamageCommand>());
             statusCommands = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, Marshal.SizeOf<StatusCommand>());
             areaEffectCommands = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxAreaCommands, Marshal.SizeOf<AreaEffectCommand>());
             projectileCommands = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxProjectileCommands, Marshal.SizeOf<ProjectileCommand>());
+            projectileHitCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, TrackedProjectileCapacity, sizeof(uint));
+            agentLastProjectileIds = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             hordeEvents = new GraphicsBuffer(GraphicsBuffer.Target.Structured, eventCapacity, Marshal.SizeOf<HordeEvent>());
             eventCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
             dynamicTargets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, Marshal.SizeOf<DynamicTargetState>());
@@ -412,9 +629,12 @@ namespace TowerDefense.Runtime
             dynamicTargetBlockedMass = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
             dynamicTargetDamage = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
             dynamicTargetLastAttacker = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
-            visibleIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
-            lodVisibleIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
+            // Four packed lists: primary near/far, then secondary near/far. Packing
+            // avoids exceeding D3D11's eight-UAV limit in the visibility kernel.
+            visibleIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity * 4, sizeof(uint));
             lodIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+            variantIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+            variantLodIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
             activeIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             activeDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
             damageUpload = new DamageCommand[capacity];
@@ -425,6 +645,8 @@ namespace TowerDefense.Runtime
             var emptyStates = new AgentState[capacity];
             stateA.SetData(emptyStates);
             stateB.SetData(emptyStates);
+            projectileHitCounts.SetData(new uint[TrackedProjectileCapacity]);
+            agentLastProjectileIds.SetData(new uint[capacity]);
             controls.SetData(new Vector4[capacity]);
             impulses.SetData(new Vector2[capacity]);
             eventCount.SetData(new uint[1]);
@@ -446,6 +668,20 @@ namespace TowerDefense.Runtime
             lodDrawArgs[2] = lowDetailMesh.GetIndexStart(0);
             lodDrawArgs[3] = (uint)lowDetailMesh.GetBaseVertex(0);
             lodIndirectArgs.SetData(lodDrawArgs);
+            if (variantRenderMesh != null)
+            {
+                variantDrawArgs[0] = variantRenderMesh.GetIndexCount(0);
+                variantDrawArgs[2] = variantRenderMesh.GetIndexStart(0);
+                variantDrawArgs[3] = (uint)variantRenderMesh.GetBaseVertex(0);
+            }
+            if (variantLodRenderMesh != null)
+            {
+                variantLodDrawArgs[0] = variantLodRenderMesh.GetIndexCount(0);
+                variantLodDrawArgs[2] = variantLodRenderMesh.GetIndexStart(0);
+                variantLodDrawArgs[3] = (uint)variantLodRenderMesh.GetBaseVertex(0);
+            }
+            variantIndirectArgs.SetData(variantDrawArgs);
+            variantLodIndirectArgs.SetData(variantLodDrawArgs);
 
             var center = field.Origin + new Vector3(field.Width * field.CellSize * 0.5f, 0f, field.Height * field.CellSize * 0.5f);
             drawBounds = new Bounds(center, new Vector3(field.Width * field.CellSize + 4f, 20f, field.Height * field.CellSize + 4f));
@@ -458,12 +694,35 @@ namespace TowerDefense.Runtime
             compute.SetInts("_GridSize", field.Width, field.Height);
             compute.SetVector("_GridOrigin", new Vector4(field.Origin.x, field.Origin.z, 0f, 0f));
             compute.SetFloat("_CellSize", field.CellSize);
-            compute.SetFloat("_CollisionDiameter", 0.72f);
+            SetCollisionDiameter(0.72f);
+            compute.SetInt("_CleanupCellStride", 1);
+            // Sprite cards include transparent gutter around the painted enemy.
+            // Its contact envelope therefore must be smaller than the old blob mesh.
+            compute.SetFloat("_BodyRadiusPerScale", hordeSpriteMesh != null
+                ? HordeRaiderSpriteAssets.ContactRadiusPerStateScale
+                : 1f);
+            // Keep the solver's hard minimum in sync with the visible sprite.
+            // Without this, spawn packing can be tightened while contacts still
+            // resolve back to the old, visibly detached diameter.
+            compute.SetFloat("_MinimumContactDiameterMultiplier", hordeSpriteMesh != null
+                ? HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier
+                : 0.82f);
+            compute.SetInt("_AnimatedGoblin", 0);
             compute.SetFloat("_FlowAcceleration", 8.5f);
             compute.SetFloat("_CollisionAcceleration", 18f);
             compute.SetFloat("_WallAcceleration", 13f);
             compute.SetFloat("_WallInfluence", 0.9f);
             compute.SetFloat("_VelocityDamping", 1.15f);
+            compute.SetFloat("_FlowAlignment", 1f);
+            compute.SetInt("_StationaryHorde", 0);
+            compute.SetInt("_RandomArenaMovement", 0);
+            compute.SetInt("_CenterSeekingArena", 0);
+            compute.SetInt("_UnidirectionalHordeContacts", 0);
+            compute.SetInt("_ReferenceCrowd", 0);
+            compute.SetFloat("_ReferenceLateralContactResponse", 1f);
+            compute.SetFloat("_ReferenceExternalForceRecovery", 0.8f);
+            compute.SetVector("_ArenaCenter", Vector4.zero);
+            compute.SetInt("_ExitEnabled", 1);
             compute.SetInt("_EventCapacity", eventCapacity);
             compute.SetInt("_DynamicTargetCapacity", MaxDynamicTargets);
             compute.SetInt("_DynamicTargetCellCapacity", DynamicTargetCellCapacity);
@@ -486,10 +745,62 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(simulateKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(simulateKernel, "_DiagnosticsRead", diagnostics);
             compute.SetBuffer(simulateKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(contactKernel, "_FlowData", flowData);
+            compute.SetBuffer(contactKernel, "_FlowVectors", flowVectors);
+            compute.SetBuffer(contactKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(contactKernel, "_Controls", controls);
+            compute.SetBuffer(contactKernel, "_CellAgentsRead", cellAgents);
+            compute.SetBuffer(contactKernel, "_ActiveIndicesRead", activeIndices);
+            compute.SetBuffer(contactKernel, "_DiagnosticsRead", diagnostics);
+            // ResolveContacts records ordinary reverse travel for the OrcReference profile.
+            // It therefore needs both read and write bindings for this buffer.
+            compute.SetBuffer(contactKernel, "_Diagnostics", diagnostics);
+            compute.SetBuffer(contactKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(contactCellsKernel, "_FlowData", flowData);
+            compute.SetBuffer(contactCellsKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(contactCellsKernel, "_CellAgentsRead", cellAgents);
+            foreach (var kernel in new[] { prepareMotionKernel, constrainMotionKernel, commitMotionKernel })
+            {
+                compute.SetBuffer(kernel, "_ActiveIndicesRead", activeIndices);
+                compute.SetBuffer(kernel, "_DiagnosticsRead", diagnostics);
+            }
+            compute.SetBuffer(constrainMotionKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(constrainMotionKernel, "_CellAgentsRead", cellAgents);
+            compute.SetBuffer(constrainMotionKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(constrainMotionKernel, "_FlowData", flowData);
+            compute.SetBuffer(reserveMotionKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(reserveMotionKernel, "_CellAgentsRead", cellAgents);
+            compute.SetBuffer(reserveMotionKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(reserveMotionKernel, "_AcceptedMotion", acceptedMotion);
+            compute.SetBuffer(reserveMotionKernel, "_FlowData", flowData);
+            compute.SetBuffer(reserveMotionKernel, "_MotionObstacles", motionObstacles);
+            compute.SetBuffer(prepareMotionKernel, "_AcceptedMotion", acceptedMotion);
+            compute.SetBuffer(commitMotionKernel, "_AcceptedMotion", acceptedMotion);
+            compute.SetBuffer(commitMotionKernel, "_FlowData", flowData);
+            compute.SetBuffer(commitMotionKernel, "_HordeEvents", hordeEvents);
+            compute.SetBuffer(commitMotionKernel, "_EventCount", eventCount);
+            compute.SetBuffer(prepareMotionKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(prepareMotionKernel, "_MotionObstacles", motionObstacles);
+            compute.SetBuffer(prepareMotionKernel, "_DynamicTargetsRead", dynamicTargets);
+            compute.SetBuffer(constrainMotionKernel, "_MotionObstacles", motionObstacles);
+            compute.SetBuffer(prepareMotionKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(prepareMotionKernel, "_CellAgentsRead", cellAgents);
+            foreach (var kernel in new[] { prepareMotionKernel, constrainMotionKernel, reserveMotionKernel })
+            {
+                compute.SetBuffer(kernel, "_MotionNeighbors", motionNeighbors);
+                compute.SetBuffer(kernel, "_MotionNeighborCounts", motionNeighborCounts);
+            }
+            compute.SetBuffer(measureOverlapsKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(measureOverlapsKernel, "_CellAgentsRead", cellAgents);
+            compute.SetBuffer(measureOverlapsKernel, "_ActiveIndicesRead", activeIndices);
+            compute.SetBuffer(measureOverlapsKernel, "_DiagnosticsRead", diagnostics);
+            compute.SetBuffer(measureOverlapsKernel, "_SpatialStatesRead", spatialStates);
+            compute.SetBuffer(measureOverlapsKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(targetQueryKernel, "_CellCountsRead", cellCounts);
             compute.SetBuffer(targetQueryKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(targetQueryKernel, "_TargetQueries", targetQueries);
             compute.SetBuffer(targetQueryKernel, "_TargetResults", targetResults);
+            compute.SetBuffer(targetQueryKernel, "_Controls", controls);
             compute.SetBuffer(damageKernel, "_DamageCommands", damageCommands);
             compute.SetBuffer(damageKernel, "_HordeEvents", hordeEvents);
             compute.SetBuffer(damageKernel, "_EventCount", eventCount);
@@ -499,7 +810,16 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(areaEffectKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(areaEffectKernel, "_HordeEvents", hordeEvents);
             compute.SetBuffer(areaEffectKernel, "_EventCount", eventCount);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_AreaEffectCommands", areaEffectCommands);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_ActiveIndicesRead", activeIndices);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_DiagnosticsRead", diagnostics);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_CellCountsRead", cellCounts);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_FlowData", flowData);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_HordeEvents", hordeEvents);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_EventCount", eventCount);
             compute.SetBuffer(projectileKernel, "_ProjectileCommands", projectileCommands);
+            compute.SetBuffer(projectileKernel, "_ProjectileHitCounts", projectileHitCounts);
+            compute.SetBuffer(projectileKernel, "_AgentLastProjectileIds", agentLastProjectileIds);
             compute.SetBuffer(projectileKernel, "_CellCountsRead", cellCounts);
             compute.SetBuffer(projectileKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(projectileKernel, "_HordeEvents", hordeEvents);
@@ -529,10 +849,19 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(resolveDynamicTargetDamageKernel, "_EventCount", eventCount);
             compute.SetBuffer(clearVisibilityKernel, "_IndirectArgs", indirectArgs);
             compute.SetBuffer(clearVisibilityKernel, "_LodIndirectArgs", lodIndirectArgs);
+            compute.SetBuffer(clearVisibilityKernel, "_VariantIndirectArgs", variantIndirectArgs);
+            compute.SetBuffer(clearVisibilityKernel, "_VariantLodIndirectArgs", variantLodIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_IndirectArgs", indirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VisibleIndices", visibleIndices);
-            compute.SetBuffer(cullVisibleKernel, "_LodVisibleIndices", lodVisibleIndices);
             compute.SetBuffer(cullVisibleKernel, "_LodIndirectArgs", lodIndirectArgs);
+            compute.SetBuffer(cullVisibleKernel, "_VariantIndirectArgs", variantIndirectArgs);
+            compute.SetBuffer(cullVisibleKernel, "_VariantLodIndirectArgs", variantLodIndirectArgs);
+            compute.SetInt("_GoblinVariantCulling", 0);
+            compute.SetInt("_VisibleListCapacity", capacity);
+            properties.SetInt("_VisibleIndexOffset", 0);
+            lodProperties.SetInt("_VisibleIndexOffset", capacity);
+            variantProperties.SetInt("_VisibleIndexOffset", capacity * 2);
+            variantLodProperties.SetInt("_VisibleIndexOffset", capacity * 3);
             compute.SetBuffer(cullVisibleKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(cullVisibleKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(cullVisibleKernel, "_DiagnosticsRead", diagnostics);
@@ -569,17 +898,8 @@ namespace TowerDefense.Runtime
 
             var state = CreateAgentState(index, position, velocity, scale, tint, health, progress, isFlying, mass, definition);
             singleStateUpload[0] = state;
-            stateA.SetData(singleStateUpload, 0, index, 1);
-            stateB.SetData(singleStateUpload, 0, index, 1);
             singleControlUpload[0] = new Vector4(Mathf.Max(0.25f, velocity.magnitude), 1f, 0f, 0f);
-            controls.SetData(singleControlUpload, 0, index, 1);
-            activeHighWaterMark = Mathf.Max(activeHighWaterMark, index + 1);
-            var spawnedCount = (uint)(index + 1);
-            if (drawArgs[1] < spawnedCount)
-            {
-                drawArgs[1] = spawnedCount;
-                indirectArgs.SetData(drawArgs);
-            }
+            UploadSpawns(singleStateUpload, singleControlUpload, 0, index, 1);
         }
 
         internal static AgentState CreateAgentState(
@@ -597,6 +917,9 @@ namespace TowerDefense.Runtime
             return new AgentState
             {
                 Position = new Vector2(position.x, position.z),
+                StepStartPosition = new Vector2(position.x, position.z),
+                Facing = new Vector2(velocity.x, velocity.z).normalized,
+                LocomotionSpeed = velocity.magnitude,
                 Velocity = new Vector2(velocity.x, velocity.z),
                 Scale = scale,
                 Tint = tint,
@@ -643,15 +966,29 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            stateA.SetData(states, startIndex, startIndex, count);
-            stateB.SetData(states, startIndex, startIndex, count);
-            if (controlData != null && controlData.Length >= startIndex + count)
-            {
-                controls.SetData(controlData, startIndex, startIndex, count);
-            }
-            activeHighWaterMark = Mathf.Max(activeHighWaterMark, startIndex + count);
-            drawArgs[1] = (uint)Mathf.Max((int)drawArgs[1], startIndex + count);
-            indirectArgs.SetData(drawArgs);
+            UploadSpawns(states, controlData, startIndex, startIndex, count);
+        }
+
+        private void UploadSpawns(AgentState[] states, Vector4[] controlData, int source, int destination, int count)
+        {
+            // Upload to read-only staging resources. CPU writes to the live UAVs
+            // force the driver to synchronize with movement/contact/draw work.
+            spawnStates.SetData(states, source, 0, count);
+            var hasControls = controlData != null && controlData.Length >= source + count;
+            if (hasControls)
+                for (var i = source; i < source + count; i++)
+                    maximumDesiredSpeed = Mathf.Max(maximumDesiredSpeed, controlData[i].x);
+            if (hasControls) spawnControls.SetData(controlData, source, 0, count);
+            compute.SetInt("_SpawnStart", destination);
+            compute.SetInt("_SpawnCount", count);
+            compute.SetInt("_SpawnHasControls", hasControls ? 1 : 0);
+            compute.SetBuffer(spawnKernel, "_SpawnStates", spawnStates);
+            compute.SetBuffer(spawnKernel, "_SpawnControls", spawnControls);
+            compute.SetBuffer(spawnKernel, "_StatesRead", stateA);
+            compute.SetBuffer(spawnKernel, "_StatesWrite", stateB);
+            compute.SetBuffer(spawnKernel, "_SpawnControlsWrite", controls);
+            compute.Dispatch(spawnKernel, DivideRoundUp(count, ThreadGroupSize), 1, 1);
+            activeHighWaterMark = Mathf.Max(activeHighWaterMark, destination + count);
         }
 
         internal void ReadStatesSynchronous(AgentState[] destination, int count)
@@ -669,7 +1006,7 @@ namespace TowerDefense.Runtime
         {
             if (!disposed && destination != null && destination.Length >= 4)
             {
-                diagnostics.GetData(destination, 0, 0, 4);
+                diagnostics.GetData(destination, 0, 0, Mathf.Min(7, destination.Length));
             }
         }
 
@@ -813,7 +1150,14 @@ namespace TowerDefense.Runtime
             };
         }
 
-        public void Dispatch(float deltaTime, Vector4[] controlData, Vector2[] impulseData, bool requestReadback = true)
+        public void Dispatch(
+            float deltaTime,
+            Vector4[] controlData,
+            Vector2[] impulseData,
+            bool requestReadback = true,
+            float contactIterationScale = 1f,
+            bool updatePresentation = true,
+            bool updateVisibility = true)
         {
             if (disposed)
             {
@@ -824,6 +1168,8 @@ namespace TowerDefense.Runtime
             if (controlData != null && uploadCount > 0)
             {
                 controls.SetData(controlData, 0, 0, Mathf.Min(uploadCount, controlData.Length));
+                for (var i = 0; i < Mathf.Min(uploadCount, controlData.Length); i++)
+                    maximumDesiredSpeed = Mathf.Max(maximumDesiredSpeed, controlData[i].x);
             }
 
             if (impulseData != null && uploadCount > 0)
@@ -831,9 +1177,24 @@ namespace TowerDefense.Runtime
                 impulses.SetData(impulseData, 0, 0, Mathf.Min(uploadCount, impulseData.Length));
             }
             compute.SetInt("_AgentCount", uploadCount);
-            compute.SetFloat("_DeltaTime", Mathf.Min(deltaTime, 0.05f));
+            // The exact predictive reservation path requires dozens of whole-horde
+            // dispatches per tick. At 10,000 agents it becomes CPU-dispatch bound
+            // and, crucially, it cannot repair a body that was already overlapping.
+            // The regular contact pass is the production path: it resolves existing
+            // overlaps every tick. Tight spawn clearance and convoy-speed controls
+            // prevent the old stop/start behaviour before this pass is needed.
+            var predictiveContacts = false;
+            compute.SetInt("_PredictiveContacts", predictiveContacts ? 1 : 0);
+            compute.SetFloat("_DeltaTime", Mathf.Min(deltaTime, 0.1f));
+            maximumMotionDistance = Mathf.Max(collisionDiameter * 0.4f,
+                maximumDesiredSpeed * movementSpeedMultiplier * Mathf.Min(deltaTime, 0.1f) * 1.12f);
+            compute.SetFloat("_MaximumMotionDistance", maximumMotionDistance);
+            lastSimulationDelta = Mathf.Min(deltaTime, 0.1f);
+            compute.SetFloat("_MovementSpeedMultiplier", movementSpeedMultiplier);
+            compute.SetFloat("_ShockwavePropagationSpeed", ShockwavePropagationSpeed);
             SetCameraParameters();
             compute.SetBuffer(gridKernel, "_StatesRead", readStates);
+            compute.SetBuffer(gridKernel, "_StatesWrite", writeStates);
             DispatchDynamicTargetCommands();
             compute.Dispatch(clearDynamicTargetGridKernel,
                 DivideRoundUp(Mathf.Max(cellCount, MaxDynamicTargets), ThreadGroupSize), 1, 1);
@@ -848,21 +1209,191 @@ namespace TowerDefense.Runtime
             compute.Dispatch(gridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
             compute.Dispatch(finalizeActiveKernel, 1, 1, 1);
             DispatchProjectiles();
+            AdvanceShockwaves(Mathf.Min(deltaTime, 0.1f));
             DispatchAreaEffects();
             DispatchTargetQueries();
+            // Queries observe the pre-movement state. Every predictive displacement is
+            // bounded by this disk, including all catch-up ticks before CPU consumption.
+            motionTravelBudget += maximumMotionDistance;
             compute.DispatchIndirect(simulateKernel, activeDispatchArgs);
             compute.SetBuffer(resolveDynamicTargetDamageKernel, "_StatesInput", writeStates);
             compute.Dispatch(resolveDynamicTargetDamageKernel, DivideRoundUp(MaxDynamicTargets, ThreadGroupSize), 1, 1);
             (readStates, writeStates) = (writeStates, readStates);
-            compute.SetBuffer(cullVisibleKernel, "_StatesInput", readStates);
-            compute.Dispatch(clearVisibilityKernel, 1, 1, 1);
-            compute.DispatchIndirect(cullVisibleKernel, activeDispatchArgs);
-            if (requestReadback)
+            var iterationScale = Mathf.Clamp(contactIterationScale, 0.01f, 1f);
+            MovementStageObserver?.Invoke("integrated");
+            if (predictiveContacts)
             {
-                RequestDiagnosticsReadback();
-                RequestEventReadback();
+                ResolvePredictiveMotion(uploadCount, iterationScale);
+                MovementStageObserver?.Invoke("constrained");
+                // Presentation reads the resolved displacement. No sequential
+                // positional pushes: they invalidate neighbouring constraints.
+                compute.SetInt("_HardContactCleanup", 1);
+                compute.SetInt("_FinalizePresentation", 1);
+                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
+                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
+                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
+                (readStates, writeStates) = (writeStates, readStates);
+                RebuildContactGrid(uploadCount);
+                compute.DispatchIndirect(measureOverlapsKernel, activeDispatchArgs);
+            }
+            var baseContactIterations = referenceCrowd ? referenceContactIterations : centerSeekingArena ? 64 :
+                (uploadCount <= 5000 ? 12 : 20);
+            var unscaledMinimumContactIterations = centerSeekingArena
+                ? (shockwaveContactBoostTimer > 0f ? 28 : 16)
+                : 2;
+            var minimumContactIterations = Mathf.Max(
+                centerSeekingArena ? 2 : 1,
+                Mathf.CeilToInt(unscaledMinimumContactIterations * iterationScale));
+            if (centerSeekingArena)
+            {
+                var unscaledEmergencyContactIterations = MaximumOverlapFraction > 0.5f || OverlapPairCount > 5000
+                    ? 96
+                    : MaximumOverlapFraction > 0.15f || OverlapPairCount > 1000
+                        ? 72
+                        : 0;
+                minimumContactIterations = Mathf.Max(
+                    minimumContactIterations,
+                    Mathf.CeilToInt(unscaledEmergencyContactIterations * iterationScale));
+            }
+            var contactIterations = Mathf.Max(
+                minimumContactIterations,
+                Mathf.CeilToInt(baseContactIterations * iterationScale));
+            if (!predictiveContacts) ResolveHardContacts(uploadCount, contactIterations, updatePresentation);
+            shockwaveContactBoostTimer = Mathf.Max(0f, shockwaveContactBoostTimer - Mathf.Min(deltaTime, 0.1f));
+            if (updatePresentation)
+            {
+                if (updateVisibility)
+                {
+                    RefreshVisibility();
+                }
+                if (requestReadback)
+                {
+                    RequestDiagnosticsReadback();
+                    RequestEventReadback();
+                }
             }
         }
+
+        private void ResolveHardContacts(int uploadCount, int iterationCount, bool measureOverlaps)
+        {
+            compute.SetBuffer(contactKernel, "_Controls", controls);
+            compute.SetInt("_ContactIterationCount", Mathf.Max(1, iterationCount));
+            // Catch-up ticks already run the normal contact projection. Polish
+            // silhouettes once before presenting the final tick of the frame;
+            // repeating every color sweep in all four ticks defeats the shared
+            // contact budget and amplifies an isolated long frame.
+            // The local sequential cleanup is intentionally disabled for a
+            // 10,000-agent travelling horde. Its many tiny dispatches make the
+            // frame CPU-bound and its large positional corrections are visible
+            // as teleport-like stepping. The regular solver is the stable path.
+            var cleanupStride = 0;
+            var cleanupColors = cleanupStride * cleanupStride;
+            var cleanupIterations = cleanupColors;
+            var totalIterations = iterationCount + cleanupIterations;
+            LastContactIterationCount = totalIterations;
+            compute.SetInt("_CleanupCellStride", Mathf.Max(1, cleanupStride));
+            compute.SetInt("_HardContactCleanup", 0);
+            for (var iteration = 0; iteration < iterationCount; iteration++)
+            {
+                compute.SetInt("_FinalizePresentation", cleanupIterations == 0 && iteration == iterationCount - 1 ? 1 : 0);
+                compute.SetInt("_ContactIteration", iteration);
+                RebuildContactGrid(uploadCount);
+                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
+                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
+                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
+                (readStates, writeStates) = (writeStates, readStates);
+            }
+
+            if (cleanupIterations > 0)
+            {
+                MovementStageObserver?.Invoke("projected");
+                var coloredCellCount = DivideRoundUp(gridWidth, cleanupStride) * DivideRoundUp(gridHeight, cleanupStride);
+                compute.SetBuffer(contactCellsKernel, "_StatesRead", readStates);
+                for (var iteration = 0; iteration < cleanupIterations; iteration++)
+                {
+                    // Freeze cell ownership for a complete color cycle. Rebuilding
+                    // between colors lets a corrected body enter a later color and
+                    // move twice, exceeding the displacement used to separate
+                    // concurrently processed cells. Neighbour positions are still
+                    // read live by the in-place kernel.
+                    if (iteration % cleanupColors == 0) RebuildContactGrid(uploadCount);
+                    compute.SetInt("_CleanupCellPhase", iteration % cleanupColors);
+                    compute.Dispatch(contactCellsKernel, DivideRoundUp(coloredCellCount, ThreadGroupSize), 1, 1);
+                }
+                // Finalize animation once, from the travel after all projections.
+                compute.SetInt("_HardContactCleanup", 1);
+                compute.SetInt("_FinalizePresentation", 1);
+                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
+                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
+                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
+                (readStates, writeStates) = (writeStates, readStates);
+            }
+
+            if (measureOverlaps)
+            {
+                MovementStageObserver?.Invoke("cleanup");
+                RebuildContactGrid(uploadCount);
+                compute.DispatchIndirect(measureOverlapsKernel, activeDispatchArgs);
+            }
+        }
+
+        private void ResolvePredictiveMotion(int uploadCount, float iterationScale)
+        {
+            compute.SetBuffer(prepareMotionKernel, "_StatesRead", readStates);
+            compute.SetBuffer(prepareMotionKernel, "_MotionWrite", motionA);
+            compute.DispatchIndirect(prepareMotionKernel, activeDispatchArgs);
+            compute.SetInt("_SlidingMotionAcceptance", SlidingMotionAcceptance ? 1 : 0);
+            var source = motionA;
+            var destination = motionB;
+            var largeCrowd = uploadCount >= LargeCrowdThreshold;
+            var baseProjectionIterations = largeCrowd ? LargeCrowdProjectionIterations : FullMotionProjectionIterations;
+            var baseReservationSweeps = largeCrowd ? LargeCrowdReservationSweeps : FullMotionReservationSweeps;
+            // A slow rendered frame can contain up to four fixed ticks. Sharing
+            // this budget prevents catch-up from multiplying the GPU work and
+            // creating a feedback loop (slow frame -> more ticks -> slower frame).
+            // The final hard-contact pass remains authoritative, so this reduces
+            // only approach polish, never the collision envelope.
+            // Smaller tactical tests retain their full precision budget. The
+            // catch-up scaling is needed only once a horde is large enough for
+            // the dispatch count itself to be a frame-time risk.
+            var solverScale = largeCrowd ? iterationScale : 1f;
+            var projectionIterations = Mathf.Max(largeCrowd ? 3 : 6,
+                Mathf.CeilToInt(baseProjectionIterations * solverScale));
+            var reservationSweeps = Mathf.Max(largeCrowd ? 1 : 2,
+                Mathf.CeilToInt(baseReservationSweeps * solverScale));
+            for (var iteration = 0; iteration < projectionIterations; iteration++)
+            {
+                compute.SetBuffer(constrainMotionKernel, "_MotionRead", source);
+                compute.SetBuffer(constrainMotionKernel, "_MotionWrite", destination);
+                compute.DispatchIndirect(constrainMotionKernel, activeDispatchArgs);
+                (source, destination) = (destination, source);
+            }
+            compute.SetBuffer(commitMotionKernel, "_StatesRead", readStates);
+            var stride = Mathf.CeilToInt((MaximumPairDiameter * 1.08f + maximumMotionDistance * 2f) / gridCellSize) + 1;
+            var colors = stride * stride;
+            compute.SetInt("_CleanupCellStride", stride);
+            compute.SetBuffer(reserveMotionKernel, "_MotionRead", source);
+            var cells = DivideRoundUp(gridWidth, stride) * DivideRoundUp(gridHeight, stride);
+            LastContactIterationCount = projectionIterations + colors * reservationSweeps;
+            for (var pass = 0; pass < colors * reservationSweeps; pass++)
+            {
+                compute.SetInt("_CleanupCellPhase", ReverseMotionReservation ? colors - 1 - pass % colors : pass % colors);
+                compute.SetInt("_ReverseMotionReservation", ReverseMotionReservation ? 1 : 0);
+                compute.Dispatch(reserveMotionKernel, DivideRoundUp(cells, ThreadGroupSize), 1, 1);
+            }
+            compute.DispatchIndirect(commitMotionKernel, activeDispatchArgs);
+        }
+
+        private void RebuildContactGrid(int uploadCount)
+        {
+            compute.SetBuffer(gridKernel, "_StatesRead", readStates);
+            compute.SetBuffer(gridKernel, "_StatesWrite", writeStates);
+            compute.Dispatch(clearKernel, DivideRoundUp(cellCount, ThreadGroupSize), 1, 1);
+            compute.Dispatch(clearDiagnosticsKernel, 1, 1, 1);
+            compute.Dispatch(gridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
+            compute.Dispatch(finalizeActiveKernel, 1, 1, 1);
+        }
+
 
         private void DispatchDynamicTargetCommands()
         {
@@ -888,11 +1419,19 @@ namespace TowerDefense.Runtime
             bool splash,
             float burnDamagePerSecond = 0f,
             float burnDuration = 0f,
-            int maxBurnStacks = 1)
+            int maxBurnStacks = 1,
+            uint projectileId = 0u,
+            bool resetHitCount = true)
         {
             if (disposed || queuedProjectiles.Count >= MaxProjectileCommands || damage <= 0f)
             {
                 return false;
+            }
+
+            if (projectileId == 0u)
+            {
+                projectileId = CreateProjectileId();
+                resetHitCount = true;
             }
 
             queuedProjectiles.Add(new ProjectileCommand
@@ -907,9 +1446,21 @@ namespace TowerDefense.Runtime
                 Mode = splash ? 1u : 0u,
                 BurnDamagePerSecond = Mathf.Max(0f, burnDamagePerSecond),
                 BurnDuration = Mathf.Max(0f, burnDuration),
-                MaxBurnStacks = (uint)Mathf.Max(1, maxBurnStacks)
+                MaxBurnStacks = (uint)Mathf.Max(1, maxBurnStacks),
+                ProjectileId = projectileId,
+                ResetHitCount = resetHitCount ? 1u : 0u
             });
             return true;
+        }
+
+        public uint CreateProjectileId()
+        {
+            var id = nextProjectileId++;
+            if (nextProjectileId == 0u)
+            {
+                nextProjectileId = 1u;
+            }
+            return id;
         }
 
         private void DispatchProjectiles()
@@ -934,6 +1485,56 @@ namespace TowerDefense.Runtime
             return TryGetCachedTarget(position, range, canHitFlying, targetingMode, out index, out _, out _);
         }
 
+        public bool TryGetSpawnClearance(
+            Vector3 position,
+            float clearanceRadius,
+            int newerThanFrame,
+            out bool isClear,
+            float requiredSeparation = 0f)
+        {
+            isClear = false;
+            if (disposed)
+            {
+                return false;
+            }
+
+            const bool boundedRoadMotion = false;
+            // The answer describes the state before the following predictive tick.
+            // Include that bounded travel in the observation disk, while preserving
+            // clearanceRadius itself as the actual spawn-to-body separation.
+            var queryRange = Mathf.Max(0.05f, clearanceRadius +
+                (boundedRoadMotion ? maximumMotionDistance * 1.02f : 0f));
+            // A targeting cache's quarter-metre bins are unsafe for occupancy queries.
+            var key = new TargetQueryKey(position, queryRange, TowerTargetingMode.Closest, true, -1, true);
+            var hasResult = cachedTargets.TryGetValue(key, out var cached);
+            var resultAge = hasResult ? Time.unscaledTime - cached.UnscaledTime : float.PositiveInfinity;
+            var separation = requiredSeparation > 0 ? requiredSeparation : MaximumPairDiameter;
+            var travelSinceQuery = hasResult ? motionTravelBudget - cached.TravelBudget : double.PositiveInfinity;
+            var hasFreshResult = hasResult && resultAge <= 0.5f && cached.Frame > newerThanFrame &&
+                (!boundedRoadMotion || queryRange - travelSinceQuery >= separation * 1.002f);
+            if (!queuedTargetKeys.Contains(key) && pendingTargetQueries.Count < MaxTargetQueries &&
+                (!hasFreshResult || resultAge >= 0.05f))
+            {
+                pendingTargetQueries.Add(new PendingTargetQuery(key, new TargetQuery
+                {
+                    Position = new Vector2(position.x, position.z),
+                    Range = queryRange,
+                    Mode = ToGpuTargetingMode(TowerTargetingMode.Closest),
+                    CanHitFlying = 1u,
+                    ExcludedIndex = -1
+                }));
+                queuedTargetKeys.Add(key);
+            }
+
+            if (!hasFreshResult)
+            {
+                return false;
+            }
+
+            isClear = cached.Index < 0;
+            return true;
+        }
+
         public bool TryGetCachedTarget(
             Vector3 position,
             float range,
@@ -941,7 +1542,8 @@ namespace TowerDefense.Runtime
             TowerTargetingMode targetingMode,
             out int index,
             out Vector3 targetPosition,
-            out Vector3 targetVelocity)
+            out Vector3 targetVelocity,
+            int excludedIndex = -1)
         {
             index = -1;
             targetPosition = Vector3.zero;
@@ -954,7 +1556,7 @@ namespace TowerDefense.Runtime
             var queryRange = float.IsInfinity(range)
                 ? gridDiagonal + Vector2.Distance(new Vector2(position.x, position.z), gridCenter)
                 : Mathf.Max(0.05f, range);
-            var key = new TargetQueryKey(position, queryRange, targetingMode, canHitFlying);
+            var key = new TargetQueryKey(position, queryRange, targetingMode, canHitFlying, excludedIndex);
             var hasFreshResult = cachedTargets.TryGetValue(key, out var cached) && Time.frameCount - cached.Frame <= 8;
             if (!queuedTargetKeys.Contains(key) && pendingTargetQueries.Count < MaxTargetQueries &&
                 (!hasFreshResult || Time.frameCount - cached.Frame >= 2))
@@ -964,7 +1566,8 @@ namespace TowerDefense.Runtime
                     Position = new Vector2(position.x, position.z),
                     Range = queryRange,
                     Mode = ToGpuTargetingMode(targetingMode),
-                    CanHitFlying = canHitFlying ? 1u : 0u
+                    CanHitFlying = canHitFlying ? 1u : 0u,
+                    ExcludedIndex = excludedIndex
                 }));
                 queuedTargetKeys.Add(key);
             }
@@ -978,6 +1581,38 @@ namespace TowerDefense.Runtime
             targetPosition = new Vector3(cached.Position.x, 0f, cached.Position.y);
             targetVelocity = new Vector3(cached.Velocity.x, 0f, cached.Velocity.y);
             return index >= 0;
+        }
+
+        public void InvalidateTargetCache()
+        {
+            cachedTargets.Clear();
+        }
+
+        public bool TryGetCachedSecondaryTarget(
+            Vector3 position,
+            float range,
+            bool canHitFlying,
+            TowerTargetingMode targetingMode,
+            out int index,
+            out Vector3 targetPosition,
+            out Vector3 targetVelocity)
+        {
+            index = -1;
+            targetPosition = Vector3.zero;
+            targetVelocity = Vector3.zero;
+            var queryRange = float.IsInfinity(range)
+                ? gridDiagonal + Vector2.Distance(new Vector2(position.x, position.z), gridCenter)
+                : Mathf.Max(0.05f, range);
+            var key = new TargetQueryKey(position, queryRange, targetingMode, canHitFlying, -1);
+            if (!cachedTargets.TryGetValue(key, out var cached) || Time.frameCount - cached.Frame > 8 || cached.SecondIndex < 0)
+            {
+                return false;
+            }
+
+            index = cached.SecondIndex;
+            targetPosition = new Vector3(cached.SecondPosition.x, 0f, cached.SecondPosition.y);
+            targetVelocity = new Vector3(cached.SecondVelocity.x, 0f, cached.SecondVelocity.y);
+            return true;
         }
 
         public void QueueDamage(int index, float damage)
@@ -1029,14 +1664,16 @@ namespace TowerDefense.Runtime
             int maxBurnStacks,
             float slowMultiplier = 1f,
             float slowDuration = 0f,
-            float slowCapacity = 0f)
+            float slowCapacity = 0f,
+            float knockbackPropagationRadius = 0f)
         {
             if (disposed || radius <= 0f || queuedAreaEffects.Count >= MaxAreaCommands)
             {
                 return false;
             }
 
-            queuedAreaEffects.Add(new AreaEffectCommand
+            var propagationRadius = Mathf.Max(0f, knockbackPropagationRadius);
+            var command = new AreaEffectCommand
             {
                 Center = new Vector2(center.x, center.z),
                 Radius = radius,
@@ -1048,8 +1685,30 @@ namespace TowerDefense.Runtime
                 MaxBurnStacks = (uint)Mathf.Max(1, maxBurnStacks),
                 SlowMultiplier = Mathf.Clamp(slowMultiplier, 0.05f, 1f),
                 SlowDuration = Mathf.Max(0f, slowDuration),
-                SlowCapacity = Mathf.Max(0f, slowCapacity)
-            });
+                SlowCapacity = Mathf.Max(0f, slowCapacity),
+                InnerRadius = 0f
+            };
+            if (propagationRadius > 0f && knockback > 0f && maxTargets == 0)
+            {
+                var shockwaveKnockback = command.Knockback;
+                // The core is a damage-only zone. Surviving enemies outside it are
+                // reached by the expanding knockback ring on subsequent frames.
+                command.Knockback = 0f;
+                command.InnerRadius = -1f;
+                pendingShockwaves.Add(new PendingShockwave
+                {
+                    Center = command.Center,
+                    BaseRadius = radius,
+                    CurrentRadius = radius,
+                    MaximumRadius = radius + propagationRadius,
+                    Knockback = shockwaveKnockback
+                });
+                shockwaveContactBoostTimer = Mathf.Max(
+                    shockwaveContactBoostTimer,
+                    propagationRadius / ShockwavePropagationSpeed + 2.5f);
+            }
+
+            queuedAreaEffects.Add(command);
             return true;
         }
 
@@ -1079,6 +1738,32 @@ namespace TowerDefense.Runtime
             return true;
         }
 
+        internal void RefreshVisibilityForAudit()
+        {
+            RefreshVisibility();
+        }
+
+        // The player camera pans and zooms in LateUpdate.  Runtime rendering must
+        // cull after that movement, otherwise the GPU visibility list describes
+        // the previous view and bodies on a distant edge can blink out.
+        internal void RefreshVisibilityForRendering()
+        {
+            RefreshVisibility();
+        }
+
+        private void RefreshVisibility()
+        {
+            SetCameraParameters();
+            compute.SetBuffer(cullVisibleKernel, "_StatesInput", readStates);
+            compute.Dispatch(clearVisibilityKernel, 1, 1, 1);
+            compute.DispatchIndirect(cullVisibleKernel, activeDispatchArgs);
+        }
+
+        public void SetPresentationInterpolation(float alpha)
+        {
+            presentationAlpha = Mathf.Clamp01(alpha);
+        }
+
         public void Draw(Mesh mesh, int layer)
         {
             if (disposed || stableRenderMesh == null || material == null)
@@ -1086,10 +1771,16 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            material.SetFloat("_PresentationAlpha", presentationAlpha);
+            material.SetFloat("_PresentationLag", (1f - presentationAlpha) * lastSimulationDelta);
             properties.SetBuffer("_AgentStates", readStates);
             properties.SetBuffer("_VisibleIndices", visibleIndices);
             lodProperties.SetBuffer("_AgentStates", readStates);
-            lodProperties.SetBuffer("_VisibleIndices", lodVisibleIndices);
+            lodProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            variantProperties.SetBuffer("_AgentStates", readStates);
+            variantProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            variantLodProperties.SetBuffer("_AgentStates", readStates);
+            variantLodProperties.SetBuffer("_VisibleIndices", visibleIndices);
             Graphics.DrawMeshInstancedIndirect(
                 stableRenderMesh,
                 0,
@@ -1114,6 +1805,58 @@ namespace TowerDefense.Runtime
                 layer);
         }
 
+        public void SetVisualScaleMultiplier(float multiplier)
+        {
+            multiplier = Mathf.Clamp(multiplier, 0.1f, 2f);
+            properties.SetFloat("_VisualScaleMultiplier", multiplier);
+            lodProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
+            variantProperties.SetFloat("_VisualScaleMultiplier", multiplier);
+            variantLodProperties.SetFloat("_VisualScaleMultiplier", multiplier);
+        }
+
+        public void SetSpeedColorMode(bool enabled)
+        {
+            material.SetFloat("_UseSpeedColors", enabled ? 1f : 0f);
+        }
+
+        public void SetCollisionDiameter(float diameter)
+        {
+            collisionDiameter = Mathf.Max(0.1f, diameter);
+            compute.SetFloat("_CollisionDiameter", collisionDiameter);
+        }
+
+        public void SetMovementDynamics(float inertiaMultiplier, float collisionPressureMultiplier)
+        {
+            inertiaMultiplier = Mathf.Clamp(inertiaMultiplier, 0.5f, 2f);
+            collisionPressureMultiplier = Mathf.Clamp(collisionPressureMultiplier, 0.5f, 3f);
+            compute.SetFloat("_FlowAcceleration", 8.5f / inertiaMultiplier);
+            compute.SetFloat("_CollisionAcceleration", 18f * collisionPressureMultiplier);
+            compute.SetFloat("_VelocityDamping", 1.15f / inertiaMultiplier);
+            compute.SetFloat("_FlowAlignment", Mathf.Clamp01(1f / inertiaMultiplier));
+        }
+
+        public void SetStationaryArena(
+            bool enabled,
+            bool randomMovement = false,
+            bool centerSeeking = false,
+            Vector3 center = default)
+        {
+            centerSeekingArena = enabled && centerSeeking;
+            stationaryArena = enabled;
+            compute.SetInt("_StationaryHorde", enabled ? 1 : 0);
+            compute.SetInt("_RandomArenaMovement", enabled && randomMovement ? 1 : 0);
+            compute.SetInt("_CenterSeekingArena", enabled && centerSeeking ? 1 : 0);
+            // Tactical sprite units retain the one-way convoy rule. The Orc
+            // reference horde does not: at a choke point both equal-mass bodies
+            // must be able to yield and transmit pressure in either direction.
+            // Otherwise the row that happened to reach the junction first gets
+            // an invisible reservation and the incoming row tunnels into it.
+            compute.SetInt("_UnidirectionalHordeContacts",
+                hordeSpriteMesh != null && !centerSeekingArena && !referenceCrowd ? 1 : 0);
+            compute.SetVector("_ArenaCenter", new Vector4(center.x, center.z, 0f, 0f));
+            compute.SetInt("_ExitEnabled", enabled ? 0 : 1);
+        }
+
         public void Dispose()
         {
             if (disposed)
@@ -1122,9 +1865,20 @@ namespace TowerDefense.Runtime
             }
 
             disposed = true;
+            // Domain reload can otherwise release a GraphicsBuffer while one of
+            // its callbacks is still copying native data into managed memory.
+            AsyncGPUReadback.WaitAllRequests();
             stateA?.Dispose();
             stateB?.Dispose();
+            spawnStates?.Dispose();
+            spawnControls?.Dispose();
             spatialStates?.Dispose();
+            motionA?.Dispose();
+            motionB?.Dispose();
+            acceptedMotion?.Dispose();
+            motionNeighbors?.Dispose();
+            motionNeighborCounts?.Dispose();
+            motionObstacles?.Dispose();
             controls?.Dispose();
             impulses?.Dispose();
             flowVectors?.Dispose();
@@ -1139,6 +1893,8 @@ namespace TowerDefense.Runtime
             statusCommands?.Dispose();
             areaEffectCommands?.Dispose();
             projectileCommands?.Dispose();
+            projectileHitCounts?.Dispose();
+            agentLastProjectileIds?.Dispose();
             hordeEvents?.Dispose();
             eventCount?.Dispose();
             dynamicTargets?.Dispose();
@@ -1149,8 +1905,9 @@ namespace TowerDefense.Runtime
             dynamicTargetDamage?.Dispose();
             dynamicTargetLastAttacker?.Dispose();
             visibleIndices?.Dispose();
-            lodVisibleIndices?.Dispose();
             lodIndirectArgs?.Dispose();
+            variantIndirectArgs?.Dispose();
+            variantLodIndirectArgs?.Dispose();
             activeIndices?.Dispose();
             activeDispatchArgs?.Dispose();
             if (compute != null)
@@ -1161,6 +1918,10 @@ namespace TowerDefense.Runtime
             if (material != null)
             {
                 UnityEngine.Object.Destroy(material);
+            }
+            if (hordeSpriteMesh != null)
+            {
+                UnityEngine.Object.Destroy(hordeSpriteMesh);
             }
         }
 
@@ -1192,6 +1953,14 @@ namespace TowerDefense.Runtime
                         MaximumCellOccupancy = data[2];
                         GpuActiveCount = data[3];
                         VisibleAgentCount = data.Length >= 5 ? data[4] : GpuActiveCount;
+                        OverlapPairCount = data.Length >= 6 ? data[5] : 0u;
+                        MaximumOverlapFraction = data.Length >= 7 ? data[6] / 1000000f : 0f;
+                        OrdinaryBackwardStepCount = data.Length >= 8 ? data[7] : 0u;
+                        MaximumOrdinaryBacktrack = data.Length >= 9 ? data[8] / 1000000f : 0f;
+                        NormalizedNeighborSpacing = data.Length >= 11 && data[10] > 0u
+                            ? data[9] / (data[10] * 1000f)
+                            : 0f;
+                        ActiveContactPairCount = data.Length >= 12 ? data[11] : 0u;
                     }
                 });
             }
@@ -1258,8 +2027,51 @@ namespace TowerDefense.Runtime
             queuedAreaEffects.RemoveRange(0, count);
             areaEffectCommands.SetData(areaEffectUpload, 0, 0, count);
             compute.SetBuffer(areaEffectKernel, "_StatesRead", readStates);
+            compute.SetBuffer(unlimitedAreaEffectsKernel, "_StatesRead", readStates);
             compute.SetInt("_AreaCommandCount", count);
             compute.Dispatch(areaEffectKernel, 1, 1, 1);
+            compute.DispatchIndirect(unlimitedAreaEffectsKernel, activeDispatchArgs);
+        }
+
+        private void AdvanceShockwaves(float deltaTime)
+        {
+            // Level 7 spans 120 world units across. Starting at the 10-unit core,
+            // this crosses the remaining 110 units in 5.5 seconds.
+            const float catchupMargin = 1.5f;
+            for (var i = pendingShockwaves.Count - 1; i >= 0; i--)
+            {
+                var wave = pendingShockwaves[i];
+                var nextRadius = Mathf.Min(
+                    wave.MaximumRadius,
+                    wave.CurrentRadius + ShockwavePropagationSpeed * deltaTime);
+                if (nextRadius > wave.CurrentRadius && queuedAreaEffects.Count < MaxAreaCommands)
+                {
+                    var progress = Mathf.InverseLerp(wave.BaseRadius, wave.MaximumRadius, nextRadius);
+                    queuedAreaEffects.Add(new AreaEffectCommand
+                    {
+                        Center = wave.Center,
+                        Radius = nextRadius,
+                        Knockback = wave.Knockback * Mathf.Lerp(0.78f, 0.55f, progress),
+                        MaxTargets = 0u,
+                        MaxBurnStacks = 1u,
+                        SlowMultiplier = 1f,
+                        // Fast inward movement can cross a sub-frame-thin ring.
+                        // A small trailing overlap guarantees one contact without
+                        // changing the visible leading edge or maximum reach.
+                        InnerRadius = Mathf.Max(wave.BaseRadius, wave.CurrentRadius - catchupMargin)
+                    });
+                }
+
+                wave.CurrentRadius = nextRadius;
+                if (nextRadius >= wave.MaximumRadius - 0.001f)
+                {
+                    pendingShockwaves.RemoveAt(i);
+                }
+                else
+                {
+                    pendingShockwaves[i] = wave;
+                }
+            }
         }
 
         private void RequestEventReadback()
@@ -1330,6 +2142,9 @@ namespace TowerDefense.Runtime
             targetQueries.SetData(targetQueryUpload, 0, 0, queryCount);
             compute.SetInt("_QueryCount", queryCount);
             compute.SetBuffer(targetQueryKernel, "_StatesInput", readStates);
+            var queryFrame = Time.frameCount;
+            var queryTime = Time.unscaledTime;
+            var queryTravelBudget = motionTravelBudget;
             compute.Dispatch(targetQueryKernel, DivideRoundUp(queryCount, ThreadGroupSize), 1, 1);
             targetReadbackPending = true;
             AsyncGPUReadback.Request(targetResults, queryCount * Marshal.SizeOf<TargetResult>(), 0, request =>
@@ -1350,7 +2165,16 @@ namespace TowerDefense.Runtime
                 for (var i = 0; i < resultCount; i++)
                 {
                     var key = inFlightTargetKeys[i];
-                    cachedTargets[key] = new CachedTarget(data[i].Index, Time.frameCount, data[i].Position, data[i].Velocity);
+                    cachedTargets[key] = new CachedTarget(
+                        data[i].Index,
+                        queryFrame,
+                        queryTime,
+                        data[i].Position,
+                        data[i].Velocity,
+                        data[i].SecondIndex,
+                        data[i].SecondPosition,
+                        data[i].SecondVelocity,
+                        queryTravelBudget);
                     queuedTargetKeys.Remove(key);
                 }
             });
@@ -1383,6 +2207,10 @@ namespace TowerDefense.Runtime
             var projection = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false);
             compute.SetInt("_CullingEnabled", 1);
             compute.SetVector("_LodCameraPosition", new Vector4(cameraPosition.x, cameraPosition.z, 0f, 0f));
+            compute.SetVector("_LodProjection", new Vector4(cameraPosition.y,
+                camera.orthographic ? camera.pixelHeight / (2f * camera.orthographicSize) :
+                    camera.pixelHeight / (2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f)),
+                camera.orthographic ? 1f : 0f, SimplifiedGoblinLodMaxHeightPixels));
             compute.SetMatrix("_ViewProjection", projection * camera.worldToCameraMatrix);
         }
 

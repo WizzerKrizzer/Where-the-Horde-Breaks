@@ -14,18 +14,26 @@ namespace TowerDefense.Runtime
         [SerializeField] private float panSpeed = 26f;
         [SerializeField] private float mouseDragSensitivity = 3.35f;
         [SerializeField] private float zoomSpeed = 10f;
-        [SerializeField] private float minHeight = 8f;
+        [SerializeField] private float minHeight = 2.5f;
         [SerializeField] private float maxHeight = 60f;
         [SerializeField] private Vector2 minBounds = new(-36f, -22f);
         [SerializeField] private Vector2 maxBounds = new(36f, 22f);
 
         private Camera controlledCamera;
         private PlayerInputRouter input;
+        private Vector3 presentationOffset;
+        private float authoredFieldOfView;
+        private float dragReferenceHeight = 8f;
+        private float impactFeedbackRemaining;
+        private float impactFeedbackDuration;
+        private float impactShakeAmplitude;
+        private float impactZoomAmount;
 
         public void Initialize(Camera camera, PlayerInputRouter router)
         {
             controlledCamera = camera;
             input = router;
+            authoredFieldOfView = camera != null ? camera.fieldOfView : 60f;
         }
 
         public void ApplyView(Vector3 position, float fieldOfView, float minZoomHeight, float maxZoomHeight, float levelPanSpeed, float levelMouseDragSensitivity, Vector2 min, Vector2 max)
@@ -38,7 +46,9 @@ namespace TowerDefense.Runtime
             controlledCamera.transform.position = ConvertAuthoredPositionToReadablePitch(position);
             controlledCamera.transform.rotation = Quaternion.Euler(HordeReadableCameraPitch, 0f, 0f);
             controlledCamera.fieldOfView = fieldOfView;
-            minHeight = Mathf.Max(1f, minZoomHeight);
+            authoredFieldOfView = fieldOfView;
+            dragReferenceHeight = Mathf.Max(1f, minZoomHeight);
+            minHeight = Mathf.Min(dragReferenceHeight, 2.5f);
             maxHeight = Mathf.Max(minHeight + 1f, maxZoomHeight);
             panSpeed = Mathf.Max(1f, levelPanSpeed);
             mouseDragSensitivity = Mathf.Max(0.1f, levelMouseDragSensitivity);
@@ -64,15 +74,27 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            controlledCamera.transform.position -= presentationOffset;
+            presentationOffset = Vector3.zero;
+            controlledCamera.fieldOfView = authoredFieldOfView;
+
             var state = input.Current;
             var forward = Vector3.ProjectOnPlane(controlledCamera.transform.forward, Vector3.up).normalized;
             var right = Vector3.ProjectOnPlane(controlledCamera.transform.right, Vector3.up).normalized;
             controlledCamera.transform.position += (right * state.Pan.x + forward * state.Pan.y) * (panSpeed * Time.unscaledDeltaTime);
             if (state.MousePanDelta.sqrMagnitude > 0.001f)
             {
-                var verticalWorldSpan = 2f * controlledCamera.transform.position.y * Mathf.Tan(controlledCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-                var worldPerPixel = verticalWorldSpan / Mathf.Max(1f, Screen.height);
-                controlledCamera.transform.position += (-right * state.MousePanDelta.x - forward * state.MousePanDelta.y) * (worldPerPixel * mouseDragSensitivity);
+                var currentPointer = UnityEngine.Input.mousePosition;
+                var previousPointer = currentPointer - new Vector3(
+                    state.MousePanDelta.x,
+                    state.MousePanDelta.y,
+                    0f);
+                var currentGround = ScreenPointToGround(currentPointer);
+                var previousGround = ScreenPointToGround(previousPointer);
+                var dragMultiplier = mouseDragSensitivity / 3.35f;
+                var zoomCompensation = dragReferenceHeight / Mathf.Max(dragReferenceHeight, controlledCamera.transform.position.y);
+                controlledCamera.transform.position +=
+                    (previousGround - currentGround) * (dragMultiplier * zoomCompensation);
             }
 
             ClampCameraPosition();
@@ -81,12 +103,64 @@ namespace TowerDefense.Runtime
             {
                 var pointerBeforeZoom = ScreenPointToGround(UnityEngine.Input.mousePosition);
                 var position = controlledCamera.transform.position;
-                position.y = Mathf.Clamp(position.y - state.Zoom * zoomSpeed, minHeight, maxHeight);
+                var closeZoomScale = Mathf.Clamp(position.y / 12f, 0.12f, 1f);
+                position.y = Mathf.Clamp(position.y - state.Zoom * zoomSpeed * closeZoomScale, minHeight, maxHeight);
                 controlledCamera.transform.position = position;
                 var pointerAfterZoom = ScreenPointToGround(UnityEngine.Input.mousePosition);
                 controlledCamera.transform.position += pointerBeforeZoom - pointerAfterZoom;
                 ClampCameraPosition();
             }
+
+            ApplyImpactFeedback();
+        }
+
+        public void PlayMeteorImpact(Vector3 worldPosition, float impactRadius)
+        {
+            if (controlledCamera == null)
+            {
+                return;
+            }
+
+            var viewCenter = ScreenPointToGround(new Vector3(
+                controlledCamera.pixelWidth * 0.5f,
+                controlledCamera.pixelHeight * 0.5f,
+                0f));
+            var groundDistance = Vector2.Distance(
+                new Vector2(viewCenter.x, viewCenter.z),
+                new Vector2(worldPosition.x, worldPosition.z));
+            var strength = 1f - Mathf.Clamp01(
+                Mathf.Max(0f, groundDistance - impactRadius) / Mathf.Max(1f, impactRadius * 4f));
+            impactFeedbackDuration = 0.34f;
+            impactFeedbackRemaining = impactFeedbackDuration;
+            impactShakeAmplitude = Mathf.Max(
+                impactShakeAmplitude,
+                Mathf.Lerp(0.05f, 0.48f, strength) *
+                Mathf.Lerp(0.7f, 1.25f, controlledCamera.transform.position.y / Mathf.Max(1f, maxHeight)));
+            impactZoomAmount = Mathf.Max(impactZoomAmount, authoredFieldOfView * 0.027f * strength);
+        }
+
+        private void ApplyImpactFeedback()
+        {
+            if (impactFeedbackRemaining <= 0f)
+            {
+                impactShakeAmplitude = 0f;
+                impactZoomAmount = 0f;
+                return;
+            }
+
+            impactFeedbackRemaining = Mathf.Max(0f, impactFeedbackRemaining - Time.unscaledDeltaTime);
+            var progress = 1f - impactFeedbackRemaining / Mathf.Max(0.001f, impactFeedbackDuration);
+            var envelope = (1f - progress) * (1f - Mathf.Exp(-progress * 28f));
+            var phase = Time.unscaledTime * 67f;
+            var right = controlledCamera.transform.right;
+            var forward = Vector3.ProjectOnPlane(controlledCamera.transform.forward, Vector3.up).normalized;
+            presentationOffset =
+                right * Mathf.Sin(phase * 1.13f) * impactShakeAmplitude * envelope +
+                forward * Mathf.Sin(phase * 1.71f + 1.2f) * impactShakeAmplitude * 0.72f * envelope;
+            controlledCamera.transform.position += presentationOffset;
+
+            var zoomEnvelope = Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI) * (1f - progress * 0.35f);
+            controlledCamera.fieldOfView = authoredFieldOfView + impactZoomAmount * zoomEnvelope;
         }
 
         private void ClampCameraPosition()

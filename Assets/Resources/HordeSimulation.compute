@@ -1,10 +1,19 @@
 #pragma kernel ClearGrid
+#pragma kernel ApplySpawns
 #pragma kernel ClearDiagnostics
 #pragma kernel BuildGrid
 #pragma kernel ApplyDamageCommands
 #pragma kernel ApplyStatusCommands
 #pragma kernel ApplyAreaEffect
+#pragma kernel ApplyUnlimitedAreaEffects
 #pragma kernel Simulate
+#pragma kernel ResolveContacts
+#pragma kernel ResolveContactCells
+#pragma kernel PrepareMotion
+#pragma kernel ConstrainMotion
+#pragma kernel CommitMotion
+#pragma kernel ReserveMotionCells
+#pragma kernel MeasureOverlaps
 #pragma kernel QueryTargets
 #pragma kernel ClearVisibility
 #pragma kernel CullVisible
@@ -19,6 +28,7 @@ struct AgentState
 {
     float2 position;
     float2 velocity;
+    float2 knockbackVelocity;
     float scale;
     float tint;
     uint status;
@@ -32,7 +42,10 @@ struct AgentState
     float burnDamagePerSecond;
     float burnTimer;
     float mass;
-    float padding3;
+    float shockwaveExposure;
+    float2 shockwaveCenter;
+    float shockwaveOutwardTimer;
+    float shockwaveReturnTimer;
     float maxHealth;
     float armor;
     float physicalResistance;
@@ -45,6 +58,11 @@ struct AgentState
     float attackTimer;
     uint combatFlags;
     uint definitionIndex;
+    float animationDistance;
+    float2 facing;
+    float2 stepStartPosition;
+    float locomotionSpeed;
+    float presentationTime;
 };
 
 struct TargetQuery
@@ -53,7 +71,8 @@ struct TargetQuery
     float range;
     uint mode;
     uint canHitFlying;
-    float3 padding;
+    int excludedIndex;
+    float2 padding;
 };
 
 struct TargetResult
@@ -62,6 +81,10 @@ struct TargetResult
     float2 velocity;
     int index;
     float score;
+    float2 secondPosition;
+    float2 secondVelocity;
+    int secondIndex;
+    float secondScore;
 };
 
 struct DamageCommand
@@ -153,7 +176,7 @@ struct AreaEffectCommand
     float slowMultiplier;
     float slowDuration;
     float slowCapacity;
-    float padding;
+    float innerRadius;
 };
 
 struct ProjectileCommand
@@ -169,13 +192,21 @@ struct ProjectileCommand
     float burnDamagePerSecond;
     float burnDuration;
     uint maxBurnStacks;
-    float padding;
+    uint projectileId;
+    uint resetHitCount;
+    float2 padding;
 };
 
 RWStructuredBuffer<AgentState> _StatesRead;
 StructuredBuffer<AgentState> _StatesInput;
 RWStructuredBuffer<AgentState> _StatesWrite;
 StructuredBuffer<float4> _Controls;
+StructuredBuffer<AgentState> _SpawnStates;
+StructuredBuffer<float4> _SpawnControls;
+RWStructuredBuffer<float4> _SpawnControlsWrite;
+uint _SpawnStart;
+uint _SpawnCount;
+uint _SpawnHasControls;
 RWStructuredBuffer<float2> _Impulses;
 StructuredBuffer<float4> _FlowVectors;
 StructuredBuffer<float4> _FlowData;
@@ -188,6 +219,8 @@ StructuredBuffer<DamageCommand> _DamageCommands;
 StructuredBuffer<StatusCommand> _StatusCommands;
 StructuredBuffer<AreaEffectCommand> _AreaEffectCommands;
 StructuredBuffer<ProjectileCommand> _ProjectileCommands;
+RWStructuredBuffer<uint> _ProjectileHitCounts;
+RWStructuredBuffer<uint> _AgentLastProjectileIds;
 RWStructuredBuffer<HordeEvent> _HordeEvents;
 RWStructuredBuffer<uint> _EventCount;
 RWStructuredBuffer<DynamicTargetState> _DynamicTargets;
@@ -201,7 +234,6 @@ RWStructuredBuffer<uint> _DynamicTargetBlockedMass;
 RWStructuredBuffer<uint> _DynamicTargetDamage;
 RWStructuredBuffer<uint> _DynamicTargetLastAttacker;
 RWStructuredBuffer<uint> _VisibleIndices;
-RWStructuredBuffer<uint> _LodVisibleIndices;
 RWStructuredBuffer<uint> _ActiveIndices;
 RWStructuredBuffer<float4> _SpatialStates;
 StructuredBuffer<uint> _CellCountsRead;
@@ -211,6 +243,8 @@ StructuredBuffer<uint> _DiagnosticsRead;
 StructuredBuffer<float4> _SpatialStatesRead;
 RWByteAddressBuffer _IndirectArgs;
 RWByteAddressBuffer _LodIndirectArgs;
+RWByteAddressBuffer _VariantIndirectArgs;
+RWByteAddressBuffer _VariantLodIndirectArgs;
 RWByteAddressBuffer _ActiveDispatchArgs;
 
 uint _AgentCount;
@@ -227,17 +261,53 @@ uint _CullingEnabled;
 uint _DynamicTargetCapacity;
 uint _DynamicTargetCommandCount;
 uint _DynamicTargetCellCapacity;
+uint _GoblinVariantCulling;
+uint _VisibleListCapacity;
+uint _StationaryHorde;
+uint _RandomArenaMovement;
+uint _CenterSeekingArena;
+uint _ExitEnabled;
+float2 _ArenaCenter;
 int2 _GridSize;
 float2 _GridOrigin;
 float _CellSize;
 float _DeltaTime;
 float _CollisionDiameter;
+float _BodyRadiusPerScale;
+float _MinimumContactDiameterMultiplier;
+uint _FinalizePresentation;
+uint _ContactIteration;
+uint _ContactIterationCount;
+uint _HardContactCleanup;
+uint _CleanupCellStride;
+uint _ReverseMotionReservation;
+uint _SlidingMotionAcceptance;
+float _MaximumGoblinDiameter;
+uint _CleanupCellPhase;
+uint _AnimatedGoblin;
+uint _PredictiveContacts;
+uint _UnidirectionalHordeContacts;
+uint _ReferenceCrowd;
+float _ReferenceLateralContactResponse;
+float _ReferenceExternalForceRecovery;
+float _MaximumMotionDistance;
+StructuredBuffer<float2> _MotionRead;
+RWStructuredBuffer<float2> _MotionWrite;
+RWStructuredBuffer<float2> _AcceptedMotion;
+#define MOTION_NEIGHBORS 128
+RWStructuredBuffer<float4> _MotionNeighbors;
+RWStructuredBuffer<uint> _MotionNeighborCounts;
+RWStructuredBuffer<float4> _MotionObstacles;
 float _FlowAcceleration;
 float _CollisionAcceleration;
 float _WallAcceleration;
 float _WallInfluence;
 float _VelocityDamping;
+float _FlowAlignment;
+float _MovementSpeedMultiplier;
+float _ShockwavePropagationSpeed;
 float2 _LodCameraPosition;
+float4 _LodProjection;
 float4x4 _ViewProjection;
 
 void EmitDetailedEvent(uint objectIndex, uint eventType, float value, uint generation, int sourceIndex)
@@ -277,10 +347,95 @@ uint CellIndex(int2 cell)
     return (uint)(cell.y * _GridSize.x + cell.x);
 }
 
+float MaximumPairDiameter()
+{
+    return max(_AnimatedGoblin != 0u ? _MaximumGoblinDiameter : 0.0,
+        _CollisionDiameter * (_CenterSeekingArena != 0u ? 1.65 : 1.55));
+}
+
+float PairCollisionDiameter(float selfScale, float otherScale)
+{
+    // ContactRadiusPerScale already covers the measured running envelope.  A
+    // small numerical skin prevents pixel-level intersections without turning
+    // every neighbour into a visibly detached circle.
+    float silhouetteSkin = _CenterSeekingArena != 0u ? 1.03 : 1.01;
+    float minimumDiameter = _CollisionDiameter * (_CenterSeekingArena != 0u
+        ? 0.84
+        : _MinimumContactDiameterMultiplier);
+    if (_AnimatedGoblin != 0u)
+        return max(minimumDiameter, (selfScale + otherScale) * _BodyRadiusPerScale * silhouetteSkin);
+    return clamp(
+        (selfScale + otherScale) * _BodyRadiusPerScale * silhouetteSkin,
+        minimumDiameter,
+        MaximumPairDiameter());
+}
+
+float MovementPairDiameter(float selfScale, float otherScale)
+{
+    // Large waves need a tight visual packing; small tactical groups retain the
+    // wider approach skin that prevents stop/start jitter in precision tests.
+    float approachSkin = _ReferenceCrowd != 0u ? 1.0 : (_AgentCount >= 2500u ? 1.015 : 1.06);
+    return PairCollisionDiameter(selfScale, otherScale) * approachSkin;
+}
+
+float ContactPairDiameter(float selfScale, float otherScale)
+{
+    return PairCollisionDiameter(selfScale, otherScale);
+}
+
+float MotionContactGap(float distance, float selfScale, float otherScale, bool releasedTogether)
+{
+    float hardGap = distance - PairCollisionDiameter(selfScale, otherScale) * 1.002;
+    // Release uses the hard gap so a common translation starts immediately.
+    // Other ticks restore the air gap in the motion proposal; feasibility then
+    // accepts only the part that cannot create another intersection.
+    if (releasedTogether) return hardGap;
+    float approachGap = distance - MovementPairDiameter(selfScale, otherScale);
+    return approachGap < 0.0 ? approachGap : approachGap * _DeltaTime / max(_DeltaTime, 0.3);
+}
+
+float BoundaryDistanceAt(int2 cell)
+{
+    if (!IsInside(cell))
+    {
+        return -_CellSize;
+    }
+
+    return _FlowData[CellIndex(cell)].w;
+}
+
+float SampleBoundaryDistance(float2 position)
+{
+    float2 grid = (position - _GridOrigin) / _CellSize - 0.5;
+    int2 baseCell = (int2)floor(grid);
+    float2 t = frac(grid);
+    int2 bottomRightCell = baseCell + int2(1, 0);
+    int2 topLeftCell = baseCell + int2(0, 1);
+    int2 topRightCell = baseCell + int2(1, 1);
+    float bottomLeft = BoundaryDistanceAt(baseCell);
+    float bottomRight = BoundaryDistanceAt(bottomRightCell);
+    float topLeft = BoundaryDistanceAt(topLeftCell);
+    float topRight = BoundaryDistanceAt(topRightCell);
+    float bottom = lerp(bottomLeft, bottomRight, t.x);
+    float top = lerp(topLeft, topRight, t.x);
+    return lerp(bottom, top, t.y);
+}
+
+float2 SampleBoundaryNormal(float2 position)
+{
+    float offset = _CellSize * 0.5;
+    float2 gradient = float2(
+        SampleBoundaryDistance(position + float2(offset, 0.0)) -
+            SampleBoundaryDistance(position - float2(offset, 0.0)),
+        SampleBoundaryDistance(position + float2(0.0, offset)) -
+            SampleBoundaryDistance(position - float2(0.0, offset)));
+    float lengthSq = dot(gradient, gradient);
+    return lengthSq > 0.000001 ? gradient * rsqrt(lengthSq) : float2(0.0, 0.0);
+}
+
 bool IsWalkable(float2 position)
 {
-    int2 cell = WorldToCell(position);
-    return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0;
+    return IsInside(WorldToCell(position)) && SampleBoundaryDistance(position) >= 0.0;
 }
 
 float4 GetFlowVector(int2 cell)
@@ -300,9 +455,12 @@ float CellOccupancy(int2 cell)
 
 float PressureOccupancy(int2 cell)
 {
+    // Road boundaries are handled by signed-distance contacts. Filling every
+    // outside cell with imaginary bodies repels goblins up to two grid cells
+    // (~1.2m) before the actual edge, leaving an invisible empty border.
     return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0
         ? CellOccupancy(cell)
-        : (float)_CellCapacity;
+        : (_AnimatedGoblin != 0u ? 0.0 : (float)_CellCapacity);
 }
 
 float SmoothedSideOccupancy(int2 cell, int2 offset, int2 tangent)
@@ -332,6 +490,14 @@ float SamplePotential(float2 position)
         : 0.0;
 }
 
+float SampleIntegration(float2 position)
+{
+    int2 cell = WorldToCell(position);
+    return IsInside(cell) && _FlowData[CellIndex(cell)].y >= 0.0
+        ? _FlowData[CellIndex(cell)].y
+        : 1e20;
+}
+
 float2 Rotate2D(float2 value, float radians)
 {
     float sine;
@@ -348,7 +514,7 @@ float2 FindNavigableFlow(float2 position, float2 preferred)
         return preferred;
     }
 
-    float currentPotential = SamplePotential(position);
+    float currentIntegration = SampleIntegration(position);
     float2 best = preferred;
     float bestScore = -1e20;
     [unroll]
@@ -366,8 +532,22 @@ float2 FindNavigableFlow(float2 position, float2 preferred)
                 continue;
             }
 
-            float progress = currentPotential - SamplePotential(probe);
-            float score = progress * 6.0 + dot(candidate, preferred) * 0.35;
+            // Integration always decreases towards the exit. It resolves the
+            // otherwise symmetric up/down choice at square corners without relying
+            // on the expensive harmonic potential used by irregular routes.
+            float progress = currentIntegration - SampleIntegration(probe);
+            float2 probeFlow = SampleFlow(probe);
+            float routeAlignment = dot(probeFlow, probeFlow) > 0.0001
+                ? dot(candidate, probeFlow)
+                : 0.0;
+            // The reference horde does not continually optimize a shortest path.
+            // A runner carries its current direction until the environment blocks
+            // it; only then does this choose a locally valid branch. The nearby
+            // route vector wins that choice, while integration is merely a weak
+            // tie-breaker for dead ends and split roads.
+            float score = _ReferenceCrowd != 0u
+                ? routeAlignment * 3.0 + dot(candidate, preferred) * 0.7 + progress * 0.2
+                : progress * 6.0 + routeAlignment * 1.25 + dot(candidate, preferred) * 0.2;
             if (score > bestScore)
             {
                 bestScore = score;
@@ -387,12 +567,17 @@ float2 ConstrainMoveStep(float2 current, float2 desired)
     }
 
     float2 displacement = desired - current;
-    int2 currentCell = WorldToCell(current);
-    float2 inwardNormal = GetFlowVector(currentCell).zw;
+    float desiredDistance = SampleBoundaryDistance(desired);
+    float2 inwardNormal = SampleBoundaryNormal(desired);
     float normalLengthSq = dot(inwardNormal, inwardNormal);
     if (normalLengthSq > 0.0001)
     {
-        inwardNormal *= rsqrt(normalLengthSq);
+        float2 projected = desired + inwardNormal * (max(0.0, -desiredDistance) + 0.002);
+        if (IsWalkable(projected))
+        {
+            return projected;
+        }
+
         float outwardAmount = min(0.0, dot(displacement, inwardNormal));
         float2 slidePosition = current + displacement - inwardNormal * outwardAmount;
         if (IsWalkable(slidePosition))
@@ -426,6 +611,814 @@ float2 ConstrainMove(float2 current, float2 desired)
         result = ConstrainMoveStep(result, result + step);
     }
     return result;
+}
+
+// Solve relative displacements against one immutable grid. The separating
+// plane is based on tick-start centres: satisfying it prevents intersection
+// over the entire step, including crossing streams and interpolated rendering.
+[numthreads(64, 1, 1)]
+void PrepareMotion(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _DiagnosticsRead[3]) return;
+    uint index = _ActiveIndicesRead[id.x];
+    AgentState state = _StatesRead[index];
+    _MotionWrite[index] = state.position - state.stepStartPosition;
+    _AcceptedMotion[index] = 0.0;
+    float4 self = _SpatialStatesRead[index];
+    float4 obstacle = float4(0.0, 0.0, 0.0, state.padding2 < -0.5 ? -1.0 : 0.0);
+    if (state.padding2 >= 1.0)
+    {
+        uint targetIndex = (uint)round(state.padding2) - 1u;
+        if (targetIndex < _DynamicTargetCapacity)
+        {
+            DynamicTargetState target = _DynamicTargetsRead[targetIndex];
+            if (target.status == 1u && target.blockCapacity > 0.0)
+            {
+                float along = clamp(dot(self.xy - target.position, target.axis), -target.segmentHalfLength, target.segmentHalfLength);
+                float2 offset = self.xy - target.position - target.axis * along;
+                float distance = length(offset);
+                float radius = max(0.1, max(0.05, target.halfDepth) + state.scale * _BodyRadiusPerScale * 1.045);
+                obstacle = float4(offset / max(0.000001, distance), distance - radius, 1.0);
+            }
+        }
+    }
+    _MotionObstacles[index] = obstacle;
+    float search = MaximumPairDiameter() * 1.08 + _MaximumMotionDistance * 2.0;
+    int radius = (int)ceil(search / _CellSize);
+    int2 cell = WorldToCell(self.xy);
+    uint total = 0;
+    for (int y = -radius; y <= radius; y++)
+    for (int x = -radius; x <= radius; x++)
+    {
+        int2 neighbour = cell + int2(x, y);
+        if (!IsInside(neighbour)) continue;
+        uint key = CellIndex(neighbour);
+        uint count = min(_CellCountsRead[key], _CellCapacity);
+        for (uint slot = 0; slot < count; slot++)
+        {
+            uint other = _CellAgentsRead[key * _CellCapacity + slot];
+            if (other == index) continue;
+            float2 delta = self.xy - _SpatialStatesRead[other].xy;
+            float d2 = dot(delta, delta);
+            if (d2 > search * search) continue;
+            float distance = sqrt(max(d2, 0.00000001));
+            float2 normal = d2 > 0.00000001 ? delta / distance : float2(index < other ? -1.0 : 1.0, 0.0);
+            if (total < MOTION_NEIGHBORS)
+                _MotionNeighbors[index * MOTION_NEIGHBORS + total] = float4(normal, distance, asfloat(other));
+            total++;
+        }
+    }
+    // The direct grid path below handles overflow without dropping a contact.
+    _MotionNeighborCounts[index] = total;
+}
+
+[numthreads(64, 1, 1)]
+void ConstrainMotion(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _DiagnosticsRead[3]) return;
+    uint index = _ActiveIndicesRead[id.x];
+    float4 self = _SpatialStatesRead[index];
+    float2 move = _MotionRead[index];
+    float2 correction = 0.0;
+    float contacts = 0.0;
+    float search = MaximumPairDiameter() * 1.08 + _MaximumMotionDistance * 2.0;
+    int radius = (int)ceil(search / _CellSize);
+    int2 cell = WorldToCell(self.xy);
+    uint cachedCount = _MotionNeighborCounts[index];
+    if (cachedCount <= MOTION_NEIGHBORS)
+    {
+        for (uint slot = 0; slot < cachedCount; slot++)
+        {
+            float4 pair = _MotionNeighbors[index * MOTION_NEIGHBORS + slot];
+            uint other = asuint(pair.w);
+            float gap = MotionContactGap(pair.z, self.z, _SpatialStatesRead[other].z,
+                _MotionObstacles[index].w < -0.5 && _MotionObstacles[other].w < -0.5);
+            float violation = -gap - dot(move - _MotionRead[other], pair.xy);
+            if (violation > 0.0)
+            {
+                correction += pair.xy * violation * (_SpatialStatesRead[other].w / max(0.0001, self.w + _SpatialStatesRead[other].w));
+                contacts += 1.0;
+            }
+        }
+    }
+    else
+    {
+    for (int y = -radius; y <= radius; y++)
+    for (int x = -radius; x <= radius; x++)
+    {
+        int2 neighbour = cell + int2(x, y);
+        if (!IsInside(neighbour)) continue;
+        uint key = CellIndex(neighbour);
+        uint count = min(_CellCountsRead[key], _CellCapacity);
+        for (uint slot = 0; slot < count; slot++)
+        {
+            uint other = _CellAgentsRead[key * _CellCapacity + slot];
+            if (other == index) continue;
+            float4 body = _SpatialStatesRead[other];
+            float2 delta = self.xy - body.xy;
+            float d2 = dot(delta, delta);
+            if (d2 > search * search) continue;
+            float distance = sqrt(max(d2, 0.00000001));
+            float2 normal = d2 > 0.00000001 ? delta / distance : float2(index < other ? -1.0 : 1.0, 0.0);
+            float gap = MotionContactGap(distance, self.z, body.z,
+                _MotionObstacles[index].w < -0.5 && _MotionObstacles[other].w < -0.5);
+            // Share braking over a short approach horizon. A one-tick horizon
+            // waits until all spare space is consumed, then the feasibility
+            // pass has to stop individual rows abruptly.
+            float violation = -gap - dot(move - _MotionRead[other], normal);
+            if (violation > 0.0)
+            {
+                correction += normal * violation * (body.w / max(0.0001, self.w + body.w));
+                contacts += 1.0;
+            }
+        }
+    }
+    }
+    move += correction / max(1.0, contacts);
+    float4 obstacle = _MotionObstacles[index];
+    if (obstacle.w > 0.5)
+    {
+        float gap = obstacle.z > 0.0 ? obstacle.z * _DeltaTime / max(_DeltaTime, 0.3) : obstacle.z;
+        move += obstacle.xy * max(0.0, -gap - dot(move, obstacle.xy));
+    }
+    move = ConstrainMove(self.xy, self.xy + move) - self.xy;
+    float maxTravel = _MaximumMotionDistance;
+    float travel = length(move);
+    _MotionWrite[index] = travel > maxTravel ? move * (maxTravel / travel) : move;
+}
+
+[numthreads(64, 1, 1)]
+void CommitMotion(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _DiagnosticsRead[3]) return;
+    uint index = _ActiveIndicesRead[id.x];
+    AgentState state = _StatesRead[index];
+    if (state.status != 1u) return;
+    float2 movement = _AcceptedMotion[index];
+    state.position = state.stepStartPosition + movement;
+    state.velocity = movement / max(_DeltaTime, 0.0001) - state.knockbackVelocity;
+    int2 cell = WorldToCell(state.position);
+    float integration = IsInside(cell) ? _FlowData[CellIndex(cell)].y : -1.0;
+    if (_ExitEnabled != 0u && integration >= 0.0 && integration <= 0.001)
+    {
+        state.status = 2u;
+        EmitEvent(index, 2u, 0.0);
+    }
+    else if (integration >= 0.0) state.progress = -integration;
+    _StatesRead[index] = state;
+}
+
+float3 AcceptancePlane(uint index, uint slot, uint neighbours, float scale, float4 obstacle)
+{
+    if (slot == neighbours) return float3(obstacle.xy, -obstacle.z);
+    float4 pair = _MotionNeighbors[index * MOTION_NEIGHBORS + slot];
+    uint other = asuint(pair.w);
+    float bound = PairCollisionDiameter(scale, _SpatialStatesRead[other].z) * 1.002 - pair.z
+        + dot(_AcceptedMotion[other], pair.xy);
+    return float3(pair.xy, bound);
+}
+
+// Feasibility, not penetration repair: move towards the solved proposal only
+// as far as swept circles allow. Each accepted move preserves valid bodies.
+// Cells of one colour cannot interact within the bounded travel distance.
+[numthreads(64, 1, 1)]
+void ReserveMotionCells(uint3 id : SV_DispatchThreadID)
+{
+    uint columns = ((uint)_GridSize.x + _CleanupCellStride - 1u) / _CleanupCellStride;
+    uint2 phase = uint2(_CleanupCellPhase % _CleanupCellStride, _CleanupCellPhase / _CleanupCellStride);
+    int2 cell = (int2)(uint2(id.x % columns, id.x / columns) * _CleanupCellStride + phase);
+    if (!IsInside(cell)) return;
+    uint key = CellIndex(cell);
+    uint count = min(_CellCountsRead[key], _CellCapacity);
+    float search = MaximumPairDiameter() * 1.08 + _MaximumMotionDistance * 2.0;
+    int radius = (int)ceil(search / _CellSize);
+    for (uint ordinal = 0; ordinal < count; ordinal++)
+    {
+        uint slot = _ReverseMotionReservation != 0u ? count - 1u - ordinal : ordinal;
+        uint index = _CellAgentsRead[key * _CellCapacity + slot];
+        float4 self = _SpatialStatesRead[index];
+        float2 accepted = _AcceptedMotion[index];
+        float2 proposal = _MotionRead[index];
+        uint neighbours = _MotionNeighborCounts[index];
+        float4 motionObstacle = _MotionObstacles[index];
+        if (_SlidingMotionAcceptance != 0u && neighbours <= MOTION_NEIGHBORS)
+        {
+            // A blocked lateral component must not cancel a free forward step.
+            // Project onto the intersection of all neighbour half-planes and the
+            // travel disk. An optimum is either the goal or on a plane boundary.
+            float2 goal = proposal;
+            uint planeCount = neighbours + (motionObstacle.w > 0.5 ? 1u : 0u);
+            bool goalFeasible = true;
+            for (uint n = 0; n < planeCount; n++)
+            {
+                float3 plane = AcceptancePlane(index, n, neighbours, self.z, motionObstacle);
+                if (dot(goal, plane.xy) < plane.z) goalFeasible = false;
+            }
+            if (!goalFeasible)
+            {
+                proposal = accepted; // already feasible against all live neighbours
+                float bestError = dot(goal - accepted, goal - accepted);
+                [loop]
+                for (uint n = 0; n < planeCount; n++)
+                {
+                    float3 plane = AcceptancePlane(index, n, neighbours, self.z, motionObstacle);
+                    float remaining = _MaximumMotionDistance * _MaximumMotionDistance - plane.z * plane.z;
+                    if (remaining < 0.0) continue;
+                    float2 lineOrigin = plane.xy * plane.z;
+                    float2 tangent = float2(-plane.y, plane.x);
+                    float low = -sqrt(remaining), high = -low;
+                    bool feasible = true;
+                    [loop]
+                    for (uint j = 0; j < planeCount; j++)
+                    {
+                        if (j == n) continue;
+                        float3 otherPlane = AcceptancePlane(index, j, neighbours, self.z, motionObstacle);
+                        float numerator = otherPlane.z - dot(lineOrigin, otherPlane.xy);
+                        float denominator = dot(tangent, otherPlane.xy);
+                        if (abs(denominator) < 0.000001)
+                        {
+                            if (numerator > 0.000001) feasible = false;
+                        }
+                        else if (denominator > 0.0) low = max(low, numerator / denominator);
+                        else high = min(high, numerator / denominator);
+                    }
+                    if (!feasible || low > high) continue;
+                    float2 candidate = lineOrigin + tangent * clamp(dot(goal, tangent), low, high);
+                    float error = dot(candidate - goal, candidate - goal);
+                    if (error < bestError) { proposal = candidate; bestError = error; }
+                }
+            }
+            proposal = ConstrainMove(self.xy, self.xy + proposal) - self.xy;
+        }
+        // The final swept-plane check protects feasibility if wall projection
+        // changed the proposed slide, and is the complete-grid overflow fallback.
+        float2 step = proposal - accepted;
+        float a = dot(step, step);
+        if (a < 1e-12) continue;
+        float fraction = 1.0;
+        uint cachedCount = _MotionNeighborCounts[index];
+        if (cachedCount <= MOTION_NEIGHBORS)
+        {
+            for (uint otherSlot = 0; otherSlot < cachedCount; otherSlot++)
+            {
+                float4 pair = _MotionNeighbors[index * MOTION_NEIGHBORS + otherSlot];
+                uint other = asuint(pair.w);
+                float b = dot(pair.xy, step);
+                if (b >= 0.0) continue;
+                float diameter = PairCollisionDiameter(self.z, _SpatialStatesRead[other].z) * 1.002;
+                float gap = pair.z - diameter + dot(accepted - _AcceptedMotion[other], pair.xy);
+                fraction = min(fraction, max(0.0, max(0.0, gap) / -b - 0.0001));
+            }
+        }
+        else
+        {
+        for (int y = -radius; y <= radius; y++)
+        for (int x = -radius; x <= radius; x++)
+        {
+            int2 neighbour = cell + int2(x, y);
+            if (!IsInside(neighbour)) continue;
+            uint otherKey = CellIndex(neighbour);
+            uint otherCount = min(_CellCountsRead[otherKey], _CellCapacity);
+            for (uint otherSlot = 0; otherSlot < otherCount; otherSlot++)
+            {
+                uint other = _CellAgentsRead[otherKey * _CellCapacity + otherSlot];
+                if (other == index) continue;
+                float4 body = _SpatialStatesRead[other];
+                float2 startDelta = self.xy - body.xy;
+                float distance = length(startDelta);
+                if (distance > search) continue;
+                float2 normal = startDelta / max(distance, 0.000001);
+                float b = dot(normal, step);
+                if (b >= 0.0) continue;
+                // Prediction reserves 8% air; feasibility protects the entire
+                // diagnostic silhouette plus a numerical margin, never less.
+                float diameter = PairCollisionDiameter(self.z, body.z) * 1.002;
+                float gap = distance - diameter + dot(accepted - _AcceptedMotion[other], normal);
+                float hit = max(0.0, gap) / -b;
+                fraction = min(fraction, max(0.0, hit - 0.0001));
+            }
+        }
+        }
+        if (motionObstacle.w > 0.5)
+        {
+            float closing = dot(motionObstacle.xy, step);
+            if (closing < 0.0)
+                fraction = min(fraction, max(0.0, (motionObstacle.z + dot(accepted, motionObstacle.xy)) / -closing - 0.0001));
+        }
+        _AcceptedMotion[index] = accepted + step * fraction;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void ResolveContacts(uint3 id : SV_DispatchThreadID)
+{
+    uint activeSlot = id.x;
+    if (activeSlot >= _DiagnosticsRead[3])
+    {
+        return;
+    }
+
+    uint index = _ActiveIndicesRead[activeSlot];
+    AgentState state = _StatesRead[index];
+    if (state.status != 1u)
+    {
+        _StatesWrite[index] = state;
+        return;
+    }
+
+    int2 centerCell = WorldToCell(state.position);
+    float contactSpacing = _AnimatedGoblin != 0u && _CenterSeekingArena == 0u ? 1.08 : 1.0;
+    float maximumCollisionDiameter = MaximumPairDiameter() * contactSpacing;
+    float searchRadiusSq = maximumCollisionDiameter * maximumCollisionDiameter;
+    int cellRadius = max(1, (int)ceil(maximumCollisionDiameter / _CellSize));
+    float2 correction = 0.0;
+    float2 deepestCorrection = 0.0;
+    float deepestCorrectionLength = 0.0;
+    float2 driveVelocityCorrection = 0.0;
+    float2 knockbackVelocityCorrection = 0.0;
+    uint overlapCount = 0u;
+    float2 flow = SampleFlow(state.position);
+    if (dot(flow, flow) < 0.0001)
+    {
+        flow = float2(1.0, 0.0);
+    }
+    float2 lateralAxis = float2(-flow.y, flow.x);
+    float queuePenetration = 0.0;
+    float selfBoundaryDistance = SampleBoundaryDistance(state.position);
+    float2 selfBoundaryNormal = SampleBoundaryNormal(state.position);
+    bool heldQueue = state.padding2 >= 1.0 || (state.flags & 2u) != 0u;
+
+    [loop]
+    for (int oy = -cellRadius; oy <= cellRadius && _HardContactCleanup == 0u; oy++)
+    {
+        [loop]
+        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        {
+            int2 neighborCell = centerCell + int2(ox, oy);
+            if (!IsInside(neighborCell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(neighborCell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0u; slot < count; slot++)
+            {
+                uint otherIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                if (otherIndex == index)
+                {
+                    continue;
+                }
+
+                float4 otherSpatial = _SpatialStatesRead[otherIndex];
+                AgentState otherState = _StatesRead[otherIndex];
+                float2 delta = state.position - otherSpatial.xy;
+                float distanceSq = dot(delta, delta);
+                bool heldPair = _AnimatedGoblin != 0u && _CenterSeekingArena == 0u &&
+                    (heldQueue || otherState.padding2 >= 1.0 || (otherState.flags & 2u) != 0u);
+                float pairDiameter = heldPair
+                    ? MovementPairDiameter(state.scale, otherSpatial.z)
+                    : ContactPairDiameter(state.scale, otherSpatial.z);
+                if (distanceSq >= pairDiameter * pairDiameter)
+                {
+                    continue;
+                }
+
+                float distance = sqrt(max(distanceSq, 0.000001));
+                float2 direction;
+                if (distanceSq <= 0.000001)
+                {
+                    uint lowerIndex = min(index, otherIndex);
+                    uint upperIndex = max(index, otherIndex);
+                    float angle = frac(lowerIndex * 0.7548777 + upperIndex * 0.5698403) * 6.2831853;
+                    sincos(angle, direction.y, direction.x);
+                    direction *= index < otherIndex ? 1.0 : -1.0;
+                }
+                else
+                {
+                    direction = delta / distance;
+                }
+
+                float selfMass = max(0.1, state.mass);
+                float otherMass = max(0.1, otherState.mass);
+                float selfShare = otherMass / (selfMass + otherMass);
+                float velocityShare = selfShare;
+                float2 selfContactVelocity = state.velocity + state.knockbackVelocity;
+                float2 otherContactVelocity = otherState.velocity + otherState.knockbackVelocity;
+                if (_CenterSeekingArena != 0u)
+                {
+                    float wallContactDistance = max(0.1, _CollisionDiameter * 0.95);
+                    bool selfRepelledByWall =
+                        state.shockwaveReturnTimer > 0.0 &&
+                        selfBoundaryDistance < wallContactDistance;
+                    bool otherRepelledByWall =
+                        otherState.shockwaveReturnTimer > 0.0 &&
+                        SampleBoundaryDistance(otherSpatial.xy) < wallContactDistance;
+                    if (selfRepelledByWall != otherRepelledByWall)
+                    {
+                        // The magnetic wall response keeps all of its inward
+                        // velocity. The body in front receives the full matching
+                        // impulse instead of making the wall body wait for space.
+                        velocityShare = selfRepelledByWall ? 0.0 : 1.0;
+                    }
+
+                    float2 selfFromCenter = state.position - _ArenaCenter;
+                    float2 otherFromCenter = otherSpatial.xy - _ArenaCenter;
+                    float selfRadius = length(selfFromCenter);
+                    float otherRadius = length(otherFromCenter);
+                    float2 selfInward = selfRadius > 0.0001
+                        ? -selfFromCenter / selfRadius
+                        : 0.0;
+                    float2 otherInward = otherRadius > 0.0001
+                        ? -otherFromCenter / otherRadius
+                        : 0.0;
+                    bool selfReturning =
+                        state.shockwaveReturnTimer > 0.0 &&
+                        state.shockwaveOutwardTimer <= 0.0 &&
+                        dot(selfContactVelocity, selfInward) > 0.1;
+                    bool otherReturning =
+                        otherState.shockwaveReturnTimer > 0.0 &&
+                        otherState.shockwaveOutwardTimer <= 0.0 &&
+                        dot(otherContactVelocity, otherInward) > 0.1;
+                    float radialLead = _CollisionDiameter * 0.05;
+                    if (selfReturning && selfRadius > otherRadius + radialLead)
+                    {
+                        velocityShare = 0.0;
+                    }
+                    else if (otherReturning && otherRadius > selfRadius + radialLead)
+                    {
+                        velocityShare = 1.0;
+                    }
+                }
+                float positionShare = selfShare;
+                float selfCorrectionLength = (pairDiameter - distance) * positionShare;
+                float2 pairCorrection = direction * selfCorrectionLength;
+                correction += pairCorrection;
+                if (selfCorrectionLength > deepestCorrectionLength)
+                {
+                    deepestCorrection = pairCorrection;
+                    deepestCorrectionLength = selfCorrectionLength;
+                }
+
+                // Project the pair's relative velocity onto a non-penetrating
+                // constraint. Both agents execute the complementary mass share,
+                // so momentum crosses the crowd without creating extra energy.
+                float relativeNormalSpeed = dot(
+                    selfContactVelocity - otherContactVelocity,
+                    direction);
+                if (relativeNormalSpeed < 0.0)
+                {
+                    float2 pairVelocityCorrection =
+                        direction * (-relativeNormalSpeed) * velocityShare;
+                    bool externalContact =
+                        dot(state.knockbackVelocity, state.knockbackVelocity) > 0.000001 ||
+                        dot(otherState.knockbackVelocity, otherState.knockbackVelocity) > 0.000001 ||
+                        state.padding > 0.0 || otherState.padding > 0.0;
+                    if (externalContact)
+                    {
+                        knockbackVelocityCorrection += pairVelocityCorrection;
+                    }
+                    else
+                    {
+                        driveVelocityCorrection += pairVelocityCorrection;
+                    }
+                }
+                float2 toOther = otherSpatial.xy - state.position;
+                float forwardDistance = dot(toOther, flow);
+                float lateralDistance = abs(dot(toOther, lateralAxis));
+                float2 otherFlow = SampleFlow(otherSpatial.xy);
+                float flowAlignment = dot(flow, otherFlow);
+                if (flowAlignment > 0.92 && forwardDistance > 0.0 &&
+                    lateralDistance < pairDiameter * 0.52)
+                {
+                    float requiredForwardDistance = sqrt(max(0.0,
+                        pairDiameter * pairDiameter - lateralDistance * lateralDistance));
+                    queuePenetration = max(queuePenetration,
+                        requiredForwardDistance - forwardDistance);
+                }
+                overlapCount++;
+            }
+        }
+    }
+
+    if (overlapCount > 0u)
+    {
+        float contactRelaxation = rcp(max(1.0, sqrt((float)overlapCount)));
+        state.velocity += driveVelocityCorrection * contactRelaxation;
+        state.knockbackVelocity += knockbackVelocityCorrection * contactRelaxation;
+        float resolvedKnockbackSpeed = length(state.knockbackVelocity);
+        if (resolvedKnockbackSpeed > 140.0)
+        {
+            state.knockbackVelocity *= 140.0 / resolvedKnockbackSpeed;
+        }
+        if (_CenterSeekingArena != 0u)
+        {
+            // In a radial crowd the summed Jacobi correction approaches zero:
+            // every neighbour has another neighbour on the opposite side. Solve
+            // one complete unilateral constraint per pass instead. Rebuilding the
+            // grid between passes then exposes the next-deepest pair.
+            correction = deepestCorrection;
+
+            // Once a body is touching the packed core, collision wins over the
+            // shared center target. Remove every inward component until this body
+            // has a valid non-overlapping position; outward blast motion remains.
+            float2 fromArenaCenter = state.position - _ArenaCenter;
+            float centerDistanceSq = dot(fromArenaCenter, fromArenaCenter);
+            bool leavingArenaWall = selfBoundaryDistance < _CollisionDiameter * 2.0;
+            if (centerDistanceSq > 0.000001 && !leavingArenaWall)
+            {
+                float2 outwardNormal = fromArenaCenter * rsqrt(centerDistanceSq);
+                state.velocity -= outwardNormal * min(0.0, dot(state.velocity, outwardNormal));
+                state.knockbackVelocity -= outwardNormal *
+                    min(0.0, dot(state.knockbackVelocity, outwardNormal));
+                correction += outwardNormal * deepestCorrectionLength * 0.22;
+            }
+        }
+        else
+        {
+            // Under-relaxed Jacobi projection. The reference crowd still needs
+            // a bounded deepest-pair term: averaging every overlap by its raw
+            // count makes a dense junction retain intersecting visual blobs for
+            // many frames, which looks like one stream has priority over another.
+            if (_ReferenceCrowd != 0u && !heldQueue)
+            {
+                // The reference queue transmits momentum through velocity, not
+                // through an instant positional teleport. Keep a small deepest
+                // pair bias so dense contacts do not cancel to zero, but retain
+                // the local average to prevent the selected neighbour changing
+                // from pass to pass and flinging a body around the crowd.
+                correction *= contactRelaxation;
+                correction += deepestCorrection * 0.18;
+            }
+            else if (_AnimatedGoblin != 0u && !heldQueue)
+            {
+                correction /= max(1.0, (float)overlapCount);
+            }
+            else
+            {
+                correction *= contactRelaxation;
+                correction += deepestCorrection * 0.9;
+                correction -= flow * max(0.0, queuePenetration) * 0.62;
+            }
+        }
+
+        // A travelling horde is a one-way flow. The old complementary contact
+        // correction was physically symmetric, which meant it could first push
+        // a runner backwards and let the drive code pull it forward next tick.
+        // At close zoom that produced a very visible forward/backward hop.
+        // Keep deliberate impulses and a genuinely held queue symmetric, but
+        // project ordinary crowd contacts onto forward/lateral motion.
+        bool canReceiveReverseContactMotion = heldQueue ||
+            dot(state.knockbackVelocity, state.knockbackVelocity) > 0.000001 ||
+            state.padding > 0.0001;
+        if (_UnidirectionalHordeContacts != 0u && !canReceiveReverseContactMotion)
+        {
+            float reverseVelocity = dot(state.velocity, flow);
+            if (reverseVelocity < 0.0)
+            {
+                state.velocity -= flow * reverseVelocity;
+            }
+
+            float reverseCorrection = dot(correction, flow);
+            if (reverseCorrection < 0.0)
+            {
+                correction -= flow * reverseCorrection;
+            }
+        }
+        float correctionLength = length(correction);
+        float maximumCorrection = _CollisionDiameter * (_CenterSeekingArena != 0u ? 0.75 : 0.48);
+        if (_ReferenceCrowd != 0u && _CenterSeekingArena == 0u)
+        {
+            // This is a per-60-Hz-tick displacement budget shared by all Jacobi
+            // passes. Without it, a body may receive the maximum correction eight
+            // times in one tick and visibly jump across an otherwise static queue.
+            float perPassBudget = 1.55 * _DeltaTime / max(1.0, (float)_ContactIterationCount);
+            maximumCorrection = min(maximumCorrection, perPassBudget);
+        }
+        if (correctionLength > maximumCorrection)
+        {
+            correction *= maximumCorrection / correctionLength;
+        }
+        if (state.padding2 < -0.5)
+        {
+            // The blocker vanished in this tick. Space is opening in front, so
+            // contact cleanup may fan sideways but must not visually shove a
+            // released row backwards before its first forward step.
+            correction -= flow * min(0.0, dot(correction, flow));
+        }
+        state.position = ConstrainMove(state.position, state.position + correction);
+    }
+
+    if (_CenterSeekingArena != 0u &&
+        selfBoundaryDistance < max(0.1, _CollisionDiameter * 0.95))
+    {
+        float2 inwardNormal = selfBoundaryNormal;
+        float inwardNormalLengthSq = dot(inwardNormal, inwardNormal);
+        if (inwardNormalLengthSq > 0.0001)
+        {
+            inwardNormal *= rsqrt(inwardNormalLengthSq);
+            float normalDriveSpeed = _Controls[index].x * _MovementSpeedMultiplier * 0.72;
+            float shockwaveRepulsionSpeed = state.shockwaveReturnTimer > 0.0
+                ? _ShockwavePropagationSpeed * 0.42
+                : 0.0;
+            float minimumInwardSpeed = max(normalDriveSpeed, shockwaveRepulsionSpeed);
+            float currentInwardSpeed = dot(
+                state.velocity + state.knockbackVelocity,
+                inwardNormal);
+            state.shockwaveOutwardTimer = 0.0;
+            state.knockbackVelocity += inwardNormal *
+                max(0.0, minimumInwardSpeed - currentInwardSpeed);
+            state.padding = max(state.padding, 0.32);
+        }
+    }
+
+    if (_FinalizePresentation != 0u)
+    {
+        // Sample only the final position AFTER every contact iteration. The
+        // pre-solve forward push is not distance walked when a queue is blocked.
+        float2 travel = state.position - state.stepStartPosition;
+        float signedForwardTravel = dot(travel, flow);
+        float forwardTravel = max(0.0, signedForwardTravel);
+        float travelDistance = length(travel);
+        bool externalPresentationForce =
+            dot(state.knockbackVelocity, state.knockbackVelocity) > 0.000001 ||
+            state.padding > 0.0001;
+        if (_ReferenceCrowd != 0u && !externalPresentationForce &&
+            state.padding2 < 1.0 && signedForwardTravel < -0.000001)
+        {
+            InterlockedAdd(_Diagnostics[7], 1u);
+            InterlockedMax(_Diagnostics[8], (uint)round(-signedForwardTravel * 1000000.0));
+        }
+        float requestedSpeed = max(0.0, _Controls[index].x * _MovementSpeedMultiplier * state.slowMultiplier);
+        float resolvedSpeed = travelDistance / max(_DeltaTime, 0.0001);
+        if (_PredictiveContacts == 0u && state.padding2 < -0.5 && travelDistance > 0.015 * _DeltaTime)
+            resolvedSpeed = max(resolvedSpeed, requestedSpeed * 0.16);
+        // Starting a step is immediate; only the return to the braced pose is
+        // eased. The symmetric low-pass made visible running begin ~0.2s late.
+        state.locomotionSpeed = _PredictiveContacts != 0u || resolvedSpeed > state.locomotionSpeed
+            ? resolvedSpeed
+            : lerp(state.locomotionSpeed, resolvedSpeed, 1.0 - exp(-_DeltaTime * 12.0));
+        state.presentationTime += _DeltaTime;
+        // Include lateral and externally pushed travel: a displaced body takes
+        // recovery steps even when its own drive cannot advance into the queue.
+        if (travelDistance > 0.015 * _DeltaTime && (state.flags & 2u) == 0u)
+            state.animationDistance += min(travelDistance, max(0.5, requestedSpeed * 1.8) * _DeltaTime);
+        if (dot(state.facing, state.facing) < 0.1)
+            state.facing = flow;
+        if (forwardTravel > 0.06 * _DeltaTime || (state.flags & 2u) != 0u)
+        {
+            float2 desiredFacing = flow;
+            float2 blendedFacing = lerp(state.facing, desiredFacing, saturate(_DeltaTime * 10.0));
+            if (dot(blendedFacing, blendedFacing) > 0.001)
+                state.facing = normalize(blendedFacing);
+        }
+        // Contact projection is a positional correction, not another impulse.
+        // Feeding it back as next tick's velocity makes neighbouring rows brake
+        // and restart in alternating waves. Keep the contact-solved velocity;
+        // presentation observes actual travel independently above.
+    }
+    _StatesWrite[index] = state;
+}
+
+
+[numthreads(64, 1, 1)]
+void ResolveContactCells(uint3 id : SV_DispatchThreadID)
+{
+    uint columnCount = ((uint)_GridSize.x + _CleanupCellStride - 1u) / _CleanupCellStride;
+    uint2 phase = uint2(_CleanupCellPhase % _CleanupCellStride, _CleanupCellPhase / _CleanupCellStride);
+    int2 cell = (int2)(uint2(id.x % columnCount, id.x / columnCount) * _CleanupCellStride + phase);
+    if (!IsInside(cell)) return;
+
+    // One thread owns the entire cell and updates its bodies sequentially.
+    // Selected cells are far enough apart that their read/write neighbourhoods
+    // cannot meet, even after the maximum correction. This makes in-place
+    // Gauss-Seidel safe and prevents equal simultaneous pushes from cancelling.
+    uint count = min(_CellCountsRead[CellIndex(cell)], _CellCapacity);
+    float maximumPush = _CollisionDiameter * 0.48;
+    int cellRadius = max(1, (int)ceil((MaximumPairDiameter() * 1.08 + maximumPush * 2.0) / _CellSize));
+    [loop]
+    for (uint slot = 0u; slot < count; slot++)
+    {
+        uint index = _CellAgentsRead[CellIndex(cell) * _CellCapacity + slot];
+        AgentState state = _StatesRead[index];
+        float2 start = state.position;
+        [loop]
+        for (uint sweep = 0u; sweep < 6u; sweep++)
+        {
+            float deepest = 0.0;
+            float2 correction = 0.0;
+            [loop]
+            for (int oy = -cellRadius; oy <= cellRadius; oy++)
+            {
+                [loop]
+                for (int ox = -cellRadius; ox <= cellRadius; ox++)
+                {
+                    int2 neighbourCell = cell + int2(ox, oy);
+                    if (!IsInside(neighbourCell)) continue;
+                    uint neighbourCellIndex = CellIndex(neighbourCell);
+                    uint neighbourCount = min(_CellCountsRead[neighbourCellIndex], _CellCapacity);
+                    [loop]
+                    for (uint neighbourSlot = 0u; neighbourSlot < neighbourCount; neighbourSlot++)
+                    {
+                        uint otherIndex = _CellAgentsRead[neighbourCellIndex * _CellCapacity + neighbourSlot];
+                        if (otherIndex == index) continue;
+                        AgentState other = _StatesRead[otherIndex];
+                        float diameter = MovementPairDiameter(state.scale, other.scale);
+                        float2 delta = state.position - other.position;
+                        float distanceSq = dot(delta, delta);
+                        if (distanceSq >= diameter * diameter) continue;
+                        float distance = sqrt(max(distanceSq, 0.000001));
+                        float depth = diameter - distance;
+                        if (depth <= deepest) continue;
+                        float2 direction = distanceSq > 0.000001 ? delta / distance :
+                            float2(index < otherIndex ? -1.0 : 1.0, 0.0);
+                        deepest = depth;
+                        correction = direction * depth;
+                    }
+                }
+            }
+            if (deepest < 0.00001) break;
+            float2 displacement = state.position + correction - start;
+            float displacementLength = length(displacement);
+            if (displacementLength > maximumPush) displacement *= maximumPush / displacementLength;
+            float2 desired = ConstrainMove(state.position, start + displacement);
+            if (dot(desired - state.position, desired - state.position) < 0.000000001) break;
+            state.position = desired;
+        }
+        _StatesRead[index] = state;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void MeasureOverlaps(uint3 id : SV_DispatchThreadID)
+{
+    uint activeSlot = id.x;
+    if (activeSlot >= _DiagnosticsRead[3])
+    {
+        return;
+    }
+
+    uint index = _ActiveIndicesRead[activeSlot];
+    float4 spatial = _SpatialStatesRead[index];
+    int2 centerCell = WorldToCell(spatial.xy);
+    float maximumCollisionDiameter = MaximumPairDiameter() * 1.08;
+    int cellRadius = max(1, (int)ceil(maximumCollisionDiameter / _CellSize));
+    float nearestSpacing = 1e20;
+
+    [loop]
+    for (int oy = -cellRadius; oy <= cellRadius; oy++)
+    {
+        [loop]
+        for (int ox = -cellRadius; ox <= cellRadius; ox++)
+        {
+            int2 neighborCell = centerCell + int2(ox, oy);
+            if (!IsInside(neighborCell))
+            {
+                continue;
+            }
+
+            uint cellIndex = CellIndex(neighborCell);
+            uint count = min(_CellCountsRead[cellIndex], _CellCapacity);
+            [loop]
+            for (uint slot = 0u; slot < count; slot++)
+            {
+                uint otherIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                if (otherIndex == index)
+                {
+                    continue;
+                }
+
+                float4 otherSpatial = _SpatialStatesRead[otherIndex];
+                float pairDiameter = PairCollisionDiameter(spatial.z, otherSpatial.z);
+                float pairDistance = distance(spatial.xy, otherSpatial.xy);
+                nearestSpacing = min(nearestSpacing, pairDistance / max(0.0001, pairDiameter));
+                if (otherIndex <= index)
+                {
+                    continue;
+                }
+                if (pairDistance <= pairDiameter * 1.05)
+                {
+                    InterlockedAdd(_Diagnostics[11], 1u);
+                }
+                if (pairDistance < pairDiameter)
+                {
+                    float penetrationFraction = saturate((pairDiameter - pairDistance) / pairDiameter);
+                    InterlockedMax(_Diagnostics[6], (uint)round(penetrationFraction * 1000000.0));
+                    if (penetrationFraction > 0.005)
+                    {
+                        InterlockedAdd(_Diagnostics[5], 1u);
+                    }
+                }
+            }
+        }
+    }
+
+    if (nearestSpacing < 1e19)
+    {
+        InterlockedAdd(_Diagnostics[9], (uint)round(nearestSpacing * 1000.0));
+        InterlockedAdd(_Diagnostics[10], 1u);
+    }
 }
 
 [numthreads(64, 1, 1)]
@@ -569,6 +1562,18 @@ void ResolveDynamicTargetDamage(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(64, 1, 1)]
+void ApplySpawns(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _SpawnCount) return;
+    uint index = _SpawnStart + id.x;
+    AgentState state = _SpawnStates[id.x];
+    state.stepStartPosition = state.position;
+    _StatesRead[index] = state;
+    _StatesWrite[index] = state;
+    if (_SpawnHasControls != 0u) _SpawnControlsWrite[index] = _SpawnControls[id.x];
+}
+
+[numthreads(64, 1, 1)]
 void ClearGrid(uint3 id : SV_DispatchThreadID)
 {
     if (id.x < _CellCount)
@@ -577,10 +1582,10 @@ void ClearGrid(uint3 id : SV_DispatchThreadID)
     }
 }
 
-[numthreads(8, 1, 1)]
+[numthreads(64, 1, 1)]
 void ClearDiagnostics(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x < 5)
+    if (id.x < 12)
     {
         _Diagnostics[id.x] = 0;
     }
@@ -590,19 +1595,25 @@ void ClearDiagnostics(uint3 id : SV_DispatchThreadID)
 void BuildGrid(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
-    if (index >= _AgentCount || _StatesRead[index].status != 1 || _Controls[index].y < 0.5)
+    if (index >= _AgentCount) return;
+    AgentState state = _StatesRead[index];
+    if (state.status != 1 || _Controls[index].y < 0.5)
     {
+        // Active-only kernels never visit retired slots. Carry their final state
+        // into the other buffer, or the next swap resurrects the old live body.
+        _StatesWrite[index] = state;
         return;
     }
 
     int2 cell = WorldToCell(_StatesRead[index].position);
     if (!IsInside(cell))
     {
+        _StatesWrite[index] = state;
         return;
     }
 
     uint cellIndex = CellIndex(cell);
-    _SpatialStates[index] = float4(_StatesRead[index].position, _StatesRead[index].scale, 0.0);
+    _SpatialStates[index] = float4(state.position, state.scale, max(0.1, state.mass));
     uint slot;
     InterlockedAdd(_CellCounts[cellIndex], 1, slot);
     uint activeSlot;
@@ -711,6 +1722,14 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
     for (uint commandIndex = 0u; commandIndex < _AreaCommandCount; commandIndex++)
     {
         AreaEffectCommand command = _AreaEffectCommands[commandIndex];
+        bool unlimitedCommand = command.maxTargets == 0u;
+        bool hasCappedSlow = command.slowDuration > 0.0 && command.slowMultiplier < 0.995 &&
+            command.slowCapacity > 0.0;
+        if (unlimitedCommand && !hasCappedSlow)
+        {
+            continue;
+        }
+
         int2 centerCell = WorldToCell(command.center);
         int cellRadius = max(1, (int)ceil(command.radius / _CellSize));
         float radiusSq = command.radius * command.radius;
@@ -750,22 +1769,32 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
 
                     bool applySlow = command.slowDuration > 0.0 && command.slowMultiplier < 0.995 &&
                         usedSlowCapacity + max(0.1, state.mass) <= command.slowCapacity;
-                    bool hasOtherEffect = command.damage > 0.0 || command.knockback > 0.0 || command.burnDamagePerSecond > 0.0;
+                    bool hasOtherEffect = !unlimitedCommand &&
+                        (command.damage > 0.0 || command.knockback > 0.0 || command.burnDamagePerSecond > 0.0);
                     if (!applySlow && !hasOtherEffect)
                     {
                         continue;
                     }
 
-                    if (command.knockback > 0.0)
+                    if (!unlimitedCommand && command.knockback > 0.0)
                     {
                         float distance = sqrt(max(distanceSq, 0.000001));
-                        float2 direction = distanceSq > 0.000001 ? offset / distance : float2(1.0, 0.0);
+                        float2 direction;
+                        if (distanceSq > 0.000001)
+                        {
+                            direction = offset / distance;
+                        }
+                        else
+                        {
+                            float angle = frac((agentIndex + 1u) * 0.61803398875) * 6.2831853;
+                            sincos(angle, direction.y, direction.x);
+                        }
                         float falloff = 1.0 - saturate(distance / command.radius);
                         state.velocity += direction * command.knockback * lerp(2.5, 8.0, falloff);
-                        state.padding = max(state.padding, 0.55);
+                        state.padding = max(state.padding, clamp(command.knockback / 32.0, 0.55, 2.5));
                     }
 
-                    if (command.damage > 0.0)
+                    if (!unlimitedCommand && command.damage > 0.0)
                     {
                         float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
                         state.health -= appliedDamage;
@@ -775,9 +1804,13 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                             state.status = 3;
                             EmitEvent(agentIndex, 1u, appliedDamage);
                         }
+                        else
+                        {
+                            EmitEvent(agentIndex, 5u, appliedDamage);
+                        }
                     }
 
-                    if (state.status == 1 && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                    if (!unlimitedCommand && state.status == 1 && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
                     {
                         uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
                         uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
@@ -805,6 +1838,138 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
     }
 }
 
+[numthreads(64, 1, 1)]
+void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
+{
+    uint activeCount = _DiagnosticsRead[3];
+    if (id.x >= activeCount)
+    {
+        return;
+    }
+
+    uint agentIndex = _ActiveIndicesRead[id.x];
+    AgentState state = _StatesRead[agentIndex];
+    if (state.status != 1u || state.health <= 0.0)
+    {
+        return;
+    }
+
+    [loop]
+    for (uint commandIndex = 0u; commandIndex < _AreaCommandCount; commandIndex++)
+    {
+        AreaEffectCommand command = _AreaEffectCommands[commandIndex];
+        if (command.maxTargets != 0u)
+        {
+            continue;
+        }
+
+        float2 offset = state.position - command.center;
+        float distanceSq = dot(offset, offset);
+        float radiusSq = command.radius * command.radius;
+        float effectiveInnerRadius = max(0.0, command.innerRadius);
+        bool isPhysicsShockwave = command.innerRadius != 0.0;
+        if (distanceSq > radiusSq || distanceSq < effectiveInnerRadius * effectiveInnerRadius)
+        {
+            continue;
+        }
+
+        if (command.knockback > 0.0)
+        {
+            bool applyKnockback = true;
+            float distance = sqrt(max(distanceSq, 0.000001));
+            float2 direction;
+            if (distanceSq > 0.000001)
+            {
+                direction = offset / distance;
+            }
+            else
+            {
+                float angle = frac((agentIndex + 1u) * 0.61803398875) * 6.2831853;
+                sincos(angle, direction.y, direction.x);
+            }
+
+            float gameplayFalloff = 1.0;
+            if (command.innerRadius <= 0.0)
+            {
+                float falloff = 1.0 - saturate(distance / command.radius);
+                float smoothFalloff = falloff * falloff * (3.0 - 2.0 * falloff);
+                gameplayFalloff = lerp(0.35, 1.0, smoothFalloff);
+            }
+
+            if (isPhysicsShockwave)
+            {
+                float noise = frac(sin((float)(agentIndex + 1u) * 12.9898 +
+                    dot(command.center, float2(78.233, 37.719))) * 43758.5453);
+                bool firstShockwaveContact =
+                    state.shockwaveOutwardTimer <= 0.0 &&
+                    state.shockwaveExposure < 0.05;
+                applyKnockback = firstShockwaveContact ||
+                    state.shockwaveOutwardTimer > 0.0;
+                direction = Rotate2D(direction, (noise - 0.5) * 0.12);
+                gameplayFalloff *= lerp(0.95, 1.05, frac(noise * 7.173));
+                int2 shockwaveCell = WorldToCell(state.position);
+                float localCrowd = IsInside(shockwaveCell)
+                    ? saturate((float)_CellCountsRead[CellIndex(shockwaveCell)] / 32.0)
+                    : 0.0;
+                gameplayFalloff *= lerp(1.0, 1.35, localCrowd);
+                gameplayFalloff *= lerp(1.0, 0.5, saturate(state.shockwaveExposure));
+                state.shockwaveExposure = saturate(state.shockwaveExposure + 0.22);
+                if (firstShockwaveContact)
+                {
+                    state.shockwaveCenter = command.center;
+                    state.shockwaveReturnTimer = max(state.shockwaveReturnTimer, 12.0);
+                    float rideSpeed = _ShockwavePropagationSpeed * lerp(0.88, 1.0, noise);
+                    float remainingBoundaryDistance = max(0.0, SampleBoundaryDistance(state.position));
+                    float2 boundaryNormal = SampleBoundaryNormal(state.position);
+                    float radialWallAlignment = max(0.3, -dot(direction, boundaryNormal));
+                    float remainingRideTime = remainingBoundaryDistance /
+                        max(0.1, rideSpeed * radialWallAlignment);
+                    state.shockwaveOutwardTimer = max(0.05, remainingRideTime);
+                }
+            }
+            if (applyKnockback)
+            {
+                float inverseMass = rcp(max(1.0, state.mass));
+                state.knockbackVelocity += direction * command.knockback * gameplayFalloff * inverseMass;
+                state.padding = max(state.padding, clamp(command.knockback / 22.0, 1.5, 4.5));
+            }
+        }
+
+        if (command.damage > 0.0)
+        {
+            float appliedDamage = max(0.0, command.damage - state.armor) *
+                (1.0 - saturate(state.physicalResistance));
+            state.health -= appliedDamage;
+            if (state.health <= 0.0)
+            {
+                state.health = 0.0;
+                state.status = 3u;
+                EmitEvent(agentIndex, 1u, appliedDamage);
+            }
+            else
+            {
+                EmitEvent(agentIndex, 5u, appliedDamage);
+            }
+        }
+
+        if (state.status == 1u && command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+        {
+            uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+            uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+            state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks *
+                (1.0 - saturate(state.fireResistance));
+            state.burnTimer = max(state.burnTimer, command.burnDuration);
+        }
+
+        if (state.status != 1u)
+        {
+            break;
+        }
+    }
+
+    _StatesRead[agentIndex] = state;
+}
+
 float DistancePointToSegmentSq(float2 samplePosition, float2 a, float2 b)
 {
     float2 segment = b - a;
@@ -825,11 +1990,20 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
     for (uint commandIndex = 0u; commandIndex < _ProjectileCommandCount; commandIndex++)
     {
         ProjectileCommand command = _ProjectileCommands[commandIndex];
+        uint projectileSlot = command.projectileId % 2048u;
+        if (command.resetHitCount != 0u)
+        {
+            _ProjectileHitCounts[projectileSlot] = 0u;
+        }
+        if (_ProjectileHitCounts[projectileSlot] >= command.maxHits)
+        {
+            continue;
+        }
         float2 boundsMin = min(command.start, command.end) - command.radius;
         float2 boundsMax = max(command.start, command.end) + command.radius;
         int2 minCell = WorldToCell(boundsMin);
         int2 maxCell = WorldToCell(boundsMax);
-        uint hitCount = 0u;
+        uint hitCount = _ProjectileHitCounts[projectileSlot];
         bool commandComplete = false;
         [loop]
         for (int y = minCell.y; y <= maxCell.y && !commandComplete; y++)
@@ -849,6 +2023,10 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                 for (uint slot = 0u; slot < count; slot++)
                 {
                     uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
+                    if (_AgentLastProjectileIds[agentIndex] == command.projectileId)
+                    {
+                        continue;
+                    }
                     AgentState state = _StatesRead[agentIndex];
                     if (state.status != 1u || state.health <= 0.0 || ((state.flags & 1u) != 0u && command.canHitFlying == 0u))
                     {
@@ -879,18 +2057,25 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                         state.status = 3u;
                         EmitEvent(agentIndex, 1u, appliedDamage);
                     }
-                    else if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                    else
                     {
-                        uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
-                        uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
-                        state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
-                        state.burnTimer = max(state.burnTimer, command.burnDuration);
+                        EmitEvent(agentIndex, 5u, appliedDamage);
+                        if (command.burnDamagePerSecond > 0.0 && command.burnDuration > 0.0)
+                        {
+                            uint existingStacks = (uint)round(state.burnDamagePerSecond / max(command.burnDamagePerSecond, 0.0001));
+                            uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
+                            state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
+                            state.burnTimer = max(state.burnTimer, command.burnDuration);
+                        }
                     }
 
                     _StatesRead[agentIndex] = state;
+                    _AgentLastProjectileIds[agentIndex] = command.projectileId;
                     hitCount++;
+                    _ProjectileHitCounts[projectileSlot] = hitCount;
                     if (command.maxHits > 0u && hitCount >= command.maxHits)
                     {
+                        EmitEvent(command.projectileId, 6u, (float)hitCount);
                         commandComplete = true;
                         break;
                     }
@@ -926,10 +2111,49 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // Bit 0 is flying. Bit 1 is a transient renderer hint for a reserved
+    // melee attacker and is recomputed every simulation step.
+    state.flags &= 0xFFFFFFFDu;
     float simulationDelta = _DeltaTime;
+    state.stepStartPosition = state.position;
+    float2 knockbackVelocity = state.knockbackVelocity;
+    bool wasShockwaveRiding = state.shockwaveOutwardTimer > 0.0;
+    state.shockwaveOutwardTimer = max(0.0, state.shockwaveOutwardTimer);
+    state.shockwaveExposure = max(0.0, state.shockwaveExposure - simulationDelta * 0.85);
+    if (state.shockwaveOutwardTimer > 0.0)
+    {
+        state.shockwaveOutwardTimer = max(0.0, state.shockwaveOutwardTimer - simulationDelta);
+    }
+    bool shockwaveRiding = state.shockwaveOutwardTimer > 0.0;
+    bool shockwaveReleased =
+        wasShockwaveRiding && !shockwaveRiding;
+    if (!shockwaveRiding)
+    {
+        state.shockwaveReturnTimer = max(
+            0.0,
+            state.shockwaveReturnTimer - simulationDelta);
+    }
+    bool hasDedicatedKnockback = dot(knockbackVelocity, knockbackVelocity) > 0.000001;
     bool hasPersistentKnockback = state.padding > 0.0;
     state.padding = max(0.0, state.padding - simulationDelta);
-    state.padding2 = max(0.0, state.padding2 - simulationDelta * 0.5);
+    // padding2 stores the dynamic blocker slot (+1) whose queue this body is
+    // part of. Validate it every tick so removing that blocker releases the
+    // remembered queue in this same dispatch.
+    bool releasedBlockerThisTick = false;
+    if (state.padding2 < -0.5)
+        state.padding2 = 0.0;
+    if (state.padding2 >= 1.0)
+    {
+        uint rememberedBlocker = (uint)round(state.padding2) - 1u;
+        if (rememberedBlocker >= _DynamicTargetCapacity ||
+            _DynamicTargetsRead[rememberedBlocker].status != 1u)
+        {
+            // -1 survives through contact finalization as a one-tick visual
+            // release marker, then the next simulation step clears it above.
+            state.padding2 = -1.0;
+            releasedBlockerThisTick = true;
+        }
+    }
 
     if (state.slowTimer > 0.0)
     {
@@ -950,7 +2174,6 @@ void Simulate(uint3 id : SV_DispatchThreadID)
             state.health = 0.0;
             state.status = 3;
             EmitEvent(index, 1u, state.burnDamagePerSecond * simulationDelta);
-            _StatesRead[index] = state;
             _StatesWrite[index] = state;
             return;
         }
@@ -970,16 +2193,55 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     uint centerIndex = CellIndex(centerCell);
-    if (_FlowData[centerIndex].y <= 0.001)
+    float centerIntegration = _FlowData[centerIndex].y;
+    if (_ExitEnabled != 0u && centerIntegration >= 0.0 && centerIntegration <= 0.001)
     {
         state.status = 2;
-        _StatesRead[index] = state;
+        EmitEvent(index, 2u, 0.0);
         _StatesWrite[index] = state;
         return;
     }
 
-    float2 flow = FindNavigableFlow(state.position, SampleFlow(state.position));
+    float2 flow;
+    float centerDistance = 1e20;
+    if (_CenterSeekingArena != 0u)
+    {
+        float2 centerOffset = _ArenaCenter - state.position;
+        centerDistance = length(centerOffset);
+        flow = centerDistance > 0.0001 ? centerOffset / centerDistance : 0.0;
+    }
+    else if (_RandomArenaMovement != 0u)
+    {
+        sincos(control.w, flow.y, flow.x);
+    }
+    else
+    {
+        flow = FindNavigableFlow(state.position, SampleFlow(state.position));
+    }
+    if (_CenterSeekingArena != 0u &&
+        centerDistance < _CollisionDiameter * 4.0)
+    {
+        state.shockwaveReturnTimer = 0.0;
+    }
+    float2 shockwaveOffset = state.position - state.shockwaveCenter;
+    float shockwaveDistanceSq = dot(shockwaveOffset, shockwaveOffset);
+    float2 shockwaveDirection = shockwaveDistanceSq > 0.000001
+        ? shockwaveOffset * rsqrt(shockwaveDistanceSq)
+        : -flow;
+    float shockwaveRideNoise = frac(sin((float)(index + 1u) * 12.9898 +
+        dot(state.shockwaveCenter, float2(78.233, 37.719))) * 43758.5453);
+    float shockwaveRideSpeed = _ShockwavePropagationSpeed * lerp(0.88, 1.0, shockwaveRideNoise);
     float2 lateralAxis = float2(-flow.y, flow.x);
+    float flowLookAheadDistance = max(0.75, _CollisionDiameter * 3.0);
+    float2 flowLookAheadPosition = state.position + flow * flowLookAheadDistance;
+    float2 lookAheadFlow = _CenterSeekingArena != 0u
+        ? flow
+        : FindNavigableFlow(flowLookAheadPosition, SampleFlow(flowLookAheadPosition));
+    if (dot(lookAheadFlow, lookAheadFlow) < 0.0001)
+    {
+        lookAheadFlow = flow;
+    }
+    bool straightForOvertake = dot(flow, lookAheadFlow) > 0.94;
     int blockingTarget = -1;
     float blockingDistanceSq = 1e30;
     float2 blockingTargetPosition = 0.0;
@@ -1022,7 +2284,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                     blockingTarget = (int)targetIndex;
                     blockingDistanceSq = targetDistanceSq;
                     blockingTargetPosition = closestTargetPoint;
-                    blockingContactRadius = max(0.1, targetDepth + state.scale * 1.045);
+                    blockingContactRadius = max(0.1, targetDepth + state.scale * _BodyRadiusPerScale * 1.045);
                 }
             }
         }
@@ -1030,7 +2292,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     if (blockingTarget >= 0)
     {
-        state.padding2 = 1.0;
+        state.padding2 = (float)(blockingTarget + 1);
         uint targetIndex = (uint)blockingTarget;
         DynamicTargetState target = _DynamicTargetsRead[targetIndex];
         uint massUnits = max(1u, (uint)round(max(0.1, state.mass) * 1024.0));
@@ -1052,6 +2314,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
         if (reserved)
         {
+            state.flags |= 2u;
             state.attackTimer -= simulationDelta;
             if (state.attackTimer <= 0.0 && state.attackDamage > 0.0)
             {
@@ -1070,7 +2333,6 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                     {
                         state.status = 3u;
                         EmitEvent(index, 1u, thornDamage);
-                        _StatesRead[index] = state;
                         _StatesWrite[index] = state;
                         return;
                     }
@@ -1088,14 +2350,19 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float2 separation = 0.0;
+    float2 overtakePressure = 0.0;
     float2 contactCorrection = 0.0;
-    float2 contactImpulse = 0.0;
+    float2 continuousDriveCorrection = 0.0;
+    float2 continuousKnockbackCorrection = 0.0;
+    uint continuousConstraintCount = 0u;
     float propagatedKnockback = 0.0;
     float congestion = 0.0;
     float forwardSpeedLimit = 1e30;
+    float shockwaveSpeedLimit = max(0.0, shockwaveRideSpeed);
+    bool shockwaveBlockedForward = false;
     float rawOccupancy = CellOccupancy(centerCell);
     float overflowRatio = saturate((rawOccupancy - (float)_CellCapacity) / max(1.0, (float)_CellCapacity));
-    float maximumCollisionDiameter = _CollisionDiameter * 1.25;
+    float maximumCollisionDiameter = MaximumPairDiameter() * 1.08;
     float searchRadiusSq = maximumCollisionDiameter * maximumCollisionDiameter;
     int cellRadius = max(1, (int)ceil(maximumCollisionDiameter / _CellSize));
     [loop]
@@ -1141,32 +2408,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 }
 
 
-                float pairDiameter = clamp(
-                    // Match the 1.04 render packing scale. A contact that is
-                    // physically valid must also look separated on screen.
-                    (state.scale + otherScale) * 1.045,
-                    _CollisionDiameter * 0.78,
-                    maximumCollisionDiameter);
-                float forwardDistance = dot(otherPosition - state.position, flow);
-                float lateralDistance = abs(dot(otherPosition - state.position, lateralAxis));
-                if (forwardDistance > 0.0 && lateralDistance < pairDiameter)
-                {
-                    float contactForwardDistance = sqrt(max(0.0,
-                        pairDiameter * pairDiameter - lateralDistance * lateralDistance));
-                    float freeDistance = max(0.0, forwardDistance - contactForwardDistance);
-                    float otherForwardSpeed = max(0.0, dot(otherState.velocity, flow));
-                    if (otherState.padding2 > 0.05)
-                    {
-                        state.padding2 = max(state.padding2, otherState.padding2 * 0.96);
-                        forwardSpeedLimit = min(forwardSpeedLimit,
-                            otherForwardSpeed + freeDistance / max(simulationDelta, 0.0001));
-                    }
-                }
-                if (distanceSq >= pairDiameter * pairDiameter)
-                {
-                    continue;
-                }
-
+                float pairDiameter = MovementPairDiameter(state.scale, otherScale);
                 float distance = sqrt(max(distanceSq, 0.000001));
                 float2 direction;
                 if (distanceSq <= 0.000001)
@@ -1181,33 +2423,205 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 {
                     direction = delta / distance;
                 }
-
+                if (shockwaveRiding)
+                {
+                    float2 shockwaveToOther = otherPosition - state.position;
+                    float shockwaveForwardDistance = dot(shockwaveToOther, shockwaveDirection);
+                    float shockwaveLateralDistance = abs(dot(
+                        shockwaveToOther,
+                        float2(-shockwaveDirection.y, shockwaveDirection.x)));
+                    if (shockwaveForwardDistance > 0.0 && shockwaveLateralDistance < pairDiameter)
+                    {
+                        float contactForwardDistance = sqrt(max(0.0,
+                            pairDiameter * pairDiameter -
+                            shockwaveLateralDistance * shockwaveLateralDistance));
+                        float freeDistance = max(0.0,
+                            shockwaveForwardDistance - contactForwardDistance);
+                        // A body that has not met the wave yet is pushed through
+                        // normal contact; it must not hold the rider at zero speed.
+                        // Only an existing rider constrains the wave-aligned
+                        // speed. Reflected bodies are handled as direct blockers.
+                        float otherSignedOutwardSpeed = dot(
+                            otherState.velocity + otherState.knockbackVelocity,
+                            shockwaveDirection);
+                        if (otherState.shockwaveOutwardTimer > 0.0)
+                        {
+                            float otherOutwardSpeed = max(0.0, otherSignedOutwardSpeed);
+                            shockwaveSpeedLimit = min(
+                                shockwaveSpeedLimit,
+                                otherOutwardSpeed + freeDistance / max(simulationDelta, 0.0001));
+                        }
+                        bool otherAlreadyStoppedOrReflected =
+                            otherState.shockwaveExposure > 0.05 &&
+                            otherState.shockwaveOutwardTimer <= 0.0 &&
+                            otherSignedOutwardSpeed < shockwaveRideSpeed * 0.18;
+                        if (freeDistance < pairDiameter * 0.16 &&
+                            otherAlreadyStoppedOrReflected)
+                        {
+                            shockwaveBlockedForward = true;
+                        }
+                    }
+                }
+                float forwardDistance = dot(otherPosition - state.position, flow);
+                float lateralDistance = abs(dot(otherPosition - state.position, lateralAxis));
+                float2 otherContactFlow = SampleFlow(otherPosition);
+                if (dot(otherContactFlow, otherContactFlow) < 0.0001)
+                {
+                    otherContactFlow = flow;
+                }
+                float selfDriveSpeed = control.x * max(0.05, state.slowMultiplier);
+                float otherDriveSpeed = _Controls[otherIndex].x * _MovementSpeedMultiplier *
+                    max(0.05, otherState.slowMultiplier);
                 float selfMass = max(0.1, state.mass);
                 float otherMass = max(0.1, otherState.mass);
+                float selfShare = otherMass / (selfMass + otherMass);
+                float2 selfContactVelocity = state.velocity + knockbackVelocity;
+                float2 otherContactVelocity = otherState.velocity + otherState.knockbackVelocity;
+                float closingSpeed = dot(otherContactVelocity - selfContactVelocity, direction);
+                float contactGap = max(0.0, distance - pairDiameter);
+                float allowedClosingSpeed = contactGap / max(simulationDelta, 0.0001) * 0.82;
+                float blockedClosingSpeed = max(0.0, closingSpeed - allowedClosingSpeed);
+                bool externalContact = dot(knockbackVelocity, knockbackVelocity) > 0.000001 ||
+                    dot(otherState.knockbackVelocity, otherState.knockbackVelocity) > 0.000001 ||
+                    state.padding > 0.0 || otherState.padding > 0.0;
+                if (blockedClosingSpeed > 0.0)
+                {
+                    float2 pairVelocityCorrection = direction * blockedClosingSpeed * selfShare;
+                    if (externalContact)
+                    {
+                        continuousKnockbackCorrection += pairVelocityCorrection;
+                    }
+                    else
+                    {
+                        continuousDriveCorrection += pairVelocityCorrection;
+                    }
+                    continuousConstraintCount++;
+                }
+                float flowAgreement = dot(flow, otherContactFlow);
+                bool closeForOvertake = straightForOvertake &&
+                    abs(forwardDistance) < pairDiameter * 1.5 &&
+                    lateralDistance < pairDiameter * 0.82 && flowAgreement > 0.9;
+                if (closeForOvertake && forwardDistance > 0.0 && selfDriveSpeed > otherDriveSpeed + 0.12)
+                {
+                    float passSide = frac((index + 1u) * 0.61803398875) < 0.5 ? -1.0 : 1.0;
+                    float speedAdvantage = selfDriveSpeed - otherDriveSpeed;
+                    overtakePressure += lateralAxis * passSide * speedAdvantage * 0.46;
+                }
+                else if (closeForOvertake && forwardDistance < 0.0 && otherDriveSpeed > selfDriveSpeed + 0.12)
+                {
+                    float passSide = frac((otherIndex + 1u) * 0.61803398875) < 0.5 ? -1.0 : 1.0;
+                    float speedAdvantage = otherDriveSpeed - selfDriveSpeed;
+                    float pusherMassResponse = 2.0 * otherMass / (selfMass + otherMass);
+                    overtakePressure -= lateralAxis * passSide * speedAdvantage * 0.58 * pusherMassResponse;
+                }
+                if (_ReferenceCrowd == 0u && forwardDistance > 0.0 && lateralDistance < pairDiameter && flowAgreement > 0.96)
+                {
+                    float contactForwardDistance = sqrt(max(0.0,
+                        pairDiameter * pairDiameter - lateralDistance * lateralDistance));
+                    float freeDistance = max(0.0, forwardDistance - contactForwardDistance);
+                    float otherForwardSpeed = max(0.0, dot(
+                        otherState.velocity + otherState.knockbackVelocity, flow));
+                    bool otherLinkedToActiveBlocker = false;
+                    bool otherReleasedBlockerThisTick = false;
+                    if (otherState.padding2 >= 1.0)
+                    {
+                        uint otherBlocker = (uint)round(otherState.padding2) - 1u;
+                        otherLinkedToActiveBlocker = otherBlocker < _DynamicTargetCapacity &&
+                            _DynamicTargetsRead[otherBlocker].status == 1u;
+                        otherReleasedBlockerThisTick = !otherLinkedToActiveBlocker;
+                    }
+                    bool otherDirectlyAttacking = (otherState.flags & 2u) != 0u;
+                    if (otherLinkedToActiveBlocker)
+                        state.padding2 = otherState.padding2;
+
+                    // Propagate a free queue's ready speed through every row in
+                    // this dispatch. Matching the predicted speed of the body in
+                    // front lets the whole queue start immediately without any
+                    // follower consuming its physical gap. A blocker or reserved
+                    // attacker still propagates its actual (usually zero) speed.
+                    float otherReadySpeed = otherForwardSpeed;
+                    if ((otherLinkedToActiveBlocker || otherDirectlyAttacking) && !externalContact)
+                    {
+                        // A held body can retain drive velocity even when contact
+                        // projection cancels its travel. Propagating that intent
+                        // keeps the whole stopped queue pressing and shuffling.
+                        float otherResolvedForwardSpeed = max(0.0, dot(
+                            otherState.position - otherState.stepStartPosition, flow) /
+                            max(simulationDelta, 0.0001));
+                        otherReadySpeed = min(otherForwardSpeed, otherResolvedForwardSpeed);
+                    }
+                    if (!otherLinkedToActiveBlocker && !otherDirectlyAttacking)
+                    {
+                        // Predict the velocity update the leading body executes in
+                        // this same dispatch. Using only last tick's velocity makes
+                        // acceleration crawl backwards one row per frame and can
+                        // reduce a large free horde to an almost stationary mass.
+                        float otherAccelerationAlpha = saturate(_FlowAcceleration * simulationDelta);
+                        float otherPredictedSpeed = lerp(
+                            otherForwardSpeed,
+                            otherDriveSpeed,
+                            otherAccelerationAlpha);
+                        otherReadySpeed = max(otherForwardSpeed, otherPredictedSpeed);
+                    }
+                    if (otherReleasedBlockerThisTick)
+                        otherReadySpeed = max(otherReadySpeed, otherDriveSpeed * 0.16);
+                    forwardSpeedLimit = min(forwardSpeedLimit,
+                        otherReadySpeed + freeDistance / max(simulationDelta, 0.0001));
+                }
+                if (distanceSq >= pairDiameter * pairDiameter)
+                {
+                    continue;
+                }
+
                 float massResponse = 2.0 * otherMass / (selfMass + otherMass);
                 float penetration = 1.0 - distance / pairDiameter;
                 separation += direction * penetration * 1.25 * massResponse;
                 float contactDepth = pairDiameter - distance;
-                float2 pairCorrection = direction * contactDepth * 0.52 * massResponse;
+                float2 pairCorrection = direction * contactDepth * 0.62 * massResponse;
                 contactCorrection += pairCorrection;
-                float closingSpeed = dot(otherState.velocity - state.velocity, direction);
-                if (closingSpeed > 0.0 && (state.padding > 0.0 || otherState.padding > 0.0))
+                float desiredClosingSpeed = dot(
+                    otherContactFlow * otherDriveSpeed - flow * selfDriveSpeed,
+                    direction);
+                float momentumClosingSpeed = max(closingSpeed, desiredClosingSpeed);
+                bool forwardQueueContact = abs(dot(direction, flow)) > 0.6;
+                if (momentumClosingSpeed > 0.0 && (externalContact || forwardQueueContact))
                 {
-                    // Inelastic, mass-aware contact transfers a catapult impulse
-                    // through the packed horde instead of allowing the fast body to
-                    // tunnel through its neighbour between grid rebuilds.
-                    contactImpulse += direction * closingSpeed * massResponse * 0.72;
-                    propagatedKnockback = max(
-                        propagatedKnockback,
-                        max(state.padding, otherState.padding) * 0.86);
+                    // ResolveContacts performs the mass-conserving velocity
+                    // transfer. This pass only carries shockwave lifetime; another
+                    // impulse here multiplies energy through dense contact chains.
+                    if (externalContact)
+                    {
+                        propagatedKnockback = max(
+                            propagatedKnockback,
+                            max(state.padding, otherState.padding) * 0.97);
+                    }
                 }
                 congestion += dot(otherPosition - state.position, flow) > 0.0 ? penetration : 0.0;
             }
         }
     }
 
+    if (continuousConstraintCount > 0u && _PredictiveContacts == 0u)
+    {
+        float continuousRelaxation = rcp(max(1.0, sqrt((float)continuousConstraintCount)));
+        state.velocity += continuousDriveCorrection * continuousRelaxation;
+        knockbackVelocity += continuousKnockbackCorrection * continuousRelaxation;
+    }
+
     separation = clamp(separation, -1.25, 1.25);
-    separation = flow * dot(separation, flow) * 0.72 + lateralAxis * dot(separation, lateralAxis) * 1.28;
+    if (_StationaryHorde == 0u)
+    {
+        separation = flow * dot(separation, flow) * 0.72 + lateralAxis * dot(separation, lateralAxis) * 1.28;
+    }
+    float overtakeLength = length(overtakePressure);
+    if (overtakeLength > 1.4)
+    {
+        overtakePressure *= 1.4 / overtakeLength;
+    }
+    if (!straightForOvertake && !hasPersistentKnockback && propagatedKnockback <= 0.0)
+    {
+        overtakePressure = 0.0;
+    }
     float densityLeft = SmoothedSideOccupancy(centerCell, int2(-1, 0), int2(0, 1));
     float densityRight = SmoothedSideOccupancy(centerCell, int2(1, 0), int2(0, 1));
     float densityDown = SmoothedSideOccupancy(centerCell, int2(0, -1), int2(1, 0));
@@ -1217,39 +2631,163 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         densityUp - densityDown);
     densityGradient /= max(1.0, (float)_CellCapacity * 3.0);
     float2 pressureAwayFromDensity = -densityGradient;
-    float2 widthPressure = lateralAxis * dot(pressureAwayFromDensity, lateralAxis) * 1.35 +
-        flow * dot(pressureAwayFromDensity, flow) * 0.22;
+    // The center arena needs collision separation, but broad density pressure
+    // keeps an already valid crowd artificially inflated and visibly detached.
+    float2 widthPressure = _CenterSeekingArena != 0u
+        ? pressureAwayFromDensity * 0.18
+        : (_StationaryHorde != 0u
+            ? pressureAwayFromDensity * 1.35
+            : lateralAxis * dot(pressureAwayFromDensity, lateralAxis) * 1.35 +
+                flow * dot(pressureAwayFromDensity, flow) * 0.22);
     float crowdPressureWeight = saturate(rawOccupancy / 8.0);
-    float overflowAngle = frac(index * 0.61803398875 + _FrameIndex * 0.0027) * 6.2831853;
+    float overflowAngle = frac(index * 0.61803398875 +
+        (_ReferenceCrowd != 0u ? 0.0 : _FrameIndex * 0.0027)) * 6.2831853;
     float2 overflowScatter;
     sincos(overflowAngle, overflowScatter.y, overflowScatter.x);
     float2 overflowPressure = (pressureAwayFromDensity * 1.8 + overflowScatter * 0.22) * overflowRatio;
     float2 crowdPressure = widthPressure * crowdPressureWeight + overflowPressure;
     float combatSpeed = blockingTarget >= 0 ? 0.04 : 1.0;
     float congestionStop = saturate(congestion / 2.0);
-    float desiredSpeed = control.x * combatSpeed * max(0.05, state.slowMultiplier) * lerp(1.0, 0.64, congestionStop);
+    bool acceleratedShockwaveReturn =
+        _CenterSeekingArena != 0u &&
+        !shockwaveRiding &&
+        state.shockwaveReturnTimer > 0.0;
+    float congestionSpeedFactor = acceleratedShockwaveReturn
+        ? 1.0
+        : lerp(1.0, 0.64, congestionStop);
+    float centerPackingBrake = _CenterSeekingArena != 0u && !acceleratedShockwaveReturn
+        ? lerp(1.0, 0.2, saturate((rawOccupancy - 2.0) / 4.0))
+        : 1.0;
+    float centerArrivalBrake = _CenterSeekingArena != 0u
+        ? saturate(centerDistance / max(0.1, _CollisionDiameter * 2.5))
+        : 1.0;
+    float movementControl = shockwaveRiding ? 0.0 : control.x;
+    float desiredSpeed = movementControl * _MovementSpeedMultiplier * combatSpeed *
+        max(0.05, state.slowMultiplier) *
+        congestionSpeedFactor * centerPackingBrake * centerArrivalBrake;
     float2 desiredVelocity = flow * desiredSpeed;
+    if (_ReferenceCrowd == 0u && _AgentCount >= 2500u && _StationaryHorde == 0u && blockingTarget < 0)
+    {
+        // A persistent, individually phased lateral cadence breaks the perfect
+        // marching lattice without adding CPU state or letting bodies leave the
+        // road. Contact projection remains the authority on final placement.
+        float cadence = 0.72 + frac((index + 1u) * 0.38196601125) * 0.36;
+        float phase = state.presentationTime * cadence +
+            frac((index + 1u) * 0.61803398875) * 6.2831853;
+        float sway = sin(phase) * min(0.14, desiredSpeed * 0.035);
+        desiredVelocity += lateralAxis * sway;
+    }
     float2 flowForce = (desiredVelocity - state.velocity) * _FlowAcceleration;
-    float2 collisionForce = (separation + crowdPressure) * _CollisionAcceleration;
+    // Animated crowds retain only the sideways part of the soft separation
+    // spring. It opens room between equal-speed neighbours without braking the
+    // convoy or making a packed queue start one row at a time.
+    bool heldByBarrier = state.padding2 >= 1.0 || blockingTarget >= 0;
+    float2 animatedSeparation = heldByBarrier ? 0.0 :
+        lateralAxis * dot(separation, lateralAxis) * 0.55;
+    if (_AnimatedGoblin != 0u && heldByBarrier && !hasPersistentKnockback && !hasDedicatedKnockback)
+    {
+        crowdPressure = 0.0;
+        overtakePressure = 0.0;
+    }
+    float2 collisionForce = ((_AnimatedGoblin != 0u ? animatedSeparation : separation) + crowdPressure + overtakePressure) * _CollisionAcceleration;
+    if (_ReferenceCrowd != 0u && !hasPersistentKnockback && !hasDedicatedKnockback && propagatedKnockback <= 0.0)
+    {
+        // A flowing crowd opens sideways around pressure. It brakes behind a
+        // body in front through the forward-speed limit instead of behaving as
+        // a spring that alternates between forward and backward displacement.
+        float2 lateralPressure = lateralAxis * dot(
+            separation + crowdPressure + overtakePressure,
+            lateralAxis);
+        collisionForce = lateralPressure * _CollisionAcceleration * _ReferenceLateralContactResponse;
+    }
+    if (_PredictiveContacts != 0u) collisionForce = 0.0;
     float4 flowCell = _FlowVectors[centerIndex];
-    float clearance = _FlowData[centerIndex].x;
-    float wallPenetration = 1.0 - saturate(clearance / _WallInfluence);
-    float2 wallNormal = flowCell.zw;
-    float backwardsWallComponent = min(0.0, dot(wallNormal, flow));
-    wallNormal -= flow * backwardsWallComponent;
+    // Ordinary tactical units may use the full road. A reference horde needs a
+    // broad inward pressure field instead: allowing every body to touch the
+    // edge creates an unnaturally dense, glued boundary row.
+    float boundaryDistance = max(0.0, SampleBoundaryDistance(state.position));
+    float wallInfluence = _ReferenceCrowd != 0u
+        ? max(_WallInfluence, _CollisionDiameter * 1.75)
+        : min(_WallInfluence, max(0.12, _CollisionDiameter * 0.42));
+    float wallPenetration = 1.0 - saturate(boundaryDistance / wallInfluence);
+    float2 wallNormal = SampleBoundaryNormal(state.position);
+    if (dot(wallNormal, wallNormal) < 0.0001)
+    {
+        wallNormal = flowCell.zw;
+    }
+    if (_StationaryHorde == 0u)
+    {
+        float backwardsWallComponent = min(0.0, dot(wallNormal, flow));
+        wallNormal -= flow * backwardsWallComponent;
+    }
     float2 wallForce = wallNormal * wallPenetration * _WallAcceleration;
+    // Boundary clipping and body constraints already share one motion solve.
+    // A second wall spring adds lateral velocity to a released, valid queue
+    // and makes edge bodies consume the opening before the other rows do.
+    if (_PredictiveContacts != 0u) wallForce = 0.0;
     float2 impulse = _Impulses[index];
     _Impulses[index] = 0.0;
     if (propagatedKnockback > 0.0)
     {
         state.padding = max(state.padding, propagatedKnockback);
     }
-    state.velocity += (flowForce + collisionForce + wallForce) * simulationDelta + impulse + contactImpulse;
+    state.velocity += (flowForce + collisionForce + wallForce) * simulationDelta + impulse;
     state.velocity *= rcp(1.0 + _VelocityDamping * simulationDelta);
+
+    if (shockwaveReleased && _CenterSeekingArena != 0u)
+    {
+        // A body released at the boundary needs a decisive inward component;
+        // otherwise wall contacts can keep its zero velocity indefinitely.
+        float releaseSpeed = max(
+            desiredSpeed,
+            control.x * _MovementSpeedMultiplier * 0.72);
+        float currentInwardSpeed = dot(state.velocity, flow);
+        state.velocity += flow * max(0.0, releaseSpeed - currentInwardSpeed);
+        knockbackVelocity = 0.0;
+    }
+
+    if (shockwaveRiding)
+    {
+        bool blockedByWall =
+            boundaryDistance < max(0.1, _CollisionDiameter * 0.92) &&
+            dot(shockwaveDirection, wallNormal) < -0.22;
+        if (blockedByWall || shockwaveBlockedForward)
+        {
+            // A rider reflects as soon as neither the wall nor the already
+            // stopped crowd in front allows it to advance. Reflect its actual
+            // incoming motion so the response also propagates through a packed row.
+            float2 impactVelocity = state.velocity + knockbackVelocity;
+            float impactSpeed = length(impactVelocity);
+            float2 incomingDirection = impactSpeed > 0.0001
+                ? impactVelocity / impactSpeed
+                : shockwaveDirection;
+            float2 bounceDirection = -incomingDirection;
+            if (dot(bounceDirection, shockwaveDirection) > -0.2)
+            {
+                bounceDirection = -shockwaveDirection;
+            }
+            float bounceSpeed = max(
+                desiredSpeed,
+                max(impactSpeed, shockwaveRideSpeed) * 0.52);
+            state.shockwaveOutwardTimer = 0.0;
+            shockwaveRiding = false;
+            state.velocity = 0.0;
+            knockbackVelocity = bounceDirection * bounceSpeed;
+            state.padding = max(state.padding, 0.32);
+        }
+        else
+        {
+            float targetOutwardSpeed = min(shockwaveRideSpeed, shockwaveSpeedLimit);
+            float currentOutwardSpeed = dot(knockbackVelocity, shockwaveDirection);
+            knockbackVelocity += shockwaveDirection * (targetOutwardSpeed - currentOutwardSpeed);
+            state.velocity -= shockwaveDirection * min(0.0, dot(state.velocity, shockwaveDirection));
+            state.padding = max(state.padding, 0.25);
+        }
+    }
     float maxSpeed = max(0.25, desiredSpeed * 1.12);
     float velocityLength = length(state.velocity);
-    bool hasExternalImpulse = hasPersistentKnockback || propagatedKnockback > 0.0 ||
-        dot(impulse, impulse) > 0.000001;
+    bool hasExternalImpulse = shockwaveRiding || hasDedicatedKnockback || hasPersistentKnockback ||
+        propagatedKnockback > 0.0 || dot(impulse, impulse) > 0.000001;
     if (hasExternalImpulse)
     {
         // Continuous collision needs the body to travel less than one diameter
@@ -1266,14 +2804,33 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     // Dense contact pressure must not turn a forward-moving horde into a
     // sideways avalanche. Preserve real impulses (knockback), but keep normal
     // crowd motion inside a broad cone around the local flow direction.
-    if (blockingTarget < 0 && !hasExternalImpulse)
+    if (_StationaryHorde == 0u && blockingTarget < 0 && !hasExternalImpulse)
     {
-        // A packed queue must be allowed to stop. Forcing every rear body to
-        // retain forward speed continually compresses it into the bodies at
-        // the barricade and defeats positional collision correction.
-        float minimumForwardVelocity = desiredSpeed * 0.55;
+        // Keep locomotion intent hot while contact projection decides whether
+        // the body can actually travel. An ordinary packed crowd can therefore
+        // start together instead of propagating acceleration one row per tick.
+        // The reference crowd may lose all forward momentum on a body or wall.
+        // Restoring a fixed 55% drive velocity here was an artificial boost and
+        // made every collision look like a spring. It now rebuilds speed solely
+        // through the same acceleration curve as a newly spawned unit.
+        float minimumForwardVelocity = (_AnimatedGoblin != 0u || _ReferenceCrowd != 0u)
+            ? 0.0
+            : desiredSpeed * 0.55;
         float forwardVelocity = max(dot(state.velocity, flow), minimumForwardVelocity);
-        if (forwardSpeedLimit < 1e20 && rawOccupancy < (float)_CellCapacity)
+        bool linkedToActiveBlocker = false;
+        if (state.padding2 >= 1.0)
+        {
+            uint queueBlocker = (uint)round(state.padding2) - 1u;
+            linkedToActiveBlocker = queueBlocker < _DynamicTargetCapacity &&
+                _DynamicTargetsRead[queueBlocker].status == 1u;
+        }
+        if (_AnimatedGoblin != 0u && releasedBlockerThisTick && !linkedToActiveBlocker)
+        {
+            // A modest always-ready drive starts every free row immediately;
+            // the same value is propagated above so it cannot consume the gap.
+            forwardVelocity = max(forwardVelocity, desiredSpeed * 0.16);
+        }
+        if (_PredictiveContacts == 0u && forwardSpeedLimit < 1e20 && rawOccupancy < (float)_CellCapacity)
         {
             // Continuous relative contact: following bodies may match the
             // speed ahead, but cannot consume more than the remaining gap.
@@ -1283,16 +2840,74 @@ void Simulate(uint3 id : SV_DispatchThreadID)
             dot(state.velocity, lateralAxis),
             -desiredSpeed * 0.38,
             desiredSpeed * 0.38);
-        state.velocity = flow * forwardVelocity + lateralAxis * lateralVelocity;
+        float2 flowConstrainedVelocity = flow * forwardVelocity + lateralAxis * lateralVelocity;
+        state.velocity = lerp(state.velocity, flowConstrainedVelocity, _FlowAlignment);
+        if (_PredictiveContacts == 0u && _AnimatedGoblin != 0u && forwardSpeedLimit < 1e20)
+            state.velocity -= flow * max(0.0, dot(state.velocity, flow) - forwardSpeedLimit);
     }
 
     float2 oldPosition = state.position;
-    float2 desiredPosition = oldPosition + state.velocity * simulationDelta;
+    float2 movementKnockbackVelocity = knockbackVelocity;
+    float movementKnockbackSpeed = length(movementKnockbackVelocity);
+    float continuousContactSpeed = shockwaveRiding
+        ? shockwaveRideSpeed
+        : _CollisionDiameter * 0.22 / max(simulationDelta, 0.0001);
+    if (movementKnockbackSpeed > continuousContactSpeed)
+    {
+        movementKnockbackVelocity *= continuousContactSpeed / movementKnockbackSpeed;
+    }
+    float2 movementVelocity = state.velocity + movementKnockbackVelocity;
+    if (_PredictiveContacts != 0u && releasedBlockerThisTick && !hasExternalImpulse && blockingTarget < 0)
+    {
+        // A free queue translates with a shared ready drive on its first tick.
+        // Neither accumulated lateral contact motion nor local congestion may
+        // turn that translation into competing separation corrections.
+        state.velocity = flow * control.x * _MovementSpeedMultiplier * max(0.05, state.slowMultiplier) * 0.16;
+        movementVelocity = state.velocity;
+    }
+    if (_PredictiveContacts != 0u)
+    {
+        float maxTravel = _MaximumMotionDistance;
+        float travel = length(movementVelocity) * simulationDelta;
+        if (travel > maxTravel) movementVelocity *= maxTravel / travel;
+    }
+    float2 desiredPosition = oldPosition + movementVelocity * simulationDelta;
     state.position = ConstrainMove(oldPosition, desiredPosition);
     if (dot(state.position - desiredPosition, state.position - desiredPosition) > 0.000001)
     {
-        state.velocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
+        float2 actualMovementVelocity = (state.position - oldPosition) / max(simulationDelta, 0.0001);
+        if (_ReferenceCrowd != 0u && !hasExternalImpulse)
+        {
+            // Sliding along a wall keeps tangential momentum. The component that
+            // attempted to enter the wall is removed, exactly like an inelastic
+            // crowd impact; the ordinary drive then rebuilds it gradually.
+            float2 impactNormal = SampleBoundaryNormal(state.position);
+            if (dot(impactNormal, impactNormal) > 0.000001)
+            {
+                float intoWallSpeed = min(0.0, dot(state.velocity, impactNormal));
+                state.velocity -= impactNormal * intoWallSpeed;
+            }
+            else
+            {
+                state.velocity = actualMovementVelocity;
+            }
+        }
+        float knockbackSpeed = length(knockbackVelocity);
+        if (knockbackSpeed > 0.0001)
+        {
+            float2 knockbackDirection = knockbackVelocity / knockbackSpeed;
+            float allowedKnockbackSpeed = max(0.0, dot(actualMovementVelocity - state.velocity, knockbackDirection));
+            knockbackVelocity = knockbackDirection * min(knockbackSpeed, allowedKnockbackSpeed);
+        }
     }
+    float knockbackDrag = lerp(0.8, 0.18, saturate(state.padding / 2.5));
+    if (_ReferenceCrowd != 0u) knockbackDrag = _ReferenceExternalForceRecovery;
+    knockbackVelocity *= exp(-knockbackDrag * simulationDelta);
+    if (dot(knockbackVelocity, knockbackVelocity) < 0.000001)
+    {
+        knockbackVelocity = 0.0;
+    }
+    state.knockbackVelocity = knockbackVelocity;
 
     // Keep both signs of the flow-axis correction. Backward correction is how
     // contact pressure propagates through a stopped queue instead of allowing
@@ -1300,21 +2915,21 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     // At hard cell-capacity overflow the neighbour set is incomplete, so a
     // backward component would introduce a biased whole-pile drift. The
     // emergency pressure path keeps only forward/lateral correction there.
-    if (!hasExternalImpulse && rawOccupancy >= (float)_CellCapacity)
+    if (_StationaryHorde == 0u && !hasExternalImpulse && rawOccupancy >= (float)_CellCapacity)
     {
         contactCorrection = lateralAxis * dot(contactCorrection, lateralAxis) +
             flow * max(0.0, dot(contactCorrection, flow));
     }
     float correctionLength = length(contactCorrection);
-    float maximumCorrection = _CollisionDiameter * (hasExternalImpulse ? 0.22 : 0.32);
+    float maximumCorrection = _CollisionDiameter * (hasExternalImpulse ? 0.32 : 0.4);
     if (correctionLength > maximumCorrection)
     {
         contactCorrection *= maximumCorrection / correctionLength;
     }
-    if (correctionLength > 0.00001)
-    {
+    // Animated goblins and the circular arena use only ResolveContacts.
+    // Retain the older pre-projection for the separate sphere prototype.
+    if (_AnimatedGoblin == 0u && _ReferenceCrowd == 0u && correctionLength > 0.00001 && _CenterSeekingArena == 0u)
         state.position = ConstrainMove(state.position, state.position + contactCorrection);
-    }
 
     if (blockingTarget >= 0 && blockingContactRadius > 0.0)
     {
@@ -1337,17 +2952,26 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         }
     }
 
-    state.tint = state.slowTimer > 0.0 && state.slowMultiplier < 0.995 ? 1.0 : control.z;
+    // Drive the run cycle from actual forward travel, not global time. Limit the
+    // contribution to intentional movement so knockback/contact corrections do
+    // not make the goblin's legs spin or jump to another phase.
+    // Locomotion phase is finalized after ResolveContacts.
+
+    state.tint = state.slowTimer > 0.0 && state.slowMultiplier < 0.995 ? 4.0 : control.z;
     int2 finalCell = WorldToCell(state.position);
-    if (IsInside(finalCell) && _FlowData[CellIndex(finalCell)].y <= 0.001)
+    float finalIntegration = -1.0;
+    if (IsInside(finalCell))
+    {
+        finalIntegration = _FlowData[CellIndex(finalCell)].y;
+    }
+    if (_PredictiveContacts == 0u && _ExitEnabled != 0u && finalIntegration >= 0.0 && finalIntegration <= 0.001)
     {
         state.status = 2;
         EmitEvent(index, 2u, 0.0);
-        _StatesRead[index] = state;
     }
-    else if (IsInside(finalCell))
+    else if (finalIntegration >= 0.0)
     {
-        state.progress = -_FlowData[CellIndex(finalCell)].y;
+        state.progress = -finalIntegration;
     }
 
     _StatesWrite[index] = state;
@@ -1371,7 +2995,12 @@ void QueryTargets(uint3 id : SV_DispatchThreadID)
     best.velocity = 0.0;
     best.index = -1;
     best.score = -1e30;
+    best.secondPosition = 0.0;
+    best.secondVelocity = 0.0;
+    best.secondIndex = -1;
+    best.secondScore = -1e30;
     float bestDistanceSq = 1e30;
+    float secondDistanceSq = 1e30;
     [loop]
     for (int oy = -cellRadius; oy <= cellRadius; oy++)
     {
@@ -1391,7 +3020,10 @@ void QueryTargets(uint3 id : SV_DispatchThreadID)
             {
                 uint agentIndex = _CellAgentsRead[cellIndex * _CellCapacity + slot];
                 AgentState state = _StatesInput[agentIndex];
-                if (state.status != 1 || state.health <= 0.0 || (query.canHitFlying == 0 && (state.flags & 1u) != 0))
+                float reservedDamage = max(0.0, _Controls[agentIndex].w);
+                if (state.status != 1 || state.health - reservedDamage <= 0.001 ||
+                    (int)agentIndex == query.excludedIndex ||
+                    (query.canHitFlying == 0 && (state.flags & 1u) != 0))
                 {
                     continue;
                 }
@@ -1406,14 +3038,28 @@ void QueryTargets(uint3 id : SV_DispatchThreadID)
                 float score = -distanceSq;
                 if (query.mode == 1u) score = state.progress;
                 else if (query.mode == 2u) score = -state.progress;
-                else if (query.mode == 3u) score = state.health;
+                else if (query.mode == 3u) score = state.health - reservedDamage;
                 if (best.index < 0 || score > best.score || (abs(score - best.score) < 0.0001 && distanceSq < bestDistanceSq))
                 {
+                    best.secondPosition = best.position;
+                    best.secondVelocity = best.velocity;
+                    best.secondIndex = best.index;
+                    best.secondScore = best.score;
+                    secondDistanceSq = bestDistanceSq;
                     best.position = state.position;
                     best.velocity = state.velocity;
                     best.index = (int)agentIndex;
                     best.score = score;
                     bestDistanceSq = distanceSq;
+                }
+                else if (best.secondIndex < 0 || score > best.secondScore ||
+                    (abs(score - best.secondScore) < 0.0001 && distanceSq < secondDistanceSq))
+                {
+                    best.secondPosition = state.position;
+                    best.secondVelocity = state.velocity;
+                    best.secondIndex = (int)agentIndex;
+                    best.secondScore = score;
+                    secondDistanceSq = distanceSq;
                 }
             }
         }
@@ -1427,6 +3073,8 @@ void ClearVisibility(uint3 id : SV_DispatchThreadID)
 {
     _IndirectArgs.Store(4, 0u);
     _LodIndirectArgs.Store(4, 0u);
+    _VariantIndirectArgs.Store(4, 0u);
+    _VariantLodIndirectArgs.Store(4, 0u);
 }
 
 [numthreads(64, 1, 1)]
@@ -1457,16 +3105,61 @@ void CullVisible(uint3 id : SV_DispatchThreadID)
     if (visible)
     {
         uint visibleIndex;
-        float cameraDistance = distance(state.position, _LodCameraPosition);
-        if (_CullingEnabled != 0 && cameraDistance > 32.0)
+        if (_GoblinVariantCulling >= 4u)
         {
-            _LodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
-            _LodVisibleIndices[visibleIndex] = index;
+            uint goblinVariant = index & 3u;
+            if (goblinVariant == 0u)
+            {
+                _IndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            }
+            else if (goblinVariant == 1u)
+            {
+                _LodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            }
+            else if (goblinVariant == 2u)
+            {
+                _VariantIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            }
+            else
+            {
+                _VariantLodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+            }
+            _VisibleIndices[_VisibleListCapacity * goblinVariant + visibleIndex] = index;
+            InterlockedAdd(_Diagnostics[4], 1u);
+            return;
+        }
+
+        bool secondGoblinModel = _GoblinVariantCulling != 0u && (index & 1u) != 0u;
+        float cameraDistance = distance(state.position, _LodCameraPosition);
+        float viewingDistance = sqrt(cameraDistance * cameraDistance + _LodProjection.x * _LodProjection.x);
+        float projectedHeight = 2.4 * state.scale * _LodProjection.y /
+            (_LodProjection.z > 0.5 ? 1.0 : max(0.1, viewingDistance));
+        bool useLod = _AnimatedGoblin != 0u ? projectedHeight < _LodProjection.w : cameraDistance > 32.0;
+        if (_CullingEnabled != 0 && useLod)
+        {
+            if (secondGoblinModel)
+            {
+                _VariantLodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _VisibleIndices[_VisibleListCapacity * 3u + visibleIndex] = index;
+            }
+            else
+            {
+                _LodIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _VisibleIndices[_VisibleListCapacity + visibleIndex] = index;
+            }
         }
         else
         {
-            _IndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
-            _VisibleIndices[visibleIndex] = index;
+            if (secondGoblinModel)
+            {
+                _VariantIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _VisibleIndices[_VisibleListCapacity * 2u + visibleIndex] = index;
+            }
+            else
+            {
+                _IndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _VisibleIndices[visibleIndex] = index;
+            }
         }
         InterlockedAdd(_Diagnostics[4], 1u);
     }

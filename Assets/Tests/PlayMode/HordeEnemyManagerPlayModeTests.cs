@@ -46,7 +46,7 @@ namespace TowerDefense.Tests
                 new Vector3(36f, 0f, -17f), new Vector3(42f, 0f, -11f),
                 new Vector3(42f, 0f, 10f), new Vector3(56f, 0f, 10f)
             };
-            var widths = new[] { 6f, 6f, 6f, 5f, 3f, 3f, 5f, 10f, 10f, 9f, 7f, 6f };
+            var widths = new[] { 6f, 6f, 6f, 5f, 2.5f, 2.5f, 5f, 10f, 10f, 9f, 7f, 6f };
             var route = CreateRoute(points);
             route.SetWaypoints(points, widths);
             var enemy = CreateEnemy(speed: 4.8f, health: 10f);
@@ -113,6 +113,153 @@ namespace TowerDefense.Tests
             Assert.That(levelTwo, Is.Not.Null);
             Assert.That(levelTwo.useDataHordePrototype, Is.True,
                 "Level 2 must not fall back to the legacy CPU path-distance enemy loop.");
+            Assert.That(levelTwo.preventLifeLoss, Is.True,
+                "Level 2 stress testing must continue even when enemies reach the finish.");
+            Assert.That(levelTwo.wave.enemyScaleMultiplier, Is.EqualTo(0.7f).Within(0.001f),
+                "Level 2 enemy bodies and models must be thirty percent smaller than their original size.");
+            Assert.That(levelTwo.wave.totalEnemyCount, Is.EqualTo(10000));
+            Assert.That(levelTwo.wave.enemyInertiaMultiplier, Is.EqualTo(1.35f).Within(0.001f));
+            Assert.That(levelTwo.wave.enemyMassMultiplier, Is.EqualTo(1.3f).Within(0.001f));
+            Assert.That(levelTwo.wave.collisionPressureMultiplier, Is.EqualTo(1.2f).Within(0.001f));
+            Assert.That(levelTwo.secondaryPathWaypoints, Has.Length.EqualTo(levelTwo.pathWaypoints.Length));
+            Assert.That(levelTwo.tertiaryPathWaypoints, Has.Length.EqualTo(levelTwo.pathWaypoints.Length));
+            Assert.That(levelTwo.pathWaypointWidths[0], Is.EqualTo(30f));
+            Assert.That(levelTwo.pathWaypointWidths[^1], Is.EqualTo(3f));
+            Assert.That(levelTwo.secondaryPathWaypointWidths, Is.EqualTo(levelTwo.pathWaypointWidths));
+            Assert.That(levelTwo.tertiaryPathWaypointWidths, Is.EqualTo(levelTwo.pathWaypointWidths));
+        }
+
+        [Test]
+        public void DefaultEnemySpeedVariation_IsStableAndSubtle()
+        {
+            var firstPass = new float[64];
+            var minimum = float.PositiveInfinity;
+            var maximum = float.NegativeInfinity;
+            for (var i = 0; i < firstPass.Length; i++)
+            {
+                var factor = HordeEnemyManager.GetPersonalSpeedFactor(i);
+                firstPass[i] = factor;
+                minimum = Mathf.Min(minimum, factor);
+                maximum = Mathf.Max(maximum, factor);
+                Assert.That(factor, Is.InRange(0.84f, 1.16f));
+            }
+
+            for (var i = 0; i < firstPass.Length; i++)
+            {
+                Assert.That(HordeEnemyManager.GetPersonalSpeedFactor(i),
+                    Is.EqualTo(firstPass[i]), "An enemy's locomotion identity must not change between ticks.");
+            }
+
+            Assert.That(minimum, Is.LessThan(0.90f));
+            Assert.That(maximum, Is.GreaterThan(1.10f));
+        }
+
+        [Test]
+        public void LevelSixContent_UsesOrthogonalSquareCornerCollisionCourse()
+        {
+            var content = SampleContent.Create();
+            LevelDefinition levelSix = null;
+            for (var i = 0; i < content.Levels.Count; i++)
+            {
+                var candidate = content.Levels[i];
+                cleanupObjects.Add(candidate);
+                cleanupObjects.Add(candidate.wave);
+                if (candidate.id == "level_06")
+                {
+                    levelSix = candidate;
+                }
+            }
+            cleanupObjects.Add(content.SkillTree);
+            for (var i = 0; i < content.Towers.Count; i++)
+            {
+                cleanupObjects.Add(content.Towers[i]);
+            }
+
+            Assert.That(levelSix, Is.Not.Null);
+            Assert.That(levelSix.useDataHordePrototype, Is.True);
+            Assert.That(levelSix.useSquarePathCorners, Is.True);
+            Assert.That(levelSix.preventLifeLoss, Is.True);
+            Assert.That(levelSix.roadWidth, Is.EqualTo(3f));
+            Assert.That(levelSix.pathWaypointWidths, Has.Length.EqualTo(levelSix.pathWaypoints.Length));
+            Assert.That(levelSix.pathWaypointWidths[0], Is.EqualTo(6f));
+            Assert.That(levelSix.pathWaypointWidths[1], Is.EqualTo(6f));
+            Assert.That(levelSix.pathWaypointWidths[2], Is.EqualTo(3f));
+            Assert.That(levelSix.wave.totalEnemyCount, Is.EqualTo(10000));
+            Assert.That(levelSix.wave.enforceSpawnClearance, Is.True);
+            Assert.That(levelSix.wave.enemyScaleMultiplier, Is.EqualTo(0.567f).Within(0.001f));
+            Assert.That(levelSix.wave.enemyInertiaMultiplier, Is.EqualTo(1.7f).Within(0.001f));
+            Assert.That(levelSix.wave.spawnPackingMultiplier, Is.EqualTo(1.5f).Within(0.001f));
+            Assert.That(levelSix.wave.randomEnemySpeedMin, Is.EqualTo(5f));
+            Assert.That(levelSix.wave.randomEnemySpeedMax, Is.EqualTo(7f));
+            Assert.That(levelSix.wave.colorEnemiesBySpeed, Is.True);
+            for (var i = 1; i < levelSix.pathWaypoints.Length; i++)
+            {
+                var delta = levelSix.pathWaypoints[i] - levelSix.pathWaypoints[i - 1];
+                var isHorizontal = Mathf.Abs(delta.x) > 0.001f && Mathf.Abs(delta.z) <= 0.001f;
+                var isVertical = Mathf.Abs(delta.z) > 0.001f && Mathf.Abs(delta.x) <= 0.001f;
+                Assert.That(isHorizontal || isVertical, Is.True,
+                    $"Level 6 segment {i - 1} must be strictly axis aligned.");
+            }
+        }
+
+        [Test]
+        public void LevelSevenContent_ProvidesCenterSeekingCircularExplosionLab()
+        {
+            var content = SampleContent.Create();
+            LevelDefinition levelSeven = null;
+            for (var i = 0; i < content.Levels.Count; i++)
+            {
+                var candidate = content.Levels[i];
+                cleanupObjects.Add(candidate);
+                cleanupObjects.Add(candidate.wave);
+                if (candidate.id == "level_07")
+                {
+                    levelSeven = candidate;
+                }
+            }
+            cleanupObjects.Add(content.SkillTree);
+            for (var i = 0; i < content.Towers.Count; i++)
+            {
+                cleanupObjects.Add(content.Towers[i]);
+            }
+
+            Assert.That(levelSeven, Is.Not.Null);
+            Assert.That(levelSeven.useDataHordePrototype, Is.True);
+            Assert.That(levelSeven.preventLifeLoss, Is.True);
+            Assert.That(levelSeven.useCircularArena, Is.True);
+            Assert.That(levelSeven.arenaRadius, Is.EqualTo(60f));
+            Assert.That(levelSeven.roadWidth, Is.EqualTo(120f));
+            Assert.That(levelSeven.pathWaypoints, Has.Length.EqualTo(2));
+            Assert.That(levelSeven.pathWaypoints[0], Is.EqualTo(Vector3.zero));
+            Assert.That(levelSeven.pathWaypoints[1], Is.EqualTo(Vector3.zero));
+            Assert.That(levelSeven.pathWaypointWidths, Is.EqualTo(new[] { 120f, 120f }));
+            Assert.That(levelSeven.wave.totalEnemyCount, Is.EqualTo(10000));
+            Assert.That(levelSeven.wave.roadHalfWidth, Is.EqualTo(60f));
+            Assert.That(levelSeven.wave.stationaryArena, Is.True);
+            Assert.That(levelSeven.wave.randomArenaMovement, Is.False);
+            Assert.That(levelSeven.wave.centerSeekingArena, Is.True);
+            Assert.That(levelSeven.wave.enforceSpawnClearance, Is.True);
+            Assert.That(levelSeven.wave.spawnPackingMultiplier, Is.EqualTo(1.05f).Within(0.001f));
+            Assert.That(levelSeven.wave.spawnInterval, Is.EqualTo(0.02f));
+            Assert.That(levelSeven.wave.enemySpeedMultiplier, Is.EqualTo(2f));
+            Assert.That(levelSeven.wave.randomSpawnBurstMin, Is.EqualTo(6));
+            Assert.That(levelSeven.wave.randomSpawnBurstMax, Is.EqualTo(10));
+            var runnerCount = 0;
+            var bruteCount = 0;
+            for (var i = 0; i < levelSeven.wave.entries.Length; i++)
+            {
+                var entry = levelSeven.wave.entries[i];
+                if (entry.enemy.id == "runner")
+                {
+                    runnerCount += entry.count;
+                }
+                else if (entry.enemy.id == "brute")
+                {
+                    bruteCount += entry.count;
+                }
+            }
+            Assert.That(runnerCount, Is.EqualTo(8000));
+            Assert.That(bruteCount, Is.EqualTo(2000));
         }
 
         [UnityTest]
@@ -134,7 +281,10 @@ namespace TowerDefense.Tests
                 Assert.That(manager.Performance.ShaderName, Does.Contain("GPU Compute"));
             }
 
-            var timeout = Time.time + 2f;
+            // Allow the last body to clear the entrance queue and its asynchronous
+            // escape event to arrive; two seconds races the final event with VAT
+            // collision geometry enabled. A stuck body still fails this deadline.
+            var timeout = Time.time + 4f;
             while (!manager.IsComplete && Time.time < timeout)
             {
                 yield return null;
@@ -144,6 +294,85 @@ namespace TowerDefense.Tests
             Assert.That(manager.TotalResolved, Is.EqualTo(18));
             Assert.That(manager.ActiveCount, Is.EqualTo(0));
             Assert.That(manager.IsComplete, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator DataHordeSpawnRate_FollowsTestSpeed()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var route = CreateRoute(
+                new[] { Vector3.zero, Vector3.zero },
+                new[] { 20f, 20f });
+            var enemy = CreateEnemy(speed: 0.1f, health: 10f);
+            var wave = CreateWave(enemy, count: 2000, spawnInterval: 0.12f);
+            wave.randomSpawnBurstMin = 1;
+            wave.randomSpawnBurstMax = 1;
+            wave.stationaryArena = true;
+            wave.centerSeekingArena = true;
+            wave.enforceSpawnClearance = true;
+            wave.roadHalfWidth = 20f;
+            var manager = CreateManager();
+            manager.BeginWave(wave, route);
+
+            Time.timeScale = 1f;
+            var normalDeadline = Time.realtimeSinceStartup + 0.25f;
+            while (Time.realtimeSinceStartup < normalDeadline)
+            {
+                yield return null;
+            }
+            var normalSpeedSpawns = manager.TotalSpawned;
+
+            Time.timeScale = 5f;
+            var fastStart = manager.TotalSpawned;
+            var fastDeadline = Time.realtimeSinceStartup + 0.25f;
+            while (Time.realtimeSinceStartup < fastDeadline)
+            {
+                yield return null;
+            }
+            var acceleratedSpawns = manager.TotalSpawned - fastStart;
+
+            Assert.That(normalSpeedSpawns, Is.GreaterThan(0));
+            Assert.That(acceleratedSpawns, Is.GreaterThan(normalSpeedSpawns * 3),
+                $"5x test speed spawned only {acceleratedSpawns} enemies versus " +
+                $"{normalSpeedSpawns} during the same real-time interval at 1x.");
+        }
+
+        [UnityTest]
+        public IEnumerator StationaryArena_SpawnsAtCenterAndNeverResolvesAsExit()
+        {
+            var route = CreateRoute(
+                new[] { Vector3.zero, Vector3.zero },
+                new[] { 20f, 20f });
+            var enemy = CreateEnemy(speed: 5f, health: 20f);
+            var wave = CreateWave(enemy, count: 24, spawnInterval: 0.02f);
+            wave.stationaryArena = true;
+            wave.roadHalfWidth = 10f;
+            var manager = CreateManager();
+
+            manager.BeginWave(wave, route);
+            var timeout = Time.realtimeSinceStartup + 1f;
+            while (manager.TotalSpawned < 12 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(manager.TotalSpawned, Is.GreaterThanOrEqualTo(12));
+            Assert.That(manager.TotalResolved, Is.EqualTo(0));
+            Assert.That(manager.ActiveCount, Is.EqualTo(manager.TotalSpawned));
+
+            manager.DamageAndKnockbackInRadius(Vector3.zero, 8f, 0.1f, 5f, 0, out var hitCount);
+            Assert.That(hitCount, Is.EqualTo(manager.ActiveCount));
+            for (var frame = 0; frame < 12; frame++)
+            {
+                yield return null;
+            }
+
+            Assert.That(manager.TotalResolved, Is.EqualTo(0));
+            Assert.That(manager.ActiveCount, Is.EqualTo(manager.TotalSpawned));
         }
 
         [UnityTest]
@@ -460,12 +689,12 @@ namespace TowerDefense.Tests
             return gameObject.AddComponent<HordeEnemyManager>();
         }
 
-        private PathRoute CreateRoute(Vector3[] points)
+        private PathRoute CreateRoute(Vector3[] points, float[] widths = null)
         {
             var gameObject = new GameObject("TestPathRoute");
             cleanupObjects.Add(gameObject);
             var route = gameObject.AddComponent<PathRoute>();
-            route.SetWaypoints(points);
+            route.SetWaypoints(points, widths);
             return route;
         }
 

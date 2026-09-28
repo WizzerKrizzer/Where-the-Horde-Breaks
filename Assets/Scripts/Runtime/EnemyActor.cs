@@ -6,6 +6,8 @@ using UnityEngine;
 
 namespace TowerDefense.Runtime
 {
+    // Run visual culling after TopDownCameraController applies this frame's pan/zoom.
+    [DefaultExecutionOrder(100)]
     public sealed class EnemyActor : MonoBehaviour
     {
         private EnemyDefinition definition;
@@ -30,6 +32,7 @@ namespace TowerDefense.Runtime
         private float accumulatedSimulationTime;
         private float stepDeltaTime;
         private float currentMaxHealth;
+        private float movementSpeed;
         private bool active;
         private ICombatTarget currentCombatTarget;
         private Renderer bodyRenderer;
@@ -38,7 +41,6 @@ namespace TowerDefense.Runtime
         private Transform healthFill;
         private float healthBarTimer;
         private float visualBudgetTimer;
-        private int visualBudgetBucket;
         private bool usingLowDetailMesh;
         private bool isOffscreenForBudget;
         private bool isFarFromCameraForBudget;
@@ -51,7 +53,10 @@ namespace TowerDefense.Runtime
         private const float WallBounce = 0.32f;
         private const float RoadFriction = 0.85f;
         private const float SeparationPathWindow = 3.4f;
-        private const float SeparationRadiusScale = 0.94f;
+        // The primitive enemy mesh is a unit sphere, so the sum of visual scales
+        // is its body diameter. Keep only a tiny numerical skin at contact.
+        private const float ContactSkin = 1.01f;
+        private const float ApproachSkin = 1.045f;
         private const float SeparationVelocityScale = 5.6f;
         private const float MaxGroundSeparationOffset = 2.05f;
         private const int MaxEnemiesWithHealthBars = 180;
@@ -61,10 +66,17 @@ namespace TowerDefense.Runtime
         public EnemyDefinition Definition => definition;
         public float Health => health;
         public float PathDistance => pathDistance;
+        public float MovementSpeed => movementSpeed;
         public bool IsAlive => active && health > 0f;
         public event Action<EnemyActor> Died;
 
-        public void Initialize(EnemyDefinition enemyDefinition, PathRoute route, EnemyManager enemyOwner, float initialOffset, bool useEndpointSeeking = false)
+        public void Initialize(
+            EnemyDefinition enemyDefinition,
+            PathRoute route,
+            EnemyManager enemyOwner,
+            float initialOffset,
+            bool useEndpointSeeking = false,
+            float individualMovementSpeed = -1f)
         {
             definition = enemyDefinition;
             path = route;
@@ -73,10 +85,13 @@ namespace TowerDefense.Runtime
             currentMaxHealth = enemyDefinition.maxHealth;
             health = currentMaxHealth;
             pathDistance = initialOffset;
+            movementSpeed = Mathf.Max(0.1f, individualMovementSpeed > 0f
+                ? individualMovementSpeed
+                : enemyDefinition.speed);
             laneOffset = UnityEngine.Random.Range(-1.35f, 1.35f) * Mathf.Max(0.8f, enemyDefinition.visualScale / 0.45f);
             crowdOffset = Vector3.zero;
             knockbackOffset = Vector3.zero;
-            movementVelocity = (endpointSeeking ? GetEndpointDirection() : GetPathTangent(pathDistance)) * enemyDefinition.speed;
+            movementVelocity = (endpointSeeking ? GetEndpointDirection() : GetPathTangent(pathDistance)) * movementSpeed;
             burnStacks.Clear();
             attackCooldown = 0f;
             healCooldown = enemyDefinition.healInterval;
@@ -100,7 +115,6 @@ namespace TowerDefense.Runtime
                 bodyRenderer.enabled = true;
             }
 
-            visualBudgetBucket = Mathf.Abs(GetInstanceID()) % 12;
             visualBudgetTimer = UnityEngine.Random.Range(0f, 0.25f);
             isOffscreenForBudget = false;
             isFarFromCameraForBudget = false;
@@ -142,7 +156,6 @@ namespace TowerDefense.Runtime
             }
 
             UpdateHealthBarVisibility();
-            UpdateVisualBudget(frameDeltaTime);
             accumulatedSimulationTime += frameDeltaTime;
             if (!ShouldRunSimulationThisFrame())
             {
@@ -198,6 +211,16 @@ namespace TowerDefense.Runtime
                 owner.NotifyEnemyEscaped(this);
                 gameObject.SetActive(false);
                 return;
+            }
+        }
+
+        private void LateUpdate()
+        {
+            if (active && !waitingToRevive)
+            {
+                // Camera movement happens in LateUpdate too. The execution order
+                // above makes this use the final pose instead of a stale frustum.
+                UpdateVisualBudget(Time.deltaTime);
             }
         }
 
@@ -406,7 +429,7 @@ namespace TowerDefense.Runtime
         private void UpdateEndpointPhysics()
         {
             var deltaTime = stepDeltaTime;
-            var currentSpeed = definition.speed * slowMultiplier;
+            var currentSpeed = movementSpeed * slowMultiplier;
             var nearestRoad = path.GetNearestRoadPointToward(transform.position, path.EndPoint, out var roadTangent);
             nearestRoad.y = transform.position.y;
 
@@ -428,7 +451,7 @@ namespace TowerDefense.Runtime
             var nextPosition = transform.position + (movementVelocity * deltaTime) + (knockbackOffset * deltaTime * 0.45f);
             nextPosition.y = nearestRoad.y;
             nextPosition = ConstrainToNearestRoad(nextPosition);
-            nextPosition = ApplyHardOverlapCorrection(nextPosition, GetRoadSide(nextPosition));
+            nextPosition = ApplyHardOverlapCorrection(nextPosition);
             nextPosition = ConstrainToNearestRoad(nextPosition);
             transform.position = nextPosition;
 
@@ -438,15 +461,15 @@ namespace TowerDefense.Runtime
         private void UpdatePathPhysics()
         {
             var deltaTime = stepDeltaTime;
-            var currentSpeed = definition.speed * slowMultiplier;
-            pathDistance += currentSpeed * deltaTime;
+            var currentSpeed = movementSpeed * slowMultiplier;
+            var plannedPathDistance = Mathf.Min(path.TotalLength, pathDistance + currentSpeed * deltaTime);
             knockbackOffset = Vector3.MoveTowards(knockbackOffset, Vector3.zero, deltaTime * 3.2f);
             UpdateCrowdOffset();
 
-            var side = GetPathSide(pathDistance);
-            var tangent = GetPathTangent(pathDistance);
-            var pathPosition = path.Sample(pathDistance);
-            var lookAheadPosition = path.Sample(Mathf.Min(path.TotalLength, pathDistance + PathLookAhead));
+            var side = GetPathSide(plannedPathDistance);
+            var tangent = GetPathTangent(plannedPathDistance);
+            var pathPosition = path.Sample(plannedPathDistance);
+            var lookAheadPosition = path.Sample(Mathf.Min(path.TotalLength, plannedPathDistance + PathLookAhead));
             var desiredPosition = lookAheadPosition + side * laneOffset + crowdOffset + knockbackOffset;
             var toDesired = desiredPosition - transform.position;
             toDesired.y = 0f;
@@ -461,12 +484,17 @@ namespace TowerDefense.Runtime
             movementVelocity = Vector3.MoveTowards(movementVelocity, desiredVelocity, SteeringAcceleration * deltaTime);
             movementVelocity = Vector3.MoveTowards(movementVelocity, Vector3.zero, RoadFriction * 0.08f * deltaTime);
 
-            var nextPosition = transform.position + movementVelocity * deltaTime;
+            var previousPosition = transform.position;
+            var nextPosition = previousPosition + movementVelocity * deltaTime;
             nextPosition.y = pathPosition.y;
             nextPosition = ConstrainToRoad(nextPosition, pathPosition, side, tangent);
-            nextPosition = ApplyHardOverlapCorrection(nextPosition, side);
+            nextPosition = ApplyHardOverlapCorrection(nextPosition);
             nextPosition = ConstrainToRoad(nextPosition, pathPosition, side, tangent);
             transform.position = nextPosition;
+            // Progress follows resolved body movement. Advancing the path clock
+            // through a blocked crowd made the old soft separation look inert.
+            var forwardTravel = Vector3.Dot(nextPosition - previousPosition, tangent);
+            pathDistance = Mathf.Clamp(pathDistance + Mathf.Max(0f, forwardTravel), 0f, path.TotalLength);
         }
 
         private void ApplyCombatJostle()
@@ -557,10 +585,10 @@ namespace TowerDefense.Runtime
                 var away = origin - other.transform.position;
                 away.y = 0f;
                 var distance = away.magnitude;
-                var desiredDistance = GetDesiredSeparationDistance(other);
+                var desiredDistance = GetApproachDistance(other);
                 if (distance <= 0.001f)
                 {
-                    away = (endpointSeeking ? GetRoadSide(origin) : GetPathSide(pathDistance)) * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
+                    away = GetStablePairDirection(other);
                     distance = 0.001f;
                 }
 
@@ -577,14 +605,9 @@ namespace TowerDefense.Runtime
             return Vector3.ClampMagnitude(offset, definition.isFlying ? 0.58f : MaxGroundSeparationOffset);
         }
 
-        private Vector3 ApplyHardOverlapCorrection(Vector3 position, Vector3 fallbackSide)
+        private Vector3 ApplyHardOverlapCorrection(Vector3 position)
         {
             if (definition.isFlying || owner?.ActiveEnemies == null)
-            {
-                return position;
-            }
-
-            if (owner.ActiveEnemyCount >= 900)
             {
                 return position;
             }
@@ -606,10 +629,10 @@ namespace TowerDefense.Runtime
                 var away = position - other.transform.position;
                 away.y = 0f;
                 var distance = away.magnitude;
-                var desiredDistance = GetDesiredSeparationDistance(other) * 0.82f;
+                var desiredDistance = GetContactDistance(other) * 0.998f;
                 if (distance <= 0.001f)
                 {
-                    away = fallbackSide * (GetInstanceID() < other.GetInstanceID() ? -1f : 1f);
+                    away = GetStablePairDirection(other);
                     distance = 0.001f;
                 }
 
@@ -618,7 +641,9 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                correction += away.normalized * ((desiredDistance - distance) * 0.55f);
+                // Each participant gets half the correction. Both actors meet at
+                // contact without the bounce caused by the former one-sided push.
+                correction += away.normalized * ((desiredDistance - distance) * 0.5f);
             }
 
             return position + Vector3.ClampMagnitude(correction, 0.55f);
@@ -651,10 +676,48 @@ namespace TowerDefense.Runtime
             return 30;
         }
 
-        private float GetDesiredSeparationDistance(EnemyActor other)
+        private float GetContactDistance(EnemyActor other)
         {
             var combinedScale = definition.visualScale + (other.Definition?.visualScale ?? definition.visualScale);
-            return Mathf.Max(0.62f, combinedScale * SeparationRadiusScale);
+            return Mathf.Max(0.62f, combinedScale * ContactSkin);
+        }
+
+        private float GetApproachDistance(EnemyActor other)
+        {
+            return GetContactDistance(other) * ApproachSkin;
+        }
+
+        private Vector3 GetStablePairDirection(EnemyActor other)
+        {
+            var first = Mathf.Min(GetInstanceID(), other.GetInstanceID());
+            var second = Mathf.Max(GetInstanceID(), other.GetInstanceID());
+            unchecked
+            {
+                uint hash = (uint)first * 0x9E3779B9u ^ (uint)second * 0x85EBCA6Bu;
+                hash ^= hash >> 16;
+                hash *= 0x7FEB352Du;
+                hash ^= hash >> 15;
+                var angle = (hash & 0x00FFFFFFu) * (Mathf.PI * 2f / 16777216f);
+                var direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                return GetInstanceID() == first ? direction : -direction;
+            }
+        }
+
+        internal static float GetPersonalSpeedFactor(int spawnIndex)
+        {
+            unchecked
+            {
+                uint hash = (uint)Mathf.Max(0, spawnIndex) + 0x9E3779B9u;
+                hash ^= hash >> 16;
+                hash *= 0x7FEB352Du;
+                hash ^= hash >> 15;
+                hash *= 0x846CA68Bu;
+                hash ^= hash >> 16;
+                var normalized = (hash & 0x00FFFFFFu) / 16777215f;
+                // The regular levels need a visibly different cadence, but not a
+                // new enemy class. The identity is stable while an actor lives.
+                return Mathf.Lerp(0.90f, 1.10f, normalized);
+            }
         }
 
         private bool IsRelevantSeparationNeighbor(EnemyActor other, Vector3 origin)
@@ -899,14 +962,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            visualBudgetTimer -= deltaTime;
-            if (visualBudgetTimer > 0f)
-            {
-                return;
-            }
-
             var activeCount = owner.ActiveEnemyCount;
-            visualBudgetTimer = activeCount >= 5000 ? 0.42f : activeCount >= 2500 ? 0.3f : 0.18f;
             if (activeCount < 650)
             {
                 isOffscreenForBudget = false;
@@ -937,20 +993,22 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            // Never drop a body that is in view by an arbitrary bucket. At high
+            // counts the low-detail mesh is enough; hiding 1/2 to 3/4 of distant
+            // agents was what made the crowd look as if it disappeared.
+            bodyRenderer.enabled = true;
             var toEnemy = transform.position - camera.transform.position;
             toEnemy.y = 0f;
             isFarFromCameraForBudget = toEnemy.sqrMagnitude > 28f * 28f;
-            var closeToCamera = !isFarFromCameraForBudget;
-            if (closeToCamera || camera.transform.position.y < 58f)
+            visualBudgetTimer -= deltaTime;
+            if (visualBudgetTimer > 0f)
             {
-                bodyRenderer.enabled = true;
-                SetLowDetailMesh(false);
                 return;
             }
 
-            var visualStride = activeCount >= 2500 ? 4 : activeCount >= 1400 ? 3 : 2;
-            bodyRenderer.enabled = visualBudgetBucket % visualStride == 0;
-            SetLowDetailMesh(activeCount >= 1000 || camera.transform.position.y >= 72f);
+            visualBudgetTimer = activeCount >= 5000 ? 0.42f : activeCount >= 2500 ? 0.3f : 0.18f;
+            SetLowDetailMesh((isFarFromCameraForBudget && activeCount >= 650) ||
+                activeCount >= 1000 || camera.transform.position.y >= 72f);
         }
 
         private void SetLowDetailMesh(bool lowDetail)

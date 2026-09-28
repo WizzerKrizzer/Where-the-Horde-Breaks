@@ -8,6 +8,7 @@ namespace TowerDefense.Runtime
         private EnemyManager enemies;
         private PlayerInputRouter input;
         private TowerManager towers;
+        private TopDownCameraController cameraController;
         private float cooldown;
         private bool canFire;
         private bool autoFireUnlocked;
@@ -16,6 +17,11 @@ namespace TowerDefense.Runtime
         public float Radius { get; set; } = 2.5f;
         public float CooldownSeconds { get; set; } = 1.7f;
         public int MaxTargets { get; set; } = 8;
+        public float KnockbackDistance { get; set; }
+        public float KnockbackPropagationRadius { get; set; }
+        public Vector3 ShockwaveArenaCenter { get; set; }
+        public float ShockwaveArenaRadius { get; set; }
+        public string DisplayName { get; set; } = "Volley of Arrows";
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
         public bool CanFire
@@ -49,11 +55,16 @@ namespace TowerDefense.Runtime
         public float CooldownProgress => CooldownSeconds <= 0f ? 1f : 1f - Mathf.Clamp01(CooldownRemaining / CooldownSeconds);
         public bool IsReady => CanFire && CooldownRemaining <= 0f;
 
-        public void Initialize(EnemyManager enemyManager, PlayerInputRouter router, TowerManager towerManager)
+        public void Initialize(
+            EnemyManager enemyManager,
+            PlayerInputRouter router,
+            TowerManager towerManager,
+            TopDownCameraController topDownCamera = null)
         {
             enemies = enemyManager;
             input = router;
             towers = towerManager;
+            cameraController = topDownCamera;
         }
 
         public void ResetRunStats()
@@ -94,7 +105,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = enemies.DamageInRadius(input.Current.PointerWorld, Radius, Damage, MaxTargets, out var hitCount);
+            var appliedDamage = ApplyWeaponEffect(input.Current.PointerWorld, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds;
@@ -113,22 +124,73 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = enemies.DamageInRadius(aimPoint, Radius, Damage, MaxTargets, out var hitCount);
+            var appliedDamage = ApplyWeaponEffect(aimPoint, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds / Mathf.Clamp(DevAutoEfficiency, 0.1f, 1f);
             SpawnImpactMarker(aimPoint);
         }
 
+        private float ApplyWeaponEffect(Vector3 position, out int hitCount)
+        {
+            var propagationRadius = ResolveKnockbackPropagationRadius(position);
+            return KnockbackDistance > 0f
+                ? enemies.DamageAndKnockbackInRadius(
+                    position,
+                    Radius,
+                    Damage,
+                    KnockbackDistance,
+                    MaxTargets,
+                    out hitCount,
+                    knockbackPropagationRadius: propagationRadius)
+                : enemies.DamageInRadius(position, Radius, Damage, MaxTargets, out hitCount);
+        }
+
         private void SpawnImpactMarker(Vector3 position)
         {
+            if (KnockbackDistance > 0f && KnockbackPropagationRadius > 0f)
+            {
+                var propagationRadius = ResolveKnockbackPropagationRadius(position);
+                MeteorImpactVisual.Spawn(position, Radius);
+                cameraController?.PlayMeteorImpact(position, Radius);
+                ShockwaveRingVisual.Spawn(
+                    position,
+                    Radius,
+                    Radius + propagationRadius,
+                    GpuHordeSimulation.ShockwavePropagationSpeed,
+                    ShockwaveArenaCenter,
+                    ShockwaveArenaRadius);
+                return;
+            }
+
             var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             go.name = "ActiveWeaponImpact";
             go.transform.position = position + Vector3.up * 0.2f;
             go.transform.localScale = new Vector3(Radius * 2f, 0.05f, Radius * 2f);
-            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.35f, 0.12f, 0.45f));
+            var color = KnockbackDistance > 0f
+                ? new Color(1f, 0.62f, 0.08f, 0.55f)
+                : new Color(1f, 0.35f, 0.12f, 0.45f);
+            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
             RemovePrimitiveCollider(go);
             Destroy(go, 0.18f);
+
+        }
+
+        private float ResolveKnockbackPropagationRadius(Vector3 position)
+        {
+            if (ShockwaveArenaRadius <= 0f)
+            {
+                return KnockbackPropagationRadius;
+            }
+
+            var offset = new Vector2(
+                position.x - ShockwaveArenaCenter.x,
+                position.z - ShockwaveArenaCenter.z);
+            var distanceFromCenter = Mathf.Min(ShockwaveArenaRadius, offset.magnitude);
+            var farthestBoundaryDistance = ShockwaveArenaRadius + distanceFromCenter;
+            return Mathf.Min(
+                KnockbackPropagationRadius,
+                Mathf.Max(0f, farthestBoundaryDistance - Radius));
         }
 
         private static void RemovePrimitiveCollider(GameObject target)

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -56,9 +57,15 @@ namespace TowerDefense.Editor
                 ? BuildOptions.Development | BuildOptions.AllowDebugging
                 : BuildOptions.None;
 
-            var targetGroup = BuildTargetGroup.Standalone;
-            var previousBackend = PlayerSettings.GetScriptingBackend(targetGroup);
-            PlayerSettings.SetScriptingBackend(targetGroup, ScriptingImplementation.Mono2x);
+            var namedTarget = NamedBuildTarget.Standalone;
+            var previousBackend = PlayerSettings.GetScriptingBackend(namedTarget);
+            PlayerSettings.SetScriptingBackend(namedTarget, ScriptingImplementation.Mono2x);
+            var activeBackend = PlayerSettings.GetScriptingBackend(namedTarget);
+            if (activeBackend != ScriptingImplementation.Mono2x)
+            {
+                throw new InvalidOperationException(
+                    $"Could not switch the Windows build to Mono. Active backend: {activeBackend}.");
+            }
 
             try
             {
@@ -77,7 +84,7 @@ namespace TowerDefense.Editor
             }
             finally
             {
-                PlayerSettings.SetScriptingBackend(targetGroup, previousBackend);
+                PlayerSettings.SetScriptingBackend(namedTarget, previousBackend);
             }
         }
     }

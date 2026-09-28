@@ -75,6 +75,51 @@ namespace TowerDefense.Progression
             return true;
         }
 
+        public bool CanRefundLatestRank(string nodeId)
+        {
+            var node = FindNode(nodeId);
+            var currentRank = GetPurchasedRank(nodeId);
+            if (node == null || node.startsUnlocked || currentRank <= 0)
+            {
+                return false;
+            }
+
+            if (currentRank > 1)
+            {
+                return true;
+            }
+
+            return tree.nodes == null || !tree.nodes.Any(other =>
+                other?.prerequisiteNodeIds != null &&
+                other.prerequisiteNodeIds.Contains(nodeId) &&
+                IsPurchased(other.id));
+        }
+
+        public bool TryRefundLatestRank(string nodeId)
+        {
+            if (!CanRefundLatestRank(nodeId))
+            {
+                return false;
+            }
+
+            var node = FindNode(nodeId);
+            var refundedRank = GetPurchasedRank(nodeId) - 1;
+            var costs = ScaleCosts(node.costs, node.costGrowthMultiplier, refundedRank);
+            foreach (var cost in costs)
+            {
+                profile.AddCurrency(cost.currency, cost.amount);
+            }
+
+            var purchaseIndex = profile.purchasedUpgradeIds.LastIndexOf(nodeId);
+            if (purchaseIndex < 0)
+            {
+                return false;
+            }
+
+            profile.purchasedUpgradeIds.RemoveAt(purchaseIndex);
+            return true;
+        }
+
         public SkillNodeDefinition[] GetNodes()
         {
             return tree.nodes ?? System.Array.Empty<SkillNodeDefinition>();

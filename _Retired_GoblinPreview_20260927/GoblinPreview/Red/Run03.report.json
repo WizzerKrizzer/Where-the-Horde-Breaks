@@ -1,0 +1,27 @@
+{
+  "source": "C:\\Users\\Svetoslav\\Downloads\\Meshy_AI_Meshy_Merged_Animations.glb",
+  "animation_source": "C:\\Users\\Svetoslav\\Downloads\\Meshy_AI_Meshy_Merged_Animations.glb",
+  "retargeted": false,
+  "animation": "Run_03",
+  "clip": "Run03",
+  "vertices": 11218,
+  "triangles": 15175,
+  "frames": 25,
+  "duration": 0.8333333134651184,
+  "atlas": [
+    256,
+    1096
+  ],
+  "bounds": [
+    [
+      -0.8263728102692643,
+      0.0,
+      -1.090438166420748
+    ],
+    [
+      0.8263728102692643,
+      2.4,
+      1.090438166420748
+    ]
+  ]
+}

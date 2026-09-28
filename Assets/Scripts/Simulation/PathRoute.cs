@@ -9,11 +9,17 @@ namespace TowerDefense.Simulation
         [SerializeField] private List<float> waypointHalfWidths = new();
         [SerializeField] private List<Vector3> secondaryWaypoints = new();
         [SerializeField] private List<float> secondaryWaypointHalfWidths = new();
+        [SerializeField] private List<Vector3> tertiaryWaypoints = new();
+        [SerializeField] private List<float> tertiaryWaypointHalfWidths = new();
+        [SerializeField] private bool useSquareCorners;
 
         public IReadOnlyList<Vector3> Waypoints => waypoints;
         public IReadOnlyList<float> WaypointHalfWidths => waypointHalfWidths;
         public IReadOnlyList<Vector3> SecondaryWaypoints => secondaryWaypoints;
         public IReadOnlyList<float> SecondaryWaypointHalfWidths => secondaryWaypointHalfWidths;
+        public IReadOnlyList<Vector3> TertiaryWaypoints => tertiaryWaypoints;
+        public IReadOnlyList<float> TertiaryWaypointHalfWidths => tertiaryWaypointHalfWidths;
+        public bool UseSquareCorners => useSquareCorners;
         public float TotalLength { get; private set; }
         public bool HasUsableRoute => waypoints.Count > 1;
         public Vector3 StartPoint => waypoints.Count > 0 ? waypoints[0] : transform.position;
@@ -22,7 +28,17 @@ namespace TowerDefense.Simulation
         public bool IsInsideCorridor(Vector3 position, float extraRadius = 0f)
         {
             return IsInsideRouteCorridor(position, waypoints, waypointHalfWidths, extraRadius) ||
-                   IsInsideRouteCorridor(position, secondaryWaypoints, secondaryWaypointHalfWidths, extraRadius);
+                   IsInsideRouteCorridor(position, secondaryWaypoints, secondaryWaypointHalfWidths, extraRadius) ||
+                   IsInsideRouteCorridor(position, tertiaryWaypoints, tertiaryWaypointHalfWidths, extraRadius) ||
+                   useSquareCorners &&
+                   (IsInsideSquareCorner(position, waypoints, waypointHalfWidths, extraRadius) ||
+                    IsInsideSquareCorner(position, secondaryWaypoints, secondaryWaypointHalfWidths, extraRadius) ||
+                    IsInsideSquareCorner(position, tertiaryWaypoints, tertiaryWaypointHalfWidths, extraRadius));
+        }
+
+        public void SetSquareCorners(bool enabled)
+        {
+            useSquareCorners = enabled;
         }
 
         private void Awake()
@@ -46,6 +62,16 @@ namespace TowerDefense.Simulation
                 secondaryWaypoints.AddRange(points);
             }
             SetHalfWidths(secondaryWaypointHalfWidths, secondaryWaypoints.Count, fullWidths);
+        }
+
+        public void SetTertiaryWaypoints(IEnumerable<Vector3> points, IReadOnlyList<float> fullWidths = null)
+        {
+            tertiaryWaypoints.Clear();
+            if (points != null)
+            {
+                tertiaryWaypoints.AddRange(points);
+            }
+            SetHalfWidths(tertiaryWaypointHalfWidths, tertiaryWaypoints.Count, fullWidths);
         }
 
         private static void SetHalfWidths(List<float> destination, int count, IReadOnlyList<float> fullWidths)
@@ -101,6 +127,31 @@ namespace TowerDefense.Simulation
             return false;
         }
 
+        private static bool IsInsideSquareCorner(
+            Vector3 position,
+            IReadOnlyList<Vector3> points,
+            IReadOnlyList<float> halfWidths,
+            float extraRadius)
+        {
+            if (points == null || points.Count < 3)
+            {
+                return false;
+            }
+
+            for (var i = 1; i < points.Count - 1; i++)
+            {
+                var radius = Mathf.Max(0f,
+                    (halfWidths != null && halfWidths.Count == points.Count ? halfWidths[i] : 2.7f) + extraRadius);
+                if (Mathf.Abs(position.x - points[i].x) <= radius &&
+                    Mathf.Abs(position.z - points[i].z) <= radius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public Vector3 Sample(float distance)
         {
             if (waypoints.Count == 0)
@@ -118,6 +169,7 @@ namespace TowerDefense.Simulation
             var bestDistanceSq = float.PositiveInfinity;
             FindNearestPointOnRoute(waypoints, position, Vector3.zero, ref bestPoint, ref bestTangent, ref bestDistanceSq);
             FindNearestPointOnRoute(secondaryWaypoints, position, Vector3.zero, ref bestPoint, ref bestTangent, ref bestDistanceSq);
+            FindNearestPointOnRoute(tertiaryWaypoints, position, Vector3.zero, ref bestPoint, ref bestTangent, ref bestDistanceSq);
             tangent = bestTangent.sqrMagnitude < 0.001f ? Vector3.forward : bestTangent.normalized;
             return bestPoint;
         }
@@ -136,6 +188,7 @@ namespace TowerDefense.Simulation
 
             FindNearestPointOnRoute(waypoints, position, directionToTarget, ref bestPoint, ref bestTangent, ref bestScore);
             FindNearestPointOnRoute(secondaryWaypoints, position, directionToTarget, ref bestPoint, ref bestTangent, ref bestScore);
+            FindNearestPointOnRoute(tertiaryWaypoints, position, directionToTarget, ref bestPoint, ref bestTangent, ref bestScore);
             tangent = bestTangent.sqrMagnitude < 0.001f ? Vector3.forward : bestTangent.normalized;
             return bestPoint;
         }
