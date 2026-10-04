@@ -79,9 +79,42 @@ namespace TowerDefense.Tests
 
             var delta = first.transform.position - second.transform.position;
             delta.y = 0f;
-            var physicalContact = (enemy.visualScale + enemy.visualScale) * 1.01f * 0.998f;
+            var physicalContact = CrowdSolverProfile.Default.GetBodyRadius(enemy.visualScale) * 2f * 1.01f * 0.998f;
             Assert.That(delta.magnitude, Is.GreaterThanOrEqualTo(physicalContact * 0.995f),
                 "Regular CPU enemies must resolve to their visible body-contact envelope.");
+        }
+
+        [TestCase(0.45f, 0.45f)]
+        [TestCase(0.29f, 0.63f)]
+        [TestCase(0.12f, 0.12f)]
+        public void IndividualActors_UseOfficialCompactContactEnvelope(float firstScale, float secondScale)
+        {
+            var routeObject = new GameObject("Compact contact route");
+            cleanupObjects.Add(routeObject);
+            var route = routeObject.AddComponent<PathRoute>();
+            route.SetWaypoints(new[] { Vector3.zero, Vector3.right * 20f });
+            var managerObject = new GameObject("Compact contact manager");
+            cleanupObjects.Add(managerObject);
+            var manager = managerObject.AddComponent<EnemyManager>();
+            manager.SetLevelRoute(route);
+
+            foreach (var scale in new[] { firstScale, secondScale })
+            {
+                var enemy = ScriptableObject.CreateInstance<EnemyDefinition>();
+                cleanupObjects.Add(enemy);
+                enemy.visualScale = scale;
+                manager.SpawnDebug(enemy, route);
+            }
+
+            var first = manager.ActiveEnemies[0];
+            var second = manager.ActiveEnemies[1];
+            var radiusSum = (firstScale + secondScale) * CrowdSolverProfile.DefaultBodyRadiusPerVisualScale;
+            Assert.That(first.GetContactDistance(second), Is.EqualTo(radiusSum * 1.01f).Within(0.0001f));
+            Assert.That(first.GetContactDistance(second), Is.LessThan((firstScale + secondScale) * 0.7f),
+                "Small enemies must not retain the old 0.62 m invisible minimum gap.");
+            Assert.That(first.transform.localScale.x, Is.EqualTo(first.ContactRadius).Within(0.0001f));
+            Assert.That(first.transform.localScale.z, Is.EqualTo(first.ContactRadius).Within(0.0001f));
+            Assert.That(first.transform.localScale.y, Is.EqualTo(firstScale), "Preserve the character's height.");
         }
     }
 }

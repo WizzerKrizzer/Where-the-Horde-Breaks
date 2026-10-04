@@ -19,7 +19,6 @@ namespace TowerDefense.Tests
             PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
             Directory.CreateDirectory("Logs/CrowdEnvelope");
             var summary = new System.Text.StringBuilder();
-            var results = new Vector2[5][];
             try
             {
                 var field = new HordeFlowField(
@@ -38,17 +37,14 @@ namespace TowerDefense.Tests
                 }
                 var controls=new Vector4[seed.Count];
                 for(var i=0;i<controls.Length;i++) controls[i]=new Vector4(4.8f,1,0,0);
-                for(var trial=0;trial<5;trial++)
+                for(var trial=0;trial<1;trial++)
                 {
                     var states=seed.ToArray();
                     Assert.That(CrowdMergeValidationTests.Pairs(states).pairs, Is.Zero);
                     Assert.That(GpuHordeSimulation.TryCreate(states.Length,field,EnemyManager.GetLowEnemyMesh(),out var simulation),Is.True);
                     using(simulation)
                     {
-                        simulation.ReverseMotionReservation=trial==2 || trial==4;
-                        simulation.SlidingMotionAcceptance=trial>=3;
                         simulation.SetCollisionDiameter(.203f*GoblinPreviewAssets.ContactRadiusPerScale/.5f);
-                        simulation.SetMovementDynamics(1.35f,1.2f);
                         simulation.SpawnBatch(states,controls,0,states.Length);
                         var trace=new System.Text.StringBuilder("tick,id,x,z,dx,dz,gait,alive\n");
                         var maximumPairs=0; var meanSpeed=0f; var firstTickMoved=0; var releasedCount=0;
@@ -80,20 +76,12 @@ namespace TowerDefense.Tests
                             }
                             if(tick%30==0) yield return null;
                         }
-                        results[trial]=Array.ConvertAll(states,state=>state.Position);
-                        summary.AppendLine($"trial={trial} reverse={simulation.ReverseMotionReservation} sliding={simulation.SlidingMotionAcceptance} maxPairs={maximumPairs} firstTickMoved={firstTickMoved}/{releasedCount} lastSecondSpeed={meanSpeed:F3} final-grid={GridSignal(states):F4}");
+                        summary.AppendLine($"trial={trial} solver=xpbd maxPairs={maximumPairs} firstTickMoved={firstTickMoved}/{releasedCount} lastSecondSpeed={meanSpeed:F3} final-grid={GridSignal(states):F4}");
                         File.WriteAllText($"Logs/CrowdEnvelope/order-{trial}-trace.csv",trace.ToString());
                         File.WriteAllLines($"Logs/CrowdEnvelope/order-{trial}-positions.csv",Array.ConvertAll(states,state=>FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Status}")));
                         Assert.That(maximumPairs,Is.Zero);
                         Assert.That(meanSpeed,Is.GreaterThan(.8f));
                     }
-                }
-                for(var trial=1;trial<5;trial++)
-                {
-                    var differences=new List<float>();
-                    for(var i=0;i<results[0].Length;i++) differences.Add(Vector2.Distance(results[0][i],results[trial][i]));
-                    differences.Sort();
-                    summary.AppendLine($"reference-vs-{trial}: p50={differences[differences.Count/2]:F4}m p95={differences[differences.Count*95/100]:F4}m");
                 }
             }
             finally

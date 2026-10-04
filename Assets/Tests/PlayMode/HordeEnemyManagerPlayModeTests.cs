@@ -154,6 +154,62 @@ namespace TowerDefense.Tests
             Assert.That(maximum, Is.GreaterThan(1.10f));
         }
 
+        [UnityTest]
+        public IEnumerator AllHordeLevels_UseOfficialSharedSolverProfile()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var content = SampleContent.Create();
+            cleanupObjects.Add(content.SkillTree);
+            foreach (var tower in content.Towers) cleanupObjects.Add(tower);
+            var fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var profileField = typeof(HordeEnemyManager).GetField("activeCrowdSolverProfile", fields);
+            var diameterField = typeof(HordeEnemyManager).GetField("activeSolverCollisionDiameter", fields);
+            var stepField = typeof(HordeEnemyManager).GetField("activeFixedSimulationStep", fields);
+            var simulationField = typeof(HordeEnemyManager).GetField("gpuSimulation", fields);
+            var perBodyField = typeof(GpuHordeSimulation).GetField("xpbdUsesPerBodyRadius", fields);
+            var checkedLevels = 0;
+            foreach (var level in content.Levels)
+            {
+                cleanupObjects.Add(level);
+                cleanupObjects.Add(level.wave);
+                foreach (var entry in level.wave.entries) cleanupObjects.Add(entry.enemy);
+                if (!level.useDataHordePrototype)
+                {
+                    Assert.That(level.id, Is.EqualTo("level_01").Or.EqualTo("level_03"),
+                        "Only the individual-actor levels retain their special-role gameplay backend.");
+                    continue;
+                }
+
+                // Keep authored navigation and scale, but avoid allocating an entire
+                // 100K wave merely to audit the production solver configuration.
+                var wave = Object.Instantiate(level.wave);
+                cleanupObjects.Add(wave);
+                wave.totalEnemyCount = 16;
+                wave.entries = new[] { new WaveEntry { enemy = level.wave.entries[0].enemy, count = 16 } };
+                var route = CreateRoute(level.pathWaypoints, level.pathWaypointWidths);
+                route.SetSecondaryWaypoints(level.secondaryPathWaypoints, level.secondaryPathWaypointWidths);
+                route.SetTertiaryWaypoints(level.tertiaryPathWaypoints, level.tertiaryPathWaypointWidths);
+                route.SetSquareCorners(level.useSquarePathCorners);
+                var manager = CreateManager();
+                manager.BeginWave(wave, route);
+                Assert.That(manager.IsRunning, Is.True, level.id);
+                Assert.That(profileField.GetValue(manager), Is.SameAs(CrowdSolverProfile.Default), level.id);
+                var expectedDiameter = 0.56f * Mathf.Clamp(wave.enemyScaleMultiplier, 0.1f, 2f) * 0.56f;
+                Assert.That((float)diameterField.GetValue(manager), Is.EqualTo(expectedDiameter).Within(0.0001f), level.id);
+                Assert.That((float)stepField.GetValue(manager), Is.EqualTo(1f / 60f).Within(0.000001f), level.id);
+                Assert.That((bool)perBodyField.GetValue(simulationField.GetValue(manager)), Is.True, level.id);
+                yield return null;
+                manager.StopWave();
+                checkedLevels++;
+            }
+            Assert.That(checkedLevels, Is.EqualTo(6), "Audit levels 2, 2.1, 4, 5, 6 and 7.");
+            Assert.That(CrowdSolverProfile.PositionIterations, Is.EqualTo(8));
+        }
+
         [Test]
         public void LevelSixContent_UsesOrthogonalSquareCornerCollisionCourse()
         {
@@ -466,6 +522,9 @@ namespace TowerDefense.Tests
             definition.attackInterval = 0.15f;
             definition.wallDamageMultiplier = 1f;
             var wave = CreateWave(definition, 1, 0.01f, spawnImmediately: true);
+            // The target must span this test corridor. A random lateral spawn
+            // on the default wide road can correctly bypass the barricade.
+            wave.roadHalfWidth = 0.8f;
             var horde = CreateManager();
             var wrapperObject = new GameObject("TestEnemyManagerWithBarricade");
             cleanupObjects.Add(wrapperObject);
@@ -482,6 +541,19 @@ namespace TowerDefense.Tests
             while (!barricade.Destroyed && Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
+            }
+
+            if (!barricade.Destroyed)
+            {
+                var simulation = (GpuHordeSimulation)typeof(HordeEnemyManager).GetField(
+                    "gpuSimulation", System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic).GetValue(horde);
+                var states = new GpuHordeSimulation.AgentState[1];
+                var diagnostics = new uint[GpuHordeSimulation.DiagnosticsCount];
+                simulation.ReadStatesSynchronous(states, 1);
+                simulation.SynchronizeDiagnostics(diagnostics);
+                Debug.Log(System.FormattableString.Invariant(
+                    $"XPBD barricade timeout: position={states[0].Position.x:F4}:{states[0].Position.y:F4}, velocity={states[0].Velocity.x:F4}:{states[0].Velocity.y:F4}, status={states[0].Status}, blockerSlot={states[0].Padding2:F1}, attackTimer={states[0].AttackTimer:F3}, targetHealth={barricade.CurrentHealth:F3}, active={diagnostics[3]}, contacts={diagnostics[11]}, deep={diagnostics[13]}"));
             }
 
             Assert.That(barricade.WasDamaged, Is.True, "The GPU enemy never attacked the blocking target.");

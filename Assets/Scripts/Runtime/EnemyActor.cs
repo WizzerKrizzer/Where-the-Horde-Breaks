@@ -53,8 +53,8 @@ namespace TowerDefense.Runtime
         private const float WallBounce = 0.32f;
         private const float RoadFriction = 0.85f;
         private const float SeparationPathWindow = 3.4f;
-        // The primitive enemy mesh is a unit sphere, so the sum of visual scales
-        // is its body diameter. Keep only a tiny numerical skin at contact.
+        // Use the same compact body envelope as GPU crowds. The primitive's
+        // horizontal presentation matches that envelope; height is unchanged.
         private const float ContactSkin = 1.01f;
         private const float ApproachSkin = 1.045f;
         private const float SeparationVelocityScale = 5.6f;
@@ -67,6 +67,7 @@ namespace TowerDefense.Runtime
         public float Health => health;
         public float PathDistance => pathDistance;
         public float MovementSpeed => movementSpeed;
+        public float ContactRadius => CrowdSolverProfile.Default.GetBodyRadius(definition.visualScale);
         public bool IsAlive => active && health > 0f;
         public event Action<EnemyActor> Died;
 
@@ -104,7 +105,8 @@ namespace TowerDefense.Runtime
             stepDeltaTime = 0f;
             active = true;
             currentCombatTarget = null;
-            transform.localScale = Vector3.one * enemyDefinition.visualScale;
+            var contactRadius = CrowdSolverProfile.Default.GetBodyRadius(enemyDefinition.visualScale);
+            transform.localScale = new Vector3(contactRadius, enemyDefinition.visualScale, contactRadius);
             bodyRenderer = GetComponent<Renderer>();
             bodyMeshFilter = GetComponent<MeshFilter>();
             if (bodyRenderer != null)
@@ -676,10 +678,9 @@ namespace TowerDefense.Runtime
             return 30;
         }
 
-        private float GetContactDistance(EnemyActor other)
+        internal float GetContactDistance(EnemyActor other)
         {
-            var combinedScale = definition.visualScale + (other.Definition?.visualScale ?? definition.visualScale);
-            return Mathf.Max(0.62f, combinedScale * ContactSkin);
+            return (ContactRadius + other.ContactRadius) * ContactSkin;
         }
 
         private float GetApproachDistance(EnemyActor other)

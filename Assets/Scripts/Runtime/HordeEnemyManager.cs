@@ -16,19 +16,10 @@ namespace TowerDefense.Runtime
         private const float VisualRadius = 0.34f;
         private const float MaximumVisualRadius = VisualRadius * 1.45f;
         private const float SpatialCellSize = 1.2f;
-        private const float CombatTargetCellSize = 4.5f;
         // The normalized enemy meshes use state.scale as their visible radius.
         // Keep contact only slightly outside the silhouette to avoid visible gaps.
         private const float CollisionDiameter = 0.58f;
         private const float FlowCellSize = 0.62f;
-        private const float FlowAcceleration = 8.5f;
-        private const float CollisionAcceleration = 18f;
-        private const float WallAcceleration = 13f;
-        private const float WallInfluenceDistance = 0.9f;
-        private const float VelocityDamping = 1.15f;
-        private const int OffscreenDetailStride = 8;
-        private const int DetailedPerfSampleStride = 15;
-        private const int MaxCollisionNeighbors = 16;
         private const int MinimumSpawnsPerWindow = 14;
         private const int MaximumSpawnsPerWindow = 16;
         // A family of enemies should share an authored base speed, but no crowd
@@ -45,10 +36,7 @@ namespace TowerDefense.Runtime
         [NonSerialized] private readonly List<EnemyDefinition> spawnSequence = new();
         [NonSerialized] private readonly Matrix4x4[] matrixBatch = new Matrix4x4[InstanceBatchSize];
         [NonSerialized] private readonly Dictionary<Vector2Int, List<int>> spatialBuckets = new();
-        [NonSerialized] private readonly Dictionary<Vector2Int, List<ICombatTarget>> combatTargetBuckets = new();
         [NonSerialized] private readonly List<int> nearbyIndices = new(192);
-        [NonSerialized] private readonly List<ICombatTarget> nearbyCombatTargets = new(32);
-        [NonSerialized] private readonly Dictionary<ICombatTarget, float> frameTargetBlockedMass = new();
         [NonSerialized] private readonly List<Vector3> spawnBatchPositions = new(64);
         [NonSerialized] private Vector3[] positions;
         [NonSerialized] private Vector3[] previousPositions;
@@ -77,7 +65,7 @@ namespace TowerDefense.Runtime
         [NonSerialized] private GpuHordeSimulation gpuSimulation;
         [NonSerialized] private IReadOnlyList<ICombatTarget> combatTargets;
         [NonSerialized] private WaveDefinition wave;
-        [NonSerialized] private HordePhysicsProfile activePhysicsProfile;
+        [NonSerialized] private CrowdSolverProfile activeCrowdSolverProfile;
         [NonSerialized] private PathRoute path;
         [NonSerialized] private HordeFlowField flowField;
         [NonSerialized] private Mesh mesh;
@@ -121,8 +109,7 @@ namespace TowerDefense.Runtime
         private float activeEnemyMassMultiplier = 1f;
         private float activeMaximumVisualRadius = MaximumVisualRadius;
         private float activeNavigationWallInset = MaximumVisualRadius;
-        private float activeCollisionDiameter = CollisionDiameter;
-        private float activeSpriteContactDiameterMultiplier = HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier;
+        private float activeSolverCollisionDiameter = CollisionDiameter;
         private bool usesOpenFieldNavigation;
         private float activeFixedSimulationStep = 1f / 60f;
         private float gpuSimulationAccumulator;
@@ -163,6 +150,11 @@ namespace TowerDefense.Runtime
             gpuSimulation?.MaximumOrdinaryBacktrack ?? 0f,
             gpuSimulation?.NormalizedNeighborSpacing ?? 0f,
             gpuSimulation?.ActiveContactPairCount ?? 0u,
+            gpuSimulation?.ShallowContactPairCount ?? 0u,
+            gpuSimulation?.DeepOverlapPairCount ?? 0u,
+            gpuSimulation?.PersistentDeepContactBodyCount ?? 0u,
+            gpuSimulation?.DeepContactDurationSeconds ?? 0f,
+            gpuSimulation?.GridCapacityFailureCount ?? 0u,
             gpuSimulation != null
                 ? "GPU Compute / HordeIndirect"
                 : material != null && material.shader != null ? material.shader.name : "none");
@@ -219,17 +211,16 @@ namespace TowerDefense.Runtime
             activeEnemyScaleMultiplier = Mathf.Clamp(wave.enemyScaleMultiplier, 0.1f, 2f);
             activeEnemyMassMultiplier = Mathf.Clamp(wave.enemyMassMultiplier, 0.5f, 3f);
             activeMaximumVisualRadius = EstimateMaximumVisualRadius(spawnSequence) * 1.04f;
-            activeCollisionDiameter = CollisionDiameter * activeEnemyScaleMultiplier;
-            activePhysicsProfile = wave.hordePhysicsProfile;
+            // Every horde shares one fixed solver contract. Wave assets retain
+            // their gameplay/spawn tuning, but cannot trade contact quality for
+            // a level-specific physics profile.
+            activeCrowdSolverProfile = CrowdSolverProfile.Default;
+            activeSolverCollisionDiameter = activeCrowdSolverProfile.bodyDiameterPerEnemyScale *
+                activeEnemyScaleMultiplier * activeCrowdSolverProfile.bodyRadiusPerVisualScale;
             activeNavigationWallInset = GetNavigationWallInset();
             usesOpenFieldNavigation = wave.hordeNavigationMode == HordeNavigationMode.OpenField &&
                 wave.openFieldSize.x > 0.1f && wave.openFieldSize.y > 0.1f;
-            activeFixedSimulationStep = 1f / Mathf.Clamp(
-                activePhysicsProfile != null ? activePhysicsProfile.fixedSimulationHz : 60,
-                30,
-                120);
-            activeSpriteContactDiameterMultiplier = HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier *
-                Mathf.Clamp(activePhysicsProfile != null ? activePhysicsProfile.contactDiameterMultiplier : 1f, 0.55f, 1.5f);
+            activeFixedSimulationStep = activeCrowdSolverProfile.FixedStep;
             activeRoadHalfWidth = usesOpenFieldNavigation
                 ? Mathf.Max(activeNavigationWallInset, wave.openFieldGateHalfWidth)
                 : wave.roadHalfWidth > VisualRadius * activeEnemyScaleMultiplier
@@ -308,9 +299,11 @@ namespace TowerDefense.Runtime
                 return;
             }
             gpuSimulation.SetVisualScaleMultiplier(1f);
-            gpuSimulation.SetCollisionDiameter(activeCollisionDiameter);
-            gpuSimulation.SetMovementDynamics(wave.enemyInertiaMultiplier, wave.collisionPressureMultiplier);
-            gpuSimulation.SetHordePhysicsProfile(activePhysicsProfile);
+            gpuSimulation.SetCollisionDiameter(activeSolverCollisionDiameter);
+            // Scale sizes the render card. The solver profile converts it to
+            // the painted torso's contact radius, excluding transparent padding.
+            gpuSimulation.SetXpbdPerBodyRadius(true);
+            gpuSimulation.SetCrowdSolverProfile(activeCrowdSolverProfile);
             gpuSimulation.SetStationaryArena(
                 wave.stationaryArena,
                 wave.randomArenaMovement,
@@ -421,10 +414,7 @@ namespace TowerDefense.Runtime
                 boundaryDebugMesh = null;
             }
             spatialBuckets.Clear();
-            combatTargetBuckets.Clear();
             nearbyIndices.Clear();
-            nearbyCombatTargets.Clear();
-            frameTargetBlockedMass.Clear();
             elapsed = 0f;
             totalSpawned = 0;
             activeCount = 0;
@@ -434,9 +424,8 @@ namespace TowerDefense.Runtime
             activeEnemyMassMultiplier = 1f;
             activeMaximumVisualRadius = MaximumVisualRadius;
             activeNavigationWallInset = MaximumVisualRadius;
-            activeCollisionDiameter = CollisionDiameter;
-            activeSpriteContactDiameterMultiplier = HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier;
-            activePhysicsProfile = null;
+            activeSolverCollisionDiameter = CollisionDiameter;
+            activeCrowdSolverProfile = null;
             usesOpenFieldNavigation = false;
             activeFixedSimulationStep = 1f / 60f;
             gpuSimulationAccumulator = 0f;
@@ -453,20 +442,13 @@ namespace TowerDefense.Runtime
 
             var spawnTicks = 0L;
             var simulationTicks = 0L;
-            spawnElapsed += Mathf.Max(0f, Time.unscaledDeltaTime) *
-                Mathf.Max(0f, Time.timeScale);
-            var sectionStart = Stopwatch.GetTimestamp();
-            SpawnDueEnemies();
-            spawnTicks += Stopwatch.GetTimestamp() - sectionStart;
-
             var fixedGpuStep = activeFixedSimulationStep;
             const int maximumStepsPerFrame = 4;
-            // Never enlarge the collision horizon in response to a slow frame.
-            // Bound catch-up work; excess wall time is dropped, rather than
-            // creating deeper contacts and an ever more expensive next frame.
-            gpuSimulationAccumulator = Mathf.Min(
-                gpuSimulationAccumulator + Mathf.Max(0f, Time.deltaTime),
-                fixedGpuStep * maximumStepsPerFrame);
+            // Retain any excess fixed-tick debt. Dropping it used to advance
+            // spawning on a different clock than collision resolution, so slow
+            // frames changed both density and contact quality.
+            gpuSimulationAccumulator += Mathf.Max(0f, Time.unscaledDeltaTime) *
+                Mathf.Max(0f, Time.timeScale);
             var pendingFixedSteps = Mathf.FloorToInt(
                 (gpuSimulationAccumulator + 0.000001f) / fixedGpuStep);
             if (pendingFixedSteps <= 0)
@@ -482,6 +464,10 @@ namespace TowerDefense.Runtime
             for (var step = 0; step < stepCount; step++)
             {
                 elapsed += simulationStep;
+                spawnElapsed += simulationStep;
+                var sectionStart = Stopwatch.GetTimestamp();
+                SpawnDueEnemies();
+                spawnTicks += Stopwatch.GetTimestamp() - sectionStart;
                 sectionStart = Stopwatch.GetTimestamp();
                 Simulate(simulationStep, step == stepCount - 1);
                 simulationTicks += Stopwatch.GetTimestamp() - sectionStart;
@@ -503,7 +489,11 @@ namespace TowerDefense.Runtime
             var drawStart = Stopwatch.GetTimestamp();
             if (gpuSimulation != null)
             {
-                gpuSimulation.SetPresentationInterpolation(gpuSimulationAccumulator / activeFixedSimulationStep);
+                // Debt may be larger than one tick while catch-up is bounded;
+                // presentation may interpolate the latest resolved states but
+                // must never extrapolate into unsimulated time.
+                gpuSimulation.SetPresentationInterpolation(Mathf.Clamp01(
+                    gpuSimulationAccumulator / activeFixedSimulationStep));
                 // This component runs after TopDownCameraController's LateUpdate.
                 // Rebuild visibility from the final camera pose, not the pose from
                 // the preceding simulation tick.
@@ -576,9 +566,7 @@ namespace TowerDefense.Runtime
                 }
                 var hasAuthoredSpeedRange = wave.randomEnemySpeedMin > 0f &&
                     wave.randomEnemySpeedMax >= wave.randomEnemySpeedMin;
-                var personalSpeedFactor = activePhysicsProfile != null && activePhysicsProfile.useReferenceCrowdRules
-                    ? 1f
-                    : hasAuthoredSpeedRange
+                var personalSpeedFactor = hasAuthoredSpeedRange
                     ? 1f
                     : GetPersonalSpeedFactor(totalSpawned);
                 var individualSpeed = spawnSpeed * personalSpeedFactor;
@@ -643,9 +631,7 @@ namespace TowerDefense.Runtime
                 // Keep members of one enemy family visually related. Broad scale
                 // variation made ordinary runners read as separate enemy classes.
                 visualScales[totalSpawned] = (definition != null ? definition.visualScale : 0.45f) *
-                    (activePhysicsProfile != null && activePhysicsProfile.useReferenceCrowdRules
-                        ? 1f
-                        : UnityEngine.Random.Range(0.96f, 1.04f));
+                    UnityEngine.Random.Range(0.96f, 1.04f);
                 visualPulsePhases[totalSpawned] = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
                 visualPulseSpeeds[totalSpawned] = UnityEngine.Random.Range(1.7f, 3.8f);
                 slowMultipliers[totalSpawned] = 1f;
@@ -841,19 +827,16 @@ namespace TowerDefense.Runtime
             return baseDiameter * Mathf.Clamp(wave != null ? wave.spawnPackingMultiplier : 1f, 1f, 2f);
         }
 
-        private float GetSpriteContactDiameter() => activeCollisionDiameter * activeSpriteContactDiameterMultiplier;
+        private float GetSpriteContactDiameter() => activeSolverCollisionDiameter;
 
         private float GetNavigationWallInset()
         {
-            // Collision uses a compact disk. The top-down visual is a rotated
-            // rectangle, so its corner extends farther toward an angled wall.
-            // Reserve that full footprint plus a small readable air gap.
-            var packing = Mathf.Clamp(activePhysicsProfile != null
-                ? activePhysicsProfile.spritePackingScale
-                : 1.18f, 0.9f, 1.35f);
-            var cardCornerRadius = activeMaximumVisualRadius *
-                HordeRaiderSpriteAssets.GroundCardCornerRadius * packing;
-            return Mathf.Max(activeMaximumVisualRadius, cardCornerRadius + 0.045f);
+            // Navigation is contracted by the largest authored physical disk,
+            // never by transparent atlas padding or a level-specific art preset.
+            var physicalRadius = Mathf.Max(
+                GetSpriteContactDiameter() * 0.5f,
+                activeMaximumVisualRadius * activeCrowdSolverProfile.bodyRadiusPerVisualScale);
+            return physicalRadius + 0.018f;
         }
 
         private static float GetSpeedColorIndex(float speed)
@@ -963,221 +946,6 @@ namespace TowerDefense.Runtime
             SimulateGpuFast(deltaTime, updatePresentation);
             return;
 
-#if false // Removed from the runtime assembly: historical CPU prototype only.
-            var camera = Camera.main;
-            var frame = Time.frameCount;
-            var sampleDetailedPerformance = frame % DetailedPerfSampleStride == 0;
-            if (sampleDetailedPerformance)
-            {
-                ClearDetailedPerformance();
-            }
-
-            var cameraFocus = camera != null ? GetCameraGroundFocus(camera) : Vector3.zero;
-            var highFidelityRadius = camera != null ? GetHighFidelityRadius(camera) : float.PositiveInfinity;
-            var highFidelityRadiusSq = highFidelityRadius * highFidelityRadius;
-            lastFullFidelityCount = 0;
-            lastCheapFidelityCount = 0;
-            lastNearCombatCount = 0;
-            frameTargetBlockedMass.Clear();
-            var targetIndexStart = sampleDetailedPerformance ? Stopwatch.GetTimestamp() : 0L;
-            RebuildCombatTargetBuckets();
-            if (sampleDetailedPerformance)
-            {
-                lastTierMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - targetIndexStart);
-            }
-
-            for (var i = 0; i < totalSpawned; i++)
-            {
-                if (!alive[i])
-                {
-                    continue;
-                }
-
-                var sectionStart = sampleDetailedPerformance ? Stopwatch.GetTimestamp() : 0L;
-                previousPositions[i] = positions[i];
-                if (gpuSimulation == null && slowTimers[i] > 0f)
-                {
-                    slowTimers[i] -= deltaTime;
-                    if (slowTimers[i] <= 0f)
-                    {
-                        slowMultipliers[i] = 1f;
-                    }
-                }
-
-                if (gpuSimulation == null && burnTimers[i] > 0f)
-                {
-                    burnTimers[i] -= deltaTime;
-                    ApplyDamage(i, burnDamagePerSecond[i] * deltaTime);
-                    if (!alive[i])
-                    {
-                        if (sampleDetailedPerformance)
-                        {
-                            lastStatusMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                        }
-
-                        continue;
-                    }
-
-                    if (burnTimers[i] <= 0f)
-                    {
-                        burnDamagePerSecond[i] = 0f;
-                    }
-                }
-                if (sampleDetailedPerformance)
-                {
-                    lastStatusMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                var nearFocus = IsNearCameraFocus(positions[i], cameraFocus, highFidelityRadiusSq);
-                var staggeredTick = (i + frame) % OffscreenDetailStride == 0;
-                var nearCombat = IsNearCombatTarget(positions[i]);
-                var detailedTick = nearCombat || nearFocus || staggeredTick;
-                if (detailedTick)
-                {
-                    lastFullFidelityCount++;
-                    if (nearCombat)
-                    {
-                        lastNearCombatCount++;
-                    }
-                }
-                else
-                {
-                    lastCheapFidelityCount++;
-                }
-                if (sampleDetailedPerformance)
-                {
-                    lastTierMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                var target = nearCombat || staggeredTick ? FindBlockingTarget(i) : null;
-                if (target != null)
-                {
-                    AttackCombatTarget(i, target, deltaTime);
-                }
-                if (sampleDetailedPerformance)
-                {
-                    lastCombatMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                var combatMultiplier = target == null ? 1f : 0.08f;
-                var crowdMultiplier = crowdSpeedFactors != null ? Mathf.Clamp(crowdSpeedFactors[i], 0.45f, 1f) : 1f;
-                var desiredSpeed = wave.stationaryArena && !wave.randomArenaMovement && !wave.centerSeekingArena
-                    ? 0f
-                    : speeds[i] * combatMultiplier * crowdMultiplier;
-                if (gpuSimulation == null)
-                {
-                    desiredSpeed *= Mathf.Clamp(slowMultipliers[i], 0.05f, 1f);
-                }
-                if (gpuSimulation != null)
-                {
-                    gpuControls[i] = new Vector4(
-                        desiredSpeed,
-                        1f,
-                        0f,
-                        gpuControls[i].w);
-                    continue;
-                }
-
-                var flowDirection = wave.centerSeekingArena
-                    ? (path.StartPoint - positions[i]).normalized
-                    : flowField.GetDirection(positions[i]);
-                var congestion = 0f;
-                var separation = detailedTick ? CalculateSeparation(i, flowDirection, out congestion) : Vector3.zero;
-                if (crowdSpeedFactors != null)
-                {
-                    var pressureSpeed = Mathf.Lerp(1f, 0.48f, congestion);
-                    crowdSpeedFactors[i] = Mathf.MoveTowards(crowdSpeedFactors[i], pressureSpeed, deltaTime * 5f);
-                }
-
-                var desiredVelocity = flowDirection * desiredSpeed;
-                var flowForce = (desiredVelocity - velocities[i]) * FlowAcceleration;
-                var collisionForce = separation * CollisionAcceleration;
-                var wallForce = flowField.GetWallRepulsion(positions[i], WallInfluenceDistance) * WallAcceleration;
-                var acceleration = flowForce + collisionForce + wallForce;
-                velocities[i] += acceleration * deltaTime;
-                velocities[i] *= 1f / (1f + VelocityDamping * deltaTime);
-                velocities[i] = Vector3.ClampMagnitude(velocities[i], Mathf.Max(0.25f, desiredSpeed * 1.12f));
-                var knockbackVelocity = knockbackVelocities[i];
-                var oldPosition = positions[i];
-                var desiredPosition = oldPosition + (velocities[i] + knockbackVelocity) * deltaTime;
-                positions[i] = flowField.ConstrainMove(oldPosition, desiredPosition);
-                if ((positions[i] - desiredPosition).sqrMagnitude > 0.0001f)
-                {
-                    // Keep only the displacement the wall actually allowed. Otherwise
-                    // the blocked normal velocity keeps pinning agents against corners.
-                    velocities[i] = deltaTime > 0.0001f
-                        ? Vector3.ClampMagnitude((positions[i] - oldPosition) / deltaTime, speeds[i])
-                        : Vector3.zero;
-                }
-
-                knockbackVelocities[i] = Vector3.MoveTowards(knockbackVelocity, Vector3.zero, deltaTime * 6f);
-                pathDistances[i] = Mathf.Max(0f, path.TotalLength - flowField.GetDistanceToExit(positions[i]));
-                if (sampleDetailedPerformance)
-                {
-                    lastMovementMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                if (!wave.stationaryArena && flowField.HasReachedExit(positions[i]))
-                {
-                    alive[i] = false;
-                    activeCount--;
-                    totalResolved++;
-                    continue;
-                }
-
-                if (sampleDetailedPerformance)
-                {
-                    lastSegmentMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                if (sampleDetailedPerformance)
-                {
-                    lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-                if (sampleDetailedPerformance)
-                {
-                    if (!detailedTick)
-                    {
-                        lastCrowdMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                        sectionStart = Stopwatch.GetTimestamp();
-                    }
-
-                    lastKnockbackMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                    sectionStart = Stopwatch.GetTimestamp();
-                }
-
-                if (sampleDetailedPerformance)
-                {
-                    lastSampleMs += TicksToMilliseconds(Stopwatch.GetTimestamp() - sectionStart);
-                }
-            }
-
-            if (gpuSimulation != null)
-            {
-                for (var i = 0; i < totalSpawned; i++)
-                {
-                    if (!alive[i])
-                    {
-                        gpuControls[i] = Vector4.zero;
-                    }
-                }
-
-                var movementStart = Stopwatch.GetTimestamp();
-                gpuSimulation.Dispatch(deltaTime, gpuControls, gpuImpulses);
-                Array.Clear(gpuImpulses, 0, gpuImpulses.Length);
-                lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
-            }
-
-            var bucketStart = Stopwatch.GetTimestamp();
-            RebuildSpatialBuckets();
-            lastBucketMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - bucketStart);
-#endif
         }
 
         private void SimulateGpuFast(float deltaTime, bool updatePresentation)
@@ -1193,16 +961,10 @@ namespace TowerDefense.Runtime
                 ? Mathf.Max(1f, wave.openingSpeedMultiplier)
                 : 1f;
             gpuSimulation.SetMovementSpeedMultiplier(openingSpeedMultiplier);
-            // Time acceleration executes up to four physics ticks in one rendered
-            // frame. Share the contact budget between them so catch-up cannot create
-            // hundreds of grid rebuilds and feed an FPS collapse.
-            var contactIterationScale = 1f / Mathf.Sqrt(Mathf.Max(1, gpuStepsThisFrame));
-            gpuSimulation.Dispatch(
-                deltaTime,
+            gpuSimulation.DispatchFixedTick(
                 null,
                 null,
                 requestReadback: updatePresentation,
-                contactIterationScale: contactIterationScale,
                 updatePresentation: updatePresentation,
                 updateVisibility: false);
             lastMovementMs = TicksToMilliseconds(Stopwatch.GetTimestamp() - movementStart);
@@ -1801,161 +1563,6 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private Vector3 CalculateSeparation(int index, Vector3 flowDirection, out float congestion)
-        {
-            congestion = 0f;
-            if (activeCount <= 1)
-            {
-                return Vector3.zero;
-            }
-
-            var position = positions[index];
-            // Buckets are unordered. Gather enough candidates to reach the genuinely
-            // local bodies instead of stopping on the first unrelated bucket entries.
-            CollectNearbyIndices(position, activeCollisionDiameter, nearbyIndices, 64);
-            if (nearbyIndices.Count <= 1)
-            {
-                return Vector3.zero;
-            }
-
-            var push = Vector3.zero;
-            var checks = 0;
-            var radiusSq = activeCollisionDiameter * activeCollisionDiameter;
-            for (var candidate = 0; candidate < nearbyIndices.Count && checks < MaxCollisionNeighbors; candidate++)
-            {
-                var other = nearbyIndices[candidate];
-                if (other == index || !alive[other])
-                {
-                    continue;
-                }
-
-                var offset = position - positions[other];
-                var distanceSq = offset.x * offset.x + offset.z * offset.z;
-                if (distanceSq > radiusSq)
-                {
-                    continue;
-                }
-
-                Vector3 direction;
-                float distance;
-                if (distanceSq <= 0.0001f)
-                {
-                    // Stable per-pair fallback prevents coincident spawns forming a fixed lattice.
-                    var angle = ((index * 73856093) ^ (other * 19349663)) * 0.0001f;
-                    direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                    distance = 0f;
-                }
-                else
-                {
-                    distance = Mathf.Sqrt(distanceSq);
-                    direction = offset / distance;
-                }
-
-                var overlap = 1f - distance / activeCollisionDiameter;
-                push += direction * overlap * 1.25f;
-                if (Vector3.Dot(positions[other] - position, flowDirection) > 0f)
-                {
-                    congestion += overlap;
-                }
-
-                checks++;
-            }
-
-            if (checks <= 0)
-            {
-                return Vector3.zero;
-            }
-
-            congestion = Mathf.Clamp01(congestion / 3f);
-            return Vector3.ClampMagnitude(push, 1.25f);
-        }
-
-        private ICombatTarget FindBlockingTarget(int index)
-        {
-            if (combatTargets == null || combatTargets.Count == 0 || definitions[index] == null)
-            {
-                return null;
-            }
-
-            var enemyMass = Mathf.Max(0.1f, definitions[index].mass * activeEnemyMassMultiplier);
-            var enemyPosition = positions[index];
-            ICombatTarget bestTarget = null;
-            var bestDistanceSq = float.PositiveInfinity;
-            CollectNearbyCombatTargets(enemyPosition, 3.4f, nearbyCombatTargets);
-            for (var i = nearbyCombatTargets.Count - 1; i >= 0; i--)
-            {
-                var target = nearbyCombatTargets[i];
-                if (target.BlockCapacity <= 0f)
-                {
-                    continue;
-                }
-
-                frameTargetBlockedMass.TryGetValue(target, out var blockedMass);
-                if (blockedMass + enemyMass > target.BlockCapacity)
-                {
-                    continue;
-                }
-
-                var range = Mathf.Max(0.35f, target.CombatRadius + VisualRadius * 1.2f);
-                var offset = target.Position - enemyPosition;
-                var distanceSq = offset.x * offset.x + offset.z * offset.z;
-                if (distanceSq > range * range || distanceSq >= bestDistanceSq)
-                {
-                    continue;
-                }
-
-                bestTarget = target;
-                bestDistanceSq = distanceSq;
-            }
-
-            if (bestTarget != null)
-            {
-                frameTargetBlockedMass.TryGetValue(bestTarget, out var blockedMass);
-                frameTargetBlockedMass[bestTarget] = blockedMass +
-                    Mathf.Max(0.1f, definitions[index].mass * activeEnemyMassMultiplier);
-            }
-
-            return bestTarget;
-        }
-
-        private bool IsNearCombatTarget(Vector3 position)
-        {
-            if (combatTargets == null || combatTargets.Count == 0)
-            {
-                return false;
-            }
-
-            const float margin = 2.4f;
-            CollectNearbyCombatTargets(position, margin + 1.4f, nearbyCombatTargets);
-            for (var i = nearbyCombatTargets.Count - 1; i >= 0; i--)
-            {
-                var target = nearbyCombatTargets[i];
-                var range = Mathf.Max(0.75f, target.CombatRadius + margin);
-                var offset = target.Position - position;
-                if (offset.x * offset.x + offset.z * offset.z <= range * range)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private void AttackCombatTarget(int index, ICombatTarget target, float deltaTime)
-        {
-            attackTimers[index] -= deltaTime;
-            if (attackTimers[index] > 0f || definitions[index] == null)
-            {
-                return;
-            }
-
-            var multiplier = target.TargetKind == CombatTargetKind.Barrier
-                ? definitions[index].wallDamageMultiplier
-                : definitions[index].alliedDamageMultiplier;
-            target.TakeDamage(definitions[index].attackDamage * Mathf.Max(0f, multiplier), null);
-            attackTimers[index] = Mathf.Max(0.15f, definitions[index].attackInterval);
-        }
-
         private void RebuildSpatialBuckets()
         {
             foreach (var bucket in spatialBuckets.Values)
@@ -2026,86 +1633,9 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void RebuildCombatTargetBuckets()
-        {
-            foreach (var bucket in combatTargetBuckets.Values)
-            {
-                bucket.Clear();
-            }
-
-            if (combatTargets == null || combatTargets.Count == 0)
-            {
-                return;
-            }
-
-            for (var i = combatTargets.Count - 1; i >= 0; i--)
-            {
-                var target = combatTargets[i];
-                if (target == null || !target.IsAlive)
-                {
-                    continue;
-                }
-
-                var key = GetCombatTargetKey(target.Position);
-                if (!combatTargetBuckets.TryGetValue(key, out var bucket))
-                {
-                    bucket = new List<ICombatTarget>(4);
-                    combatTargetBuckets.Add(key, bucket);
-                }
-
-                bucket.Add(target);
-            }
-        }
-
-        private void CollectNearbyCombatTargets(Vector3 center, float radius, List<ICombatTarget> results)
-        {
-            results.Clear();
-            if (combatTargetBuckets.Count == 0)
-            {
-                if (combatTargets == null)
-                {
-                    return;
-                }
-
-                for (var i = combatTargets.Count - 1; i >= 0; i--)
-                {
-                    var target = combatTargets[i];
-                    if (target != null && target.IsAlive)
-                    {
-                        results.Add(target);
-                    }
-                }
-
-                return;
-            }
-
-            var min = GetCombatTargetKey(center - new Vector3(radius, 0f, radius));
-            var max = GetCombatTargetKey(center + new Vector3(radius, 0f, radius));
-            for (var x = min.x; x <= max.x; x++)
-            {
-                for (var y = min.y; y <= max.y; y++)
-                {
-                    if (!combatTargetBuckets.TryGetValue(new Vector2Int(x, y), out var bucket))
-                    {
-                        continue;
-                    }
-
-                    for (var i = 0; i < bucket.Count; i++)
-                    {
-                        results.Add(bucket[i]);
-                    }
-                }
-            }
-        }
-
         private static Vector2Int GetSpatialKey(Vector3 position)
         {
             return new Vector2Int(Mathf.FloorToInt(position.x / SpatialCellSize), Mathf.FloorToInt(position.z / SpatialCellSize));
-        }
-
-        private static Vector2Int GetCombatTargetKey(Vector3 position)
-        {
-            return new Vector2Int(Mathf.FloorToInt(position.x / CombatTargetCellSize), Mathf.FloorToInt(position.z / CombatTargetCellSize));
         }
 
         private void DrawInstances()
@@ -2401,6 +1931,11 @@ namespace TowerDefense.Runtime
             public readonly float MaximumOrdinaryBacktrack;
             public readonly float NormalizedNeighborSpacing;
             public readonly uint ActiveContactPairs;
+            public readonly uint ShallowContactPairs;
+            public readonly uint DeepOverlapPairs;
+            public readonly uint PersistentDeepContactBodies;
+            public readonly float DeepContactDurationSeconds;
+            public readonly uint GridCapacityFailures;
             public readonly string ShaderName;
 
             public HordePerformanceSnapshot(
@@ -2429,6 +1964,11 @@ namespace TowerDefense.Runtime
                 float maximumOrdinaryBacktrack,
                 float normalizedNeighborSpacing,
                 uint activeContactPairs,
+                uint shallowContactPairs,
+                uint deepOverlapPairs,
+                uint persistentDeepContactBodies,
+                float deepContactDurationSeconds,
+                uint gridCapacityFailures,
                 string shaderName)
             {
                 SpawnMs = spawnMs;
@@ -2456,6 +1996,11 @@ namespace TowerDefense.Runtime
                 MaximumOrdinaryBacktrack = maximumOrdinaryBacktrack;
                 NormalizedNeighborSpacing = normalizedNeighborSpacing;
                 ActiveContactPairs = activeContactPairs;
+                ShallowContactPairs = shallowContactPairs;
+                DeepOverlapPairs = deepOverlapPairs;
+                PersistentDeepContactBodies = persistentDeepContactBodies;
+                DeepContactDurationSeconds = deepContactDurationSeconds;
+                GridCapacityFailures = gridCapacityFailures;
                 ShaderName = shaderName;
             }
         }

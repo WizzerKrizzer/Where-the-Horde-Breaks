@@ -3,9 +3,8 @@ using UnityEngine;
 namespace TowerDefense.Data
 {
     /// <summary>
-    /// Shared, inspectable crowd-motion tuning. The reference preset models a
-    /// flowing horde: bodies brake behind a contact instead of oscillating
-    /// through it, while explosions retain full physical freedom.
+    /// Legacy serialized schema retained so existing wave assets still load.
+    /// Runtime crowd motion is configured exclusively by CrowdSolverProfile.
     /// </summary>
     [CreateAssetMenu(menuName = "Tower Defense/Horde Physics Profile")]
     public sealed class HordePhysicsProfile : ScriptableObject
@@ -20,33 +19,5 @@ namespace TowerDefense.Data
         [Min(0.01f)] public float externalForceRecovery = 0.42f;
         [Range(1, 32)] public int contactIterations = 8;
         public bool useReferenceCrowdRules = true;
-
-        public static HordePhysicsProfile CreateOrcReference()
-        {
-            var profile = CreateInstance<HordePhysicsProfile>();
-            profile.name = "Orc Reference Horde Physics";
-            profile.hideFlags = HideFlags.DontSave;
-            profile.fixedSimulationHz = 60;
-            // The sprite card is wider than its old 0.70x collision envelope.
-            // This produces a 0.38-unit physical diameter for the Level 2
-            // runner: clear across its painted width and only slightly shared
-            // along its longer direction of travel.
-            profile.contactDiameterMultiplier = 1.34f;
-            profile.spritePackingScale = 1f;
-            // A body needs roughly one second to build back to cruising speed.
-            // It must not regain full movement on the first frame after a wall,
-            // contact, or explosion has taken that momentum away.
-            profile.flowAcceleration = 2.2f;
-            profile.collisionAcceleration = 14f;
-            profile.velocityDamping = 0.3f;
-            profile.lateralContactResponse = 0.62f;
-            profile.externalForceRecovery = 0.42f;
-            // Contact velocity is the primary queue mechanism. Eight bounded
-            // projections only remove residual penetration; more passes turn a
-            // Jacobi crowd solve into visible position hopping at close zoom.
-            profile.contactIterations = 8;
-            profile.useReferenceCrowdRules = true;
-            return profile;
-        }
     }
 }

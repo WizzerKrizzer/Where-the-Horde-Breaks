@@ -692,7 +692,6 @@ namespace TowerDefense.Runtime
             // Level 2 keeps the reference crowd physics, but navigation is constrained to
             // the authored roads. Open-field flow remains available for a separate level.
             levelTwoWave.hordeNavigationMode = HordeNavigationMode.Corridor;
-            levelTwoWave.hordePhysicsProfile = HordePhysicsProfile.CreateOrcReference();
             levelTwoWave.entries = new[]
             {
                 new WaveEntry { enemy = runner, count = 10000 }
@@ -744,7 +743,6 @@ namespace TowerDefense.Runtime
             levelTwoPointOneWave.collisionPressureMultiplier = 1.2f;
             levelTwoPointOneWave.roadHalfWidth = 15f;
             levelTwoPointOneWave.hordeNavigationMode = HordeNavigationMode.Corridor;
-            levelTwoPointOneWave.hordePhysicsProfile = HordePhysicsProfile.CreateOrcReference();
             levelTwoPointOneWave.entries = new[]
             {
                 new WaveEntry { enemy = runner, count = 10000 }
@@ -951,23 +949,29 @@ namespace TowerDefense.Runtime
             var levelSevenWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelSevenWave.id = "wave_07_explosion_physics_test";
             levelSevenWave.totalEnemyCount = 10000;
-            levelSevenWave.spawnInterval = 0.02f;
-            levelSevenWave.randomSpawnBurstMin = 6;
-            levelSevenWave.randomSpawnBurstMax = 10;
+            // Keep this laboratory's bodies identical to the Level 2 queue.
+            // The arena shape and Shockwave Bomb are the only test variables, so
+            // its blast response can be compared directly with the choke point.
+            levelSevenWave.spawnInterval = 0.009f;
+            levelSevenWave.randomSpawnBurstMin = 5;
+            levelSevenWave.randomSpawnBurstMax = 12;
             levelSevenWave.enforceSpawnClearance = true;
             levelSevenWave.stationaryArena = true;
             levelSevenWave.randomArenaMovement = false;
             levelSevenWave.centerSeekingArena = true;
             levelSevenWave.enemyScaleMultiplier = 0.7f;
-            levelSevenWave.enemyInertiaMultiplier = 1.4f;
-            levelSevenWave.enemyMassMultiplier = 1f;
-            levelSevenWave.collisionPressureMultiplier = 1.5f;
-            levelSevenWave.spawnPackingMultiplier = 1.05f;
-            levelSevenWave.enemySpeedMultiplier = 1.7f;
-            levelSevenWave.openingSpeedDuration = 10f;
-            levelSevenWave.openingSpeedMultiplier = 3f;
+            levelSevenWave.enemyInertiaMultiplier = 1.35f;
+            levelSevenWave.enemyMassMultiplier = 1.3f;
+            levelSevenWave.collisionPressureMultiplier = 1.2f;
+            levelSevenWave.spawnPackingMultiplier = 1f;
+            levelSevenWave.enemySpeedMultiplier = 1f;
+            levelSevenWave.openingSpeedDuration = 0f;
+            levelSevenWave.openingSpeedMultiplier = 1f;
             levelSevenWave.roadHalfWidth = 60f;
-            levelSevenWave.entries = BuildLevelSevenWaveEntries(runner, brute);
+            levelSevenWave.entries = new[]
+            {
+                new WaveEntry { enemy = runner, count = 10000 }
+            };
 
             var levelSeven = ScriptableObject.CreateInstance<LevelDefinition>();
             levelSeven.id = "level_07";
@@ -998,7 +1002,7 @@ namespace TowerDefense.Runtime
             levelSeven.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 20);
             levelSeven.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             levelSeven.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
-            levelSeven.recommendedTactics = "Explosion lab: enemies continuously spawn around the edge of a sealed circular arena and converge on its center. Use the Shockwave Bomb to inspect radial knockback, impulse transfer, wall pressure, and crowd recovery.";
+            levelSeven.recommendedTactics = "Explosion lab: the same 10,000 light runners and crowd envelope as Level 2 converge from the edge of a sealed circular arena. Use the Shockwave Bomb to inspect radial knockback, impulse transfer, wall pressure, and crowd recovery.";
 
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
@@ -1973,18 +1977,6 @@ namespace TowerDefense.Runtime
                     entries.Add(new WaveEntry { enemy = brute, count = bruteCount });
                     remainingBrutes -= bruteCount;
                 }
-            }
-
-            return entries.ToArray();
-        }
-
-        private static WaveEntry[] BuildLevelSevenWaveEntries(EnemyDefinition runner, EnemyDefinition brute)
-        {
-            var entries = new List<WaveEntry>(200);
-            for (var group = 0; group < 100; group++)
-            {
-                entries.Add(new WaveEntry { enemy = runner, count = 80 });
-                entries.Add(new WaveEntry { enemy = brute, count = 20 });
             }
 
             return entries.ToArray();

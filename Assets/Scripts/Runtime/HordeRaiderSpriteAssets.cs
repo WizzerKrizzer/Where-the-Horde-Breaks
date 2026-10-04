@@ -10,14 +10,6 @@ namespace TowerDefense.Runtime
     internal static class HordeRaiderSpriteAssets
     {
         internal const string TextureResourcePath = "Npcs/HordeRaiderSpriteSheet";
-        // The painted body fills roughly two thirds of its card. Collision must
-        // describe that painted silhouette, not the transparent atlas padding.
-        internal const float ContactRadiusPerStateScale = 0.62f;
-        internal const float MinimumContactDiameterMultiplier = 0.70f;
-        // Radius from the card centre to a painted card corner. Navigation
-        // boundaries need this value, not the smaller circular body contact.
-        internal const float GroundCardCornerRadius = 1.35f;
-
         internal static Mesh CreateGroundCard()
         {
             var mesh = new Mesh

@@ -322,8 +322,9 @@ namespace TowerDefense.UI
                 $"CPU  {smoothedCpuFrameMs:0.00} ms  {cpuFrameLoad:0}%   process {processCpuPercent:0.0}%\n" +
                 $"GPU  {gpuTiming}\n" +
                 $"HORDE  {enemies.ActiveEnemyCount} active   {perf.VisibleDrawn} in camera (unique)\n" +
-                $"GRID  {perf.MaxCellOccupancy}/96 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped\n" +
-                $"PHYSICAL  {perf.OverlapPairs} internal pairs >0.5%   {perf.MaximumOverlapFraction * 100f:0.0}% deepest\n" +
+                $"GRID  {perf.MaxCellOccupancy}/96 max   {perf.OverflowCells} overflow   {perf.DroppedAgents} dropped   {perf.GridCapacityFailures} failures\n" +
+                $"PHYSICAL  {perf.ShallowContactPairs} shallow   {perf.DeepOverlapPairs}/{perf.PersistentDeepContactBodies} deep   {perf.DeepContactDurationSeconds:0.00}s persistent\n" +
+                $"OVERLAP  {perf.OverlapPairs} pairs >0.5%   {perf.MaximumOverlapFraction * 100f:0.0}% deepest\n" +
                 $"FLOW  {perf.OrdinaryBackwardSteps} reverse steps   {perf.MaximumOrdinaryBacktrack:0.000} max backtrack   " +
                 $"{perf.NormalizedNeighborSpacing:0.00} spacing   {perf.ActiveContactPairs} contacts\n" +
                 overflowWarning +

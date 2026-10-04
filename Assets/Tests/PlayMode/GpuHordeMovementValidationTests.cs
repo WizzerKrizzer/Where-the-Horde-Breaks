@@ -207,7 +207,9 @@ namespace TowerDefense.Tests
             }
 
             simulation.SpawnBatch(states, count);
-            for (var frame = 0; frame < 1100; frame++)
+            // XPBD uses the production 0.5 m/s² propulsion ramp. Give the whole
+            // packed formation a deterministic 30-second simulation window.
+            for (var frame = 0; frame < 1800; frame++)
             {
                 simulation.Dispatch(1f / 60f, controls, impulses);
                 if (frame % 30 == 0)
@@ -293,7 +295,10 @@ namespace TowerDefense.Tests
 
             Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
             simulation.SpawnBatch(states, count);
-            for (var frame = 0; frame < 2600; frame++)
+            // This verifies eventual route completion through the narrow Level 2
+            // choke, not legacy acceleration. One hundred fixed seconds lets the
+            // tail clear while every intermediate sample remains walkable.
+            for (var frame = 0; frame < 6000; frame++)
             {
                 simulation.Dispatch(1f / 60f, controls, impulses, requestReadback: false);
                 if (frame % 20 == 0)

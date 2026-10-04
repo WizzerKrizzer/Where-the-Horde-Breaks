@@ -26,7 +26,11 @@ namespace TowerDefense.Runtime
         private const int MaxDynamicTargetCommands = MaxDynamicTargets * 2;
         private const int ExtraCombatEventCapacity = 262144;
         private const float ReadbackInterval = 0.08f;
-        private const int DiagnosticsCount = 12;
+        public const int DiagnosticsCount = 19;
+        private const int XpbdPairsPerBody = 48;
+        private const int XpbdScanGroupSize = 256;
+        // All grid-clearing kernels use 64-thread one-dimensional dispatches.
+        private const int MaximumGridCells = 65535 * ThreadGroupSize;
 
         [Serializable, StructLayout(LayoutKind.Sequential)]
         internal struct AgentState
@@ -69,6 +73,15 @@ namespace TowerDefense.Runtime
             public Vector2 StepStartPosition;
             public float LocomotionSpeed;
             public float PresentationTime;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct XpbdPair
+        {
+            public uint First;
+            public uint Second;
+            public float Lambda;
+            public float Padding;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -299,36 +312,18 @@ namespace TowerDefense.Runtime
         private readonly int clearDiagnosticsKernel;
         private readonly int gridKernel;
         private readonly int simulateKernel;
-        private readonly int contactKernel;
-        private readonly int contactCellsKernel;
-        private readonly int prepareMotionKernel;
         private bool stationaryArena;
         private float maximumDesiredSpeed = 0.25f;
         private float maximumMotionDistance;
         private double motionTravelBudget;
-        private float maximumGoblinDiameter;
-        private float MaximumPairDiameter => Mathf.Max(collisionDiameter * 1.55f, maximumGoblinDiameter);
-        private const int FullMotionProjectionIterations = 24;
-        private const int FullMotionReservationSweeps = 16;
-        private const int LargeCrowdThreshold = 2500;
-        private const int LargeCrowdProjectionIterations = 6;
-        private const int LargeCrowdReservationSweeps = 2;
-        // The far sprite LOD is a deliberately simple horde token. It should
-        // cover the crowd cleanly, not enlarge into a second shadow layer.
-        private const float FarLodVisibilityScale = 1.08f;
+        private float MaximumPairDiameter => collisionDiameter * 1.55f;
+        // Sprite cards remain in one render list, so a distance boundary cannot
+        // change their size or their order against overlapping neighbours.
+        private const float FarLodVisibilityScale = 1f;
+        private const float SpriteDepthSortSlope = 0.00022f;
         // Above this height players can read the authored limb animation. Below it,
         // the compact LOD communicates only collective direction and travel.
         private const float SimplifiedGoblinLodMaxHeightPixels = 96f;
-        private readonly int constrainMotionKernel;
-        private readonly int commitMotionKernel;
-        private readonly int reserveMotionKernel;
-        private readonly GraphicsBuffer acceptedMotion;
-        private readonly GraphicsBuffer motionNeighbors;
-        private readonly GraphicsBuffer motionNeighborCounts;
-        private readonly GraphicsBuffer motionObstacles;
-        private readonly GraphicsBuffer motionA;
-        private readonly GraphicsBuffer motionB;
-        private readonly int measureOverlapsKernel;
         private readonly int targetQueryKernel;
         private readonly int damageKernel;
         private readonly int statusKernel;
@@ -342,6 +337,24 @@ namespace TowerDefense.Runtime
         private readonly int buildDynamicTargetGridKernel;
         private readonly int resolveDynamicTargetDamageKernel;
         private readonly int projectileKernel;
+        private readonly int clearXpbdGridKernel;
+        private readonly int countXpbdGridKernel;
+        private readonly int scanXpbdGridBlocksKernel;
+        private readonly int scanXpbdGridBlockTotalsKernel;
+        private readonly int addXpbdGridBlockOffsetsKernel;
+        private readonly int finalizeXpbdGridKernel;
+        private readonly int scatterXpbdGridKernel;
+        private readonly int clearXpbdPairsKernel;
+        private readonly int buildXpbdPairsKernel;
+        private readonly int finalizeXpbdPairDispatchKernel;
+        private readonly int clearXpbdCorrectionsKernel;
+        private readonly int solveXpbdPairsKernel;
+        private readonly int solveXpbdWallsKernel;
+        private readonly int applyXpbdCorrectionsKernel;
+        private readonly int measureXpbdGridDiagnosticsKernel;
+        private readonly int measureXpbdPairDiagnosticsKernel;
+        private readonly int measureXpbdBodyDiagnosticsKernel;
+        private readonly int finalizeXpbdPersistentContactsKernel;
         private readonly GraphicsBuffer stateA;
         private readonly GraphicsBuffer stateB;
         private readonly GraphicsBuffer spatialStates;
@@ -367,6 +380,8 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer dynamicTargetCommands;
         private readonly GraphicsBuffer dynamicTargetCellCounts;
         private readonly GraphicsBuffer dynamicTargetCellIndices;
+        private readonly GraphicsBuffer dynamicTargetActiveIndices;
+        private readonly GraphicsBuffer dynamicTargetActiveCount;
         private readonly GraphicsBuffer dynamicTargetBlockedMass;
         private readonly GraphicsBuffer dynamicTargetDamage;
         private readonly GraphicsBuffer dynamicTargetLastAttacker;
@@ -376,6 +391,24 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer variantLodIndirectArgs;
         private readonly GraphicsBuffer activeIndices;
         private readonly GraphicsBuffer activeDispatchArgs;
+        private readonly GraphicsBuffer xpbdCellCounts;
+        private readonly GraphicsBuffer xpbdCellOffsets;
+        private readonly GraphicsBuffer xpbdCellCursors;
+        private readonly GraphicsBuffer xpbdCellAgents;
+        private readonly GraphicsBuffer xpbdBlockSums;
+        private readonly GraphicsBuffer xpbdBlockOffsets;
+        private readonly GraphicsBuffer xpbdPairs;
+        private readonly GraphicsBuffer xpbdPairCount;
+        private readonly GraphicsBuffer xpbdPairDispatchArgs;
+        private readonly GraphicsBuffer xpbdCorrectionX;
+        private readonly GraphicsBuffer xpbdCorrectionY;
+        private readonly GraphicsBuffer xpbdCorrectionCounts;
+        private readonly GraphicsBuffer xpbdWallLambdas;
+        private readonly GraphicsBuffer xpbdGridFailures;
+        private readonly GraphicsBuffer xpbdDeepContactMarked;
+        private readonly GraphicsBuffer xpbdDeepContactTicks;
+        private readonly int xpbdPairCapacity;
+        private readonly int xpbdBlockCount;
         private readonly Material material;
         private readonly MaterialPropertyBlock properties = new();
         private readonly MaterialPropertyBlock lodProperties = new();
@@ -405,7 +438,6 @@ namespace TowerDefense.Runtime
         private readonly StatusCommand[] statusUpload;
         private readonly List<AreaEffectCommand> queuedAreaEffects = new(MaxAreaCommands);
         private readonly List<PendingShockwave> pendingShockwaves = new(32);
-        private float shockwaveContactBoostTimer;
         private readonly AreaEffectCommand[] areaEffectUpload = new AreaEffectCommand[MaxAreaCommands];
         private readonly List<ProjectileCommand> queuedProjectiles = new(MaxProjectileCommands);
         private readonly ProjectileCommand[] projectileUpload = new ProjectileCommand[MaxProjectileCommands];
@@ -424,6 +456,7 @@ namespace TowerDefense.Runtime
         private readonly int gridWidth;
         private readonly int gridHeight;
         private float collisionDiameter;
+        private bool xpbdUsesPerBodyRadius;
         private GraphicsBuffer readStates;
         private GraphicsBuffer writeStates;
         private bool disposed;
@@ -440,8 +473,9 @@ namespace TowerDefense.Runtime
         private uint nextProjectileId = 1u;
         private bool centerSeekingArena;
         private float movementSpeedMultiplier = 1f;
-        private bool referenceCrowd;
-        private int referenceContactIterations;
+        private CrowdSolverProfile solverProfile;
+        private double simulationSeconds;
+        private double lastDiagnosticsSimulationSeconds;
 
         public uint OverflowCellCount { get; private set; }
         public uint DroppedAgentCount { get; private set; }
@@ -454,48 +488,59 @@ namespace TowerDefense.Runtime
         public float MaximumOrdinaryBacktrack { get; private set; }
         public float NormalizedNeighborSpacing { get; private set; }
         public uint ActiveContactPairCount { get; private set; }
+        public uint ShallowContactPairCount { get; private set; }
+        public uint DeepOverlapPairCount { get; private set; }
+        public uint PersistentDeepContactBodyCount { get; private set; }
+        public uint DeepDiskContactPairCount { get; private set; }
+        public uint DeepBlockerContactCount { get; private set; }
+        public uint DeepWallContactCount { get; private set; }
+        public float DeepContactDurationSeconds { get; private set; }
+        public uint GridCapacityFailureCount { get; private set; }
+        public CrowdSolverDiagnostics SolverDiagnostics => new(
+            ShallowContactPairCount,
+            DeepOverlapPairCount,
+            PersistentDeepContactBodyCount,
+            MaximumOverlapFraction,
+            DeepContactDurationSeconds,
+            ActiveContactPairCount,
+            MaximumCellOccupancy,
+            GridCapacityFailureCount,
+            DeepDiskContactPairCount,
+            DeepBlockerContactCount,
+            DeepWallContactCount);
+        internal float FixedStep => solverProfile != null ? solverProfile.FixedStep : 1f / 60f;
+        internal bool SupportsXpbdGrid => cellCount <= MaximumGridCells;
         internal int LastContactIterationCount { get; private set; }
-        // Test-only observation point. Null in the player; readbacks are supplied by the test.
-        internal Action<string> MovementStageObserver { get; set; }
-        internal bool ReverseMotionReservation { get; set; }
-        internal bool SlidingMotionAcceptance { get; set; } = true;
-
         public void SetMovementSpeedMultiplier(float multiplier)
         {
             movementSpeedMultiplier = Mathf.Max(0f, multiplier);
         }
 
-        public void SetHordePhysicsProfile(HordePhysicsProfile profile)
+        /// <summary>Applies the one fixed-step crowd contract used by every level.</summary>
+        public void SetCrowdSolverProfile(CrowdSolverProfile profile)
         {
-            referenceCrowd = profile != null && profile.useReferenceCrowdRules;
-            referenceContactIterations = referenceCrowd
-                ? Mathf.Clamp(profile.contactIterations, 1, 32)
-                : 0;
-            var contactDiameterMultiplier = Mathf.Clamp(
-                profile != null ? profile.contactDiameterMultiplier : 1f,
-                0.55f,
-                1.5f);
-            compute.SetInt("_ReferenceCrowd", referenceCrowd ? 1 : 0);
-            compute.SetFloat("_ReferenceLateralContactResponse", profile != null
-                ? Mathf.Clamp01(profile.lateralContactResponse)
-                : 1f);
-            compute.SetFloat("_ReferenceExternalForceRecovery", profile != null
-                ? Mathf.Max(0.01f, profile.externalForceRecovery)
-                : 0.8f);
-            compute.SetFloat("_MinimumContactDiameterMultiplier", hordeSpriteMesh != null
-                ? HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier * contactDiameterMultiplier
-                : 0.82f * contactDiameterMultiplier);
-            material.SetFloat("_PackingScale", profile != null
-                ? Mathf.Clamp(profile.spritePackingScale, 0.9f, 1.35f)
-                : 1.18f);
+            solverProfile = profile != null ? profile : CrowdSolverProfile.Default;
+            compute.SetFloat("_XpbdContactCompliance", Mathf.Max(0f, solverProfile.contactCompliance));
+            compute.SetFloat("_XpbdWallCompliance", Mathf.Max(0f, solverProfile.wallCompliance));
+            compute.SetFloat("_XpbdMaximumSpeed", Mathf.Max(0.1f, solverProfile.maximumSpeed));
+            compute.SetFloat("_XpbdMaximumTravel", Mathf.Max(0.005f, solverProfile.maximumTravelPerTick));
+            compute.SetFloat("_XpbdBodyRadiusPerVisualScale", Mathf.Clamp(solverProfile.bodyRadiusPerVisualScale, 0.1f, 1f));
+            compute.SetFloat("_FlowAcceleration", Mathf.Max(0.1f, solverProfile.propulsionAcceleration));
+            compute.SetFloat("_VelocityDamping", Mathf.Max(0.01f, solverProfile.velocityDamping));
+        }
 
-            if (referenceCrowd)
-            {
-                compute.SetFloat("_FlowAcceleration", Mathf.Max(0.1f, profile.flowAcceleration));
-                compute.SetFloat("_CollisionAcceleration", Mathf.Max(0.1f, profile.collisionAcceleration));
-                compute.SetFloat("_VelocityDamping", Mathf.Max(0.01f, profile.velocityDamping));
-                compute.SetFloat("_FlowAlignment", 1f);
-            }
+        /// <summary>
+        /// Advances one exact simulation tick. Tests use this instead of a render
+        /// cadence so scheduling cannot alter contact behavior.
+        /// </summary>
+        internal void DispatchFixedTick(
+            Vector4[] controlData,
+            Vector2[] impulseData,
+            bool requestReadback = true,
+            bool updatePresentation = true,
+            bool updateVisibility = true)
+        {
+            Dispatch(FixedStep, controlData, impulseData, requestReadback, 1f, updatePresentation, updateVisibility);
         }
 
         private GpuHordeSimulation(int agentCapacity, HordeFlowField field, Mesh mesh)
@@ -503,6 +548,12 @@ namespace TowerDefense.Runtime
             capacity = agentCapacity;
             eventCapacity = capacity + ExtraCombatEventCapacity;
             cellCount = field.Width * field.Height;
+            if (cellCount > MaximumGridCells)
+            {
+                throw new InvalidOperationException(
+                    $"XPBD compact grid has {cellCount} cells; one-dimensional dispatch supports at most " +
+                    $"{MaximumGridCells}. Refusing to fall back to an incomplete solver.");
+            }
             gridCellSize = field.CellSize;
             gridWidth = field.Width;
             gridHeight = field.Height;
@@ -573,19 +624,6 @@ namespace TowerDefense.Runtime
             clearDiagnosticsKernel = compute.FindKernel("ClearDiagnostics");
             gridKernel = compute.FindKernel("BuildGrid");
             simulateKernel = compute.FindKernel("Simulate");
-            contactKernel = compute.FindKernel("ResolveContacts");
-            contactCellsKernel = compute.FindKernel("ResolveContactCells");
-            prepareMotionKernel = compute.FindKernel("PrepareMotion");
-            constrainMotionKernel = compute.FindKernel("ConstrainMotion");
-            commitMotionKernel = compute.FindKernel("CommitMotion");
-            reserveMotionKernel = compute.FindKernel("ReserveMotionCells");
-            acceptedMotion = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
-            motionNeighbors = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity * 128, sizeof(float) * 4);
-            motionNeighborCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
-            motionObstacles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
-            motionA = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
-            motionB = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 2);
-            measureOverlapsKernel = compute.FindKernel("MeasureOverlaps");
             targetQueryKernel = compute.FindKernel("QueryTargets");
             damageKernel = compute.FindKernel("ApplyDamageCommands");
             statusKernel = compute.FindKernel("ApplyStatusCommands");
@@ -599,6 +637,24 @@ namespace TowerDefense.Runtime
             buildDynamicTargetGridKernel = compute.FindKernel("BuildDynamicTargetGrid");
             resolveDynamicTargetDamageKernel = compute.FindKernel("ResolveDynamicTargetDamage");
             projectileKernel = compute.FindKernel("ApplyProjectile");
+            clearXpbdGridKernel = compute.FindKernel("ClearXpbdGrid");
+            countXpbdGridKernel = compute.FindKernel("CountXpbdGrid");
+            scanXpbdGridBlocksKernel = compute.FindKernel("ScanXpbdGridBlocks");
+            scanXpbdGridBlockTotalsKernel = compute.FindKernel("ScanXpbdGridBlockTotals");
+            addXpbdGridBlockOffsetsKernel = compute.FindKernel("AddXpbdGridBlockOffsets");
+            finalizeXpbdGridKernel = compute.FindKernel("FinalizeXpbdGrid");
+            scatterXpbdGridKernel = compute.FindKernel("ScatterXpbdGrid");
+            clearXpbdPairsKernel = compute.FindKernel("ClearXpbdPairs");
+            buildXpbdPairsKernel = compute.FindKernel("BuildXpbdPairs");
+            finalizeXpbdPairDispatchKernel = compute.FindKernel("FinalizeXpbdPairDispatch");
+            clearXpbdCorrectionsKernel = compute.FindKernel("ClearXpbdCorrections");
+            solveXpbdPairsKernel = compute.FindKernel("SolveXpbdPairs");
+            solveXpbdWallsKernel = compute.FindKernel("SolveXpbdWalls");
+            applyXpbdCorrectionsKernel = compute.FindKernel("ApplyXpbdCorrections");
+            measureXpbdGridDiagnosticsKernel = compute.FindKernel("MeasureXpbdGridDiagnostics");
+            measureXpbdPairDiagnosticsKernel = compute.FindKernel("MeasureXpbdPairDiagnostics");
+            measureXpbdBodyDiagnosticsKernel = compute.FindKernel("MeasureXpbdBodyDiagnostics");
+            finalizeXpbdPersistentContactsKernel = compute.FindKernel("FinalizeXpbdPersistentContacts");
 
             var stateStride = Marshal.SizeOf<AgentState>();
             stateA = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, stateStride);
@@ -626,6 +682,8 @@ namespace TowerDefense.Runtime
             dynamicTargetCommands = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargetCommands, Marshal.SizeOf<DynamicTargetCommand>());
             dynamicTargetCellCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount, sizeof(uint));
             dynamicTargetCellIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount * DynamicTargetCellCapacity, sizeof(uint));
+            dynamicTargetActiveIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
+            dynamicTargetActiveCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
             dynamicTargetBlockedMass = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
             dynamicTargetDamage = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
             dynamicTargetLastAttacker = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
@@ -637,6 +695,24 @@ namespace TowerDefense.Runtime
             variantLodIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
             activeIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             activeDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
+            xpbdBlockCount = DivideRoundUp(cellCount, XpbdScanGroupSize);
+            xpbdPairCapacity = checked(capacity * XpbdPairsPerBody);
+            xpbdCellCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount, sizeof(uint));
+            xpbdCellOffsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount + 1, sizeof(uint));
+            xpbdCellCursors = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cellCount, sizeof(uint));
+            xpbdCellAgents = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
+            xpbdBlockSums = new GraphicsBuffer(GraphicsBuffer.Target.Structured, xpbdBlockCount, sizeof(uint));
+            xpbdBlockOffsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, xpbdBlockCount, sizeof(uint));
+            xpbdPairs = new GraphicsBuffer(GraphicsBuffer.Target.Structured, xpbdPairCapacity, Marshal.SizeOf<XpbdPair>());
+            xpbdPairCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
+            xpbdPairDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
+            xpbdCorrectionX = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
+            xpbdCorrectionY = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
+            xpbdCorrectionCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
+            xpbdWallLambdas = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float));
+            xpbdGridFailures = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
+            xpbdDeepContactMarked = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
+            xpbdDeepContactTicks = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             damageUpload = new DamageCommand[capacity];
             statusUpload = new StatusCommand[capacity];
             readStates = stateA;
@@ -651,6 +727,8 @@ namespace TowerDefense.Runtime
             impulses.SetData(new Vector2[capacity]);
             eventCount.SetData(new uint[1]);
             dynamicTargets.SetData(new DynamicTargetState[MaxDynamicTargets]);
+            dynamicTargetActiveCount.SetData(new uint[1]);
+            xpbdDeepContactTicks.SetData(new uint[capacity]);
             for (var slot = 0; slot < MaxDynamicTargets; slot++)
             {
                 freeDynamicTargetSlots.Enqueue(slot);
@@ -695,32 +773,11 @@ namespace TowerDefense.Runtime
             compute.SetVector("_GridOrigin", new Vector4(field.Origin.x, field.Origin.z, 0f, 0f));
             compute.SetFloat("_CellSize", field.CellSize);
             SetCollisionDiameter(0.72f);
-            compute.SetInt("_CleanupCellStride", 1);
-            // Sprite cards include transparent gutter around the painted enemy.
-            // Its contact envelope therefore must be smaller than the old blob mesh.
-            compute.SetFloat("_BodyRadiusPerScale", hordeSpriteMesh != null
-                ? HordeRaiderSpriteAssets.ContactRadiusPerStateScale
-                : 1f);
-            // Keep the solver's hard minimum in sync with the visible sprite.
-            // Without this, spawn packing can be tightened while contacts still
-            // resolve back to the old, visibly detached diameter.
-            compute.SetFloat("_MinimumContactDiameterMultiplier", hordeSpriteMesh != null
-                ? HordeRaiderSpriteAssets.MinimumContactDiameterMultiplier
-                : 0.82f);
             compute.SetInt("_AnimatedGoblin", 0);
-            compute.SetFloat("_FlowAcceleration", 8.5f);
-            compute.SetFloat("_CollisionAcceleration", 18f);
-            compute.SetFloat("_WallAcceleration", 13f);
-            compute.SetFloat("_WallInfluence", 0.9f);
-            compute.SetFloat("_VelocityDamping", 1.15f);
-            compute.SetFloat("_FlowAlignment", 1f);
+            compute.SetInt("_SpriteCardRendering", hordeSpriteMesh != null ? 1 : 0);
             compute.SetInt("_StationaryHorde", 0);
             compute.SetInt("_RandomArenaMovement", 0);
             compute.SetInt("_CenterSeekingArena", 0);
-            compute.SetInt("_UnidirectionalHordeContacts", 0);
-            compute.SetInt("_ReferenceCrowd", 0);
-            compute.SetFloat("_ReferenceLateralContactResponse", 1f);
-            compute.SetFloat("_ReferenceExternalForceRecovery", 0.8f);
             compute.SetVector("_ArenaCenter", Vector4.zero);
             compute.SetInt("_ExitEnabled", 1);
             compute.SetInt("_EventCapacity", eventCapacity);
@@ -745,57 +802,6 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(simulateKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(simulateKernel, "_DiagnosticsRead", diagnostics);
             compute.SetBuffer(simulateKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(contactKernel, "_FlowData", flowData);
-            compute.SetBuffer(contactKernel, "_FlowVectors", flowVectors);
-            compute.SetBuffer(contactKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(contactKernel, "_Controls", controls);
-            compute.SetBuffer(contactKernel, "_CellAgentsRead", cellAgents);
-            compute.SetBuffer(contactKernel, "_ActiveIndicesRead", activeIndices);
-            compute.SetBuffer(contactKernel, "_DiagnosticsRead", diagnostics);
-            // ResolveContacts records ordinary reverse travel for the OrcReference profile.
-            // It therefore needs both read and write bindings for this buffer.
-            compute.SetBuffer(contactKernel, "_Diagnostics", diagnostics);
-            compute.SetBuffer(contactKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(contactCellsKernel, "_FlowData", flowData);
-            compute.SetBuffer(contactCellsKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(contactCellsKernel, "_CellAgentsRead", cellAgents);
-            foreach (var kernel in new[] { prepareMotionKernel, constrainMotionKernel, commitMotionKernel })
-            {
-                compute.SetBuffer(kernel, "_ActiveIndicesRead", activeIndices);
-                compute.SetBuffer(kernel, "_DiagnosticsRead", diagnostics);
-            }
-            compute.SetBuffer(constrainMotionKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(constrainMotionKernel, "_CellAgentsRead", cellAgents);
-            compute.SetBuffer(constrainMotionKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(constrainMotionKernel, "_FlowData", flowData);
-            compute.SetBuffer(reserveMotionKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(reserveMotionKernel, "_CellAgentsRead", cellAgents);
-            compute.SetBuffer(reserveMotionKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(reserveMotionKernel, "_AcceptedMotion", acceptedMotion);
-            compute.SetBuffer(reserveMotionKernel, "_FlowData", flowData);
-            compute.SetBuffer(reserveMotionKernel, "_MotionObstacles", motionObstacles);
-            compute.SetBuffer(prepareMotionKernel, "_AcceptedMotion", acceptedMotion);
-            compute.SetBuffer(commitMotionKernel, "_AcceptedMotion", acceptedMotion);
-            compute.SetBuffer(commitMotionKernel, "_FlowData", flowData);
-            compute.SetBuffer(commitMotionKernel, "_HordeEvents", hordeEvents);
-            compute.SetBuffer(commitMotionKernel, "_EventCount", eventCount);
-            compute.SetBuffer(prepareMotionKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(prepareMotionKernel, "_MotionObstacles", motionObstacles);
-            compute.SetBuffer(prepareMotionKernel, "_DynamicTargetsRead", dynamicTargets);
-            compute.SetBuffer(constrainMotionKernel, "_MotionObstacles", motionObstacles);
-            compute.SetBuffer(prepareMotionKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(prepareMotionKernel, "_CellAgentsRead", cellAgents);
-            foreach (var kernel in new[] { prepareMotionKernel, constrainMotionKernel, reserveMotionKernel })
-            {
-                compute.SetBuffer(kernel, "_MotionNeighbors", motionNeighbors);
-                compute.SetBuffer(kernel, "_MotionNeighborCounts", motionNeighborCounts);
-            }
-            compute.SetBuffer(measureOverlapsKernel, "_CellCountsRead", cellCounts);
-            compute.SetBuffer(measureOverlapsKernel, "_CellAgentsRead", cellAgents);
-            compute.SetBuffer(measureOverlapsKernel, "_ActiveIndicesRead", activeIndices);
-            compute.SetBuffer(measureOverlapsKernel, "_DiagnosticsRead", diagnostics);
-            compute.SetBuffer(measureOverlapsKernel, "_SpatialStatesRead", spatialStates);
-            compute.SetBuffer(measureOverlapsKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(targetQueryKernel, "_CellCountsRead", cellCounts);
             compute.SetBuffer(targetQueryKernel, "_CellAgentsRead", cellAgents);
             compute.SetBuffer(targetQueryKernel, "_TargetQueries", targetQueries);
@@ -829,13 +835,18 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(applyDynamicTargetCommandsKernel, "_DynamicTargetCommands", dynamicTargetCommands);
             compute.SetBuffer(applyDynamicTargetCommandsKernel, "_DynamicTargets", dynamicTargets);
             compute.SetBuffer(clearDynamicTargetGridKernel, "_DynamicTargetCellCounts", dynamicTargetCellCounts);
+            compute.SetBuffer(clearDynamicTargetGridKernel, "_DynamicTargetActiveCount", dynamicTargetActiveCount);
             compute.SetBuffer(clearDynamicTargetGridKernel, "_DynamicTargetBlockedMass", dynamicTargetBlockedMass);
             compute.SetBuffer(clearDynamicTargetGridKernel, "_DynamicTargetDamage", dynamicTargetDamage);
             compute.SetBuffer(clearDynamicTargetGridKernel, "_DynamicTargetLastAttacker", dynamicTargetLastAttacker);
             compute.SetBuffer(buildDynamicTargetGridKernel, "_DynamicTargetsRead", dynamicTargets);
             compute.SetBuffer(buildDynamicTargetGridKernel, "_DynamicTargetCellCounts", dynamicTargetCellCounts);
             compute.SetBuffer(buildDynamicTargetGridKernel, "_DynamicTargetCellIndices", dynamicTargetCellIndices);
+            compute.SetBuffer(buildDynamicTargetGridKernel, "_DynamicTargetActiveIndices", dynamicTargetActiveIndices);
+            compute.SetBuffer(buildDynamicTargetGridKernel, "_DynamicTargetActiveCount", dynamicTargetActiveCount);
             compute.SetBuffer(simulateKernel, "_DynamicTargetsRead", dynamicTargets);
+            compute.SetBuffer(simulateKernel, "_DynamicTargetActiveIndicesRead", dynamicTargetActiveIndices);
+            compute.SetBuffer(simulateKernel, "_DynamicTargetActiveCountRead", dynamicTargetActiveCount);
             compute.SetBuffer(simulateKernel, "_DynamicTargetCellCountsRead", dynamicTargetCellCounts);
             compute.SetBuffer(simulateKernel, "_DynamicTargetCellIndicesRead", dynamicTargetCellIndices);
             compute.SetBuffer(simulateKernel, "_DynamicTargetBlockedMass", dynamicTargetBlockedMass);
@@ -865,6 +876,92 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(cullVisibleKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(cullVisibleKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(cullVisibleKernel, "_DiagnosticsRead", diagnostics);
+
+            compute.SetInt("_XpbdPairCapacity", xpbdPairCapacity);
+            compute.SetInt("_XpbdBlockCount", xpbdBlockCount);
+            SetCrowdSolverProfile(CrowdSolverProfile.Default);
+            compute.SetInt("_XpbdUsePerBodyRadius", 0);
+            foreach (var kernel in new[] { countXpbdGridKernel, scatterXpbdGridKernel, buildXpbdPairsKernel,
+                         clearXpbdCorrectionsKernel, solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+            {
+                compute.SetBuffer(kernel, "_ActiveIndicesRead", activeIndices);
+                compute.SetBuffer(kernel, "_DiagnosticsRead", diagnostics);
+            }
+            foreach (var kernel in new[] { clearXpbdGridKernel, countXpbdGridKernel, scanXpbdGridBlocksKernel,
+                         scanXpbdGridBlockTotalsKernel, addXpbdGridBlockOffsetsKernel, finalizeXpbdGridKernel,
+                         scatterXpbdGridKernel, buildXpbdPairsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdCellCounts", xpbdCellCounts);
+                compute.SetBuffer(kernel, "_XpbdCellOffsets", xpbdCellOffsets);
+                compute.SetBuffer(kernel, "_XpbdCellCursors", xpbdCellCursors);
+            }
+            foreach (var kernel in new[] { scanXpbdGridBlocksKernel, scanXpbdGridBlockTotalsKernel,
+                         addXpbdGridBlockOffsetsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdBlockSums", xpbdBlockSums);
+                compute.SetBuffer(kernel, "_XpbdBlockOffsets", xpbdBlockOffsets);
+            }
+            foreach (var kernel in new[] { scatterXpbdGridKernel, buildXpbdPairsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdCellAgents", xpbdCellAgents);
+            }
+            foreach (var kernel in new[] { clearXpbdPairsKernel, buildXpbdPairsKernel,
+                         finalizeXpbdPairDispatchKernel, solveXpbdPairsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdPairs", xpbdPairs);
+                compute.SetBuffer(kernel, "_XpbdPairCount", xpbdPairCount);
+            }
+            foreach (var kernel in new[] { clearXpbdPairsKernel, finalizeXpbdPairDispatchKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdPairDispatchArgs", xpbdPairDispatchArgs);
+            }
+            foreach (var kernel in new[] { clearXpbdCorrectionsKernel, solveXpbdPairsKernel,
+                         solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdCorrectionX", xpbdCorrectionX);
+                compute.SetBuffer(kernel, "_XpbdCorrectionY", xpbdCorrectionY);
+                compute.SetBuffer(kernel, "_XpbdCorrectionCounts", xpbdCorrectionCounts);
+                compute.SetBuffer(kernel, "_XpbdWallLambdas", xpbdWallLambdas);
+            }
+            compute.SetBuffer(clearXpbdCorrectionsKernel, "_XpbdDeepContactMarked", xpbdDeepContactMarked);
+            foreach (var kernel in new[] { clearXpbdGridKernel, scatterXpbdGridKernel,
+                         measureXpbdGridDiagnosticsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdGridFailures", xpbdGridFailures);
+            }
+            compute.SetBuffer(buildXpbdPairsKernel, "_Diagnostics", diagnostics);
+            compute.SetBuffer(buildXpbdPairsKernel, "_DynamicTargetsRead", dynamicTargets);
+            compute.SetBuffer(buildXpbdPairsKernel, "_DynamicTargetActiveIndices", dynamicTargetActiveIndices);
+            compute.SetBuffer(buildXpbdPairsKernel, "_DynamicTargetActiveCount", dynamicTargetActiveCount);
+            compute.SetBuffer(solveXpbdPairsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(solveXpbdPairsKernel, "_DynamicTargetsRead", dynamicTargets);
+            compute.SetBuffer(solveXpbdWallsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesWrite", writeStates);
+            foreach (var kernel in new[] { solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+            {
+                compute.SetBuffer(kernel, "_FlowData", flowData);
+                compute.SetBuffer(kernel, "_FlowVectors", flowVectors);
+            }
+            compute.SetBuffer(measureXpbdGridDiagnosticsKernel, "_XpbdCellCounts", xpbdCellCounts);
+            compute.SetBuffer(measureXpbdGridDiagnosticsKernel, "_Diagnostics", diagnostics);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_XpbdPairs", xpbdPairs);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_XpbdPairCount", xpbdPairCount);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_DynamicTargetsRead", dynamicTargets);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_XpbdDeepContactMarked", xpbdDeepContactMarked);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_Diagnostics", diagnostics);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_ActiveIndicesRead", activeIndices);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_FlowData", flowData);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_FlowVectors", flowVectors);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_XpbdDeepContactMarked", xpbdDeepContactMarked);
+            compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_Diagnostics", diagnostics);
+            compute.SetBuffer(finalizeXpbdPersistentContactsKernel, "_ActiveIndicesRead", activeIndices);
+            compute.SetBuffer(finalizeXpbdPersistentContactsKernel, "_XpbdDeepContactMarked", xpbdDeepContactMarked);
+            compute.SetBuffer(finalizeXpbdPersistentContactsKernel, "_XpbdDeepContactTicks", xpbdDeepContactTicks);
+            compute.SetBuffer(solveXpbdPairsKernel, "_XpbdDeepContactTicks", xpbdDeepContactTicks);
+            compute.SetBuffer(finalizeXpbdPersistentContactsKernel, "_Diagnostics", diagnostics);
         }
 
         public static bool TryCreate(int capacity, HordeFlowField field, Mesh mesh, out GpuHordeSimulation simulation)
@@ -1006,7 +1103,7 @@ namespace TowerDefense.Runtime
         {
             if (!disposed && destination != null && destination.Length >= 4)
             {
-                diagnostics.GetData(destination, 0, 0, Mathf.Min(7, destination.Length));
+                diagnostics.GetData(destination, 0, 0, Mathf.Min(DiagnosticsCount, destination.Length));
             }
         }
 
@@ -1164,6 +1261,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            simulationSeconds += Mathf.Max(0f, deltaTime);
+
             var uploadCount = Mathf.Min(activeHighWaterMark, capacity);
             if (controlData != null && uploadCount > 0)
             {
@@ -1177,18 +1276,9 @@ namespace TowerDefense.Runtime
                 impulses.SetData(impulseData, 0, 0, Mathf.Min(uploadCount, impulseData.Length));
             }
             compute.SetInt("_AgentCount", uploadCount);
-            // The exact predictive reservation path requires dozens of whole-horde
-            // dispatches per tick. At 10,000 agents it becomes CPU-dispatch bound
-            // and, crucially, it cannot repair a body that was already overlapping.
-            // The regular contact pass is the production path: it resolves existing
-            // overlaps every tick. Tight spawn clearance and convoy-speed controls
-            // prevent the old stop/start behaviour before this pass is needed.
-            var predictiveContacts = false;
-            compute.SetInt("_PredictiveContacts", predictiveContacts ? 1 : 0);
             compute.SetFloat("_DeltaTime", Mathf.Min(deltaTime, 0.1f));
             maximumMotionDistance = Mathf.Max(collisionDiameter * 0.4f,
                 maximumDesiredSpeed * movementSpeedMultiplier * Mathf.Min(deltaTime, 0.1f) * 1.12f);
-            compute.SetFloat("_MaximumMotionDistance", maximumMotionDistance);
             lastSimulationDelta = Mathf.Min(deltaTime, 0.1f);
             compute.SetFloat("_MovementSpeedMultiplier", movementSpeedMultiplier);
             compute.SetFloat("_ShockwavePropagationSpeed", ShockwavePropagationSpeed);
@@ -1212,54 +1302,17 @@ namespace TowerDefense.Runtime
             AdvanceShockwaves(Mathf.Min(deltaTime, 0.1f));
             DispatchAreaEffects();
             DispatchTargetQueries();
-            // Queries observe the pre-movement state. Every predictive displacement is
-            // bounded by this disk, including all catch-up ticks before CPU consumption.
+            // Queries observe the pre-movement state. Bound the cached answer by
+            // every fixed-tick displacement before CPU consumption.
             motionTravelBudget += maximumMotionDistance;
             compute.DispatchIndirect(simulateKernel, activeDispatchArgs);
             compute.SetBuffer(resolveDynamicTargetDamageKernel, "_StatesInput", writeStates);
             compute.Dispatch(resolveDynamicTargetDamageKernel, DivideRoundUp(MaxDynamicTargets, ThreadGroupSize), 1, 1);
             (readStates, writeStates) = (writeStates, readStates);
-            var iterationScale = Mathf.Clamp(contactIterationScale, 0.01f, 1f);
-            MovementStageObserver?.Invoke("integrated");
-            if (predictiveContacts)
-            {
-                ResolvePredictiveMotion(uploadCount, iterationScale);
-                MovementStageObserver?.Invoke("constrained");
-                // Presentation reads the resolved displacement. No sequential
-                // positional pushes: they invalidate neighbouring constraints.
-                compute.SetInt("_HardContactCleanup", 1);
-                compute.SetInt("_FinalizePresentation", 1);
-                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
-                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
-                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
-                (readStates, writeStates) = (writeStates, readStates);
-                RebuildContactGrid(uploadCount);
-                compute.DispatchIndirect(measureOverlapsKernel, activeDispatchArgs);
-            }
-            var baseContactIterations = referenceCrowd ? referenceContactIterations : centerSeekingArena ? 64 :
-                (uploadCount <= 5000 ? 12 : 20);
-            var unscaledMinimumContactIterations = centerSeekingArena
-                ? (shockwaveContactBoostTimer > 0f ? 28 : 16)
-                : 2;
-            var minimumContactIterations = Mathf.Max(
-                centerSeekingArena ? 2 : 1,
-                Mathf.CeilToInt(unscaledMinimumContactIterations * iterationScale));
-            if (centerSeekingArena)
-            {
-                var unscaledEmergencyContactIterations = MaximumOverlapFraction > 0.5f || OverlapPairCount > 5000
-                    ? 96
-                    : MaximumOverlapFraction > 0.15f || OverlapPairCount > 1000
-                        ? 72
-                        : 0;
-                minimumContactIterations = Mathf.Max(
-                    minimumContactIterations,
-                    Mathf.CeilToInt(unscaledEmergencyContactIterations * iterationScale));
-            }
-            var contactIterations = Mathf.Max(
-                minimumContactIterations,
-                Mathf.CeilToInt(baseContactIterations * iterationScale));
-            if (!predictiveContacts) ResolveHardContacts(uploadCount, contactIterations, updatePresentation);
-            shockwaveContactBoostTimer = Mathf.Max(0f, shockwaveContactBoostTimer - Mathf.Min(deltaTime, 0.1f));
+            ResolveXpbdContacts(
+                uploadCount,
+                CrowdSolverProfile.PositionIterations,
+                measureOverlaps: true);
             if (updatePresentation)
             {
                 if (updateVisibility)
@@ -1274,114 +1327,74 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void ResolveHardContacts(int uploadCount, int iterationCount, bool measureOverlaps)
+        /// <summary>
+        /// Parallel XPBD contact solve. The broad phase uses a compact prefix-sum
+        /// grid, so a dense cell cannot silently exclude bodies as the legacy
+        /// fixed-capacity grid did. Constraints are generated once per fixed tick;
+        /// each Jacobi iteration accumulates integer micro-metre corrections before
+        /// applying them, making render-frame batching irrelevant to the result.
+        /// </summary>
+        private void ResolveXpbdContacts(int uploadCount, int iterationCount, bool measureOverlaps)
         {
-            compute.SetBuffer(contactKernel, "_Controls", controls);
-            compute.SetInt("_ContactIterationCount", Mathf.Max(1, iterationCount));
-            // Catch-up ticks already run the normal contact projection. Polish
-            // silhouettes once before presenting the final tick of the frame;
-            // repeating every color sweep in all four ticks defeats the shared
-            // contact budget and amplifies an isolated long frame.
-            // The local sequential cleanup is intentionally disabled for a
-            // 10,000-agent travelling horde. Its many tiny dispatches make the
-            // frame CPU-bound and its large positional corrections are visible
-            // as teleport-like stepping. The regular solver is the stable path.
-            var cleanupStride = 0;
-            var cleanupColors = cleanupStride * cleanupStride;
-            var cleanupIterations = cleanupColors;
-            var totalIterations = iterationCount + cleanupIterations;
-            LastContactIterationCount = totalIterations;
-            compute.SetInt("_CleanupCellStride", Mathf.Max(1, cleanupStride));
-            compute.SetInt("_HardContactCleanup", 0);
+            BuildXpbdGrid(uploadCount);
+            BindXpbdStateBuffers();
+            compute.Dispatch(clearXpbdPairsKernel, 1, 1, 1);
+            compute.Dispatch(buildXpbdPairsKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
+            compute.Dispatch(finalizeXpbdPairDispatchKernel, 1, 1, 1);
+
+            LastContactIterationCount = iterationCount;
             for (var iteration = 0; iteration < iterationCount; iteration++)
             {
-                compute.SetInt("_FinalizePresentation", cleanupIterations == 0 && iteration == iterationCount - 1 ? 1 : 0);
-                compute.SetInt("_ContactIteration", iteration);
-                RebuildContactGrid(uploadCount);
-                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
-                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
-                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
-                (readStates, writeStates) = (writeStates, readStates);
-            }
-
-            if (cleanupIterations > 0)
-            {
-                MovementStageObserver?.Invoke("projected");
-                var coloredCellCount = DivideRoundUp(gridWidth, cleanupStride) * DivideRoundUp(gridHeight, cleanupStride);
-                compute.SetBuffer(contactCellsKernel, "_StatesRead", readStates);
-                for (var iteration = 0; iteration < cleanupIterations; iteration++)
-                {
-                    // Freeze cell ownership for a complete color cycle. Rebuilding
-                    // between colors lets a corrected body enter a later color and
-                    // move twice, exceeding the displacement used to separate
-                    // concurrently processed cells. Neighbour positions are still
-                    // read live by the in-place kernel.
-                    if (iteration % cleanupColors == 0) RebuildContactGrid(uploadCount);
-                    compute.SetInt("_CleanupCellPhase", iteration % cleanupColors);
-                    compute.Dispatch(contactCellsKernel, DivideRoundUp(coloredCellCount, ThreadGroupSize), 1, 1);
-                }
-                // Finalize animation once, from the travel after all projections.
-                compute.SetInt("_HardContactCleanup", 1);
-                compute.SetInt("_FinalizePresentation", 1);
-                compute.SetBuffer(contactKernel, "_StatesRead", readStates);
-                compute.SetBuffer(contactKernel, "_StatesWrite", writeStates);
-                compute.DispatchIndirect(contactKernel, activeDispatchArgs);
+                // Each Jacobi pass must read the resolved state from the
+                // preceding pass. Rebind before the solve rather than before
+                // the swap; otherwise every other pass would read stale data.
+                BindXpbdStateBuffers();
+                compute.SetInt("_XpbdResetLambdas", iteration == 0 ? 1 : 0);
+                compute.SetInt("_XpbdFinalizePresentation", iteration == iterationCount - 1 ? 1 : 0);
+                compute.DispatchIndirect(clearXpbdCorrectionsKernel, activeDispatchArgs);
+                compute.DispatchIndirect(solveXpbdPairsKernel, xpbdPairDispatchArgs);
+                compute.DispatchIndirect(solveXpbdWallsKernel, activeDispatchArgs);
+                compute.DispatchIndirect(applyXpbdCorrectionsKernel, activeDispatchArgs);
                 (readStates, writeStates) = (writeStates, readStates);
             }
 
             if (measureOverlaps)
             {
-                MovementStageObserver?.Invoke("cleanup");
+                // Rebuild the capped gameplay-query/render grid, but measure
+                // solver correctness from the uncapped compact XPBD buffers.
                 RebuildContactGrid(uploadCount);
-                compute.DispatchIndirect(measureOverlapsKernel, activeDispatchArgs);
+                BindXpbdStateBuffers();
+                compute.Dispatch(measureXpbdGridDiagnosticsKernel,
+                    Mathf.Max(1, DivideRoundUp(cellCount, ThreadGroupSize)), 1, 1);
+                compute.DispatchIndirect(measureXpbdPairDiagnosticsKernel, xpbdPairDispatchArgs);
+                compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_StatesRead", readStates);
+                compute.DispatchIndirect(measureXpbdBodyDiagnosticsKernel, activeDispatchArgs);
+                compute.DispatchIndirect(finalizeXpbdPersistentContactsKernel, activeDispatchArgs);
             }
         }
 
-        private void ResolvePredictiveMotion(int uploadCount, float iterationScale)
+        private void BuildXpbdGrid(int uploadCount)
         {
-            compute.SetBuffer(prepareMotionKernel, "_StatesRead", readStates);
-            compute.SetBuffer(prepareMotionKernel, "_MotionWrite", motionA);
-            compute.DispatchIndirect(prepareMotionKernel, activeDispatchArgs);
-            compute.SetInt("_SlidingMotionAcceptance", SlidingMotionAcceptance ? 1 : 0);
-            var source = motionA;
-            var destination = motionB;
-            var largeCrowd = uploadCount >= LargeCrowdThreshold;
-            var baseProjectionIterations = largeCrowd ? LargeCrowdProjectionIterations : FullMotionProjectionIterations;
-            var baseReservationSweeps = largeCrowd ? LargeCrowdReservationSweeps : FullMotionReservationSweeps;
-            // A slow rendered frame can contain up to four fixed ticks. Sharing
-            // this budget prevents catch-up from multiplying the GPU work and
-            // creating a feedback loop (slow frame -> more ticks -> slower frame).
-            // The final hard-contact pass remains authoritative, so this reduces
-            // only approach polish, never the collision envelope.
-            // Smaller tactical tests retain their full precision budget. The
-            // catch-up scaling is needed only once a horde is large enough for
-            // the dispatch count itself to be a frame-time risk.
-            var solverScale = largeCrowd ? iterationScale : 1f;
-            var projectionIterations = Mathf.Max(largeCrowd ? 3 : 6,
-                Mathf.CeilToInt(baseProjectionIterations * solverScale));
-            var reservationSweeps = Mathf.Max(largeCrowd ? 1 : 2,
-                Mathf.CeilToInt(baseReservationSweeps * solverScale));
-            for (var iteration = 0; iteration < projectionIterations; iteration++)
+            BindXpbdStateBuffers();
+            compute.Dispatch(clearXpbdGridKernel, Mathf.Max(1, DivideRoundUp(cellCount, ThreadGroupSize)), 1, 1);
+            compute.Dispatch(countXpbdGridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
+            compute.Dispatch(scanXpbdGridBlocksKernel, xpbdBlockCount, 1, 1);
+            compute.Dispatch(scanXpbdGridBlockTotalsKernel, 1, 1, 1);
+            compute.Dispatch(addXpbdGridBlockOffsetsKernel, xpbdBlockCount, 1, 1);
+            compute.Dispatch(finalizeXpbdGridKernel, 1, 1, 1);
+            compute.Dispatch(scatterXpbdGridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
+        }
+
+        private void BindXpbdStateBuffers()
+        {
+            foreach (var kernel in new[] { countXpbdGridKernel, scatterXpbdGridKernel, buildXpbdPairsKernel,
+                         solveXpbdPairsKernel, solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
             {
-                compute.SetBuffer(constrainMotionKernel, "_MotionRead", source);
-                compute.SetBuffer(constrainMotionKernel, "_MotionWrite", destination);
-                compute.DispatchIndirect(constrainMotionKernel, activeDispatchArgs);
-                (source, destination) = (destination, source);
+                compute.SetBuffer(kernel, "_StatesRead", readStates);
             }
-            compute.SetBuffer(commitMotionKernel, "_StatesRead", readStates);
-            var stride = Mathf.CeilToInt((MaximumPairDiameter * 1.08f + maximumMotionDistance * 2f) / gridCellSize) + 1;
-            var colors = stride * stride;
-            compute.SetInt("_CleanupCellStride", stride);
-            compute.SetBuffer(reserveMotionKernel, "_MotionRead", source);
-            var cells = DivideRoundUp(gridWidth, stride) * DivideRoundUp(gridHeight, stride);
-            LastContactIterationCount = projectionIterations + colors * reservationSweeps;
-            for (var pass = 0; pass < colors * reservationSweeps; pass++)
-            {
-                compute.SetInt("_CleanupCellPhase", ReverseMotionReservation ? colors - 1 - pass % colors : pass % colors);
-                compute.SetInt("_ReverseMotionReservation", ReverseMotionReservation ? 1 : 0);
-                compute.Dispatch(reserveMotionKernel, DivideRoundUp(cells, ThreadGroupSize), 1, 1);
-            }
-            compute.DispatchIndirect(commitMotionKernel, activeDispatchArgs);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesWrite", writeStates);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_StatesRead", readStates);
+            compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_DynamicTargetsRead", dynamicTargets);
         }
 
         private void RebuildContactGrid(int uploadCount)
@@ -1703,9 +1716,6 @@ namespace TowerDefense.Runtime
                     MaximumRadius = radius + propagationRadius,
                     Knockback = shockwaveKnockback
                 });
-                shockwaveContactBoostTimer = Mathf.Max(
-                    shockwaveContactBoostTimer,
-                    propagationRadius / ShockwavePropagationSpeed + 2.5f);
             }
 
             queuedAreaEffects.Add(command);
@@ -1825,15 +1835,16 @@ namespace TowerDefense.Runtime
             compute.SetFloat("_CollisionDiameter", collisionDiameter);
         }
 
-        public void SetMovementDynamics(float inertiaMultiplier, float collisionPressureMultiplier)
+        internal void SetXpbdPerBodyRadius(bool enabled)
         {
-            inertiaMultiplier = Mathf.Clamp(inertiaMultiplier, 0.5f, 2f);
-            collisionPressureMultiplier = Mathf.Clamp(collisionPressureMultiplier, 0.5f, 3f);
-            compute.SetFloat("_FlowAcceleration", 8.5f / inertiaMultiplier);
-            compute.SetFloat("_CollisionAcceleration", 18f * collisionPressureMultiplier);
-            compute.SetFloat("_VelocityDamping", 1.15f / inertiaMultiplier);
-            compute.SetFloat("_FlowAlignment", Mathf.Clamp01(1f / inertiaMultiplier));
+            xpbdUsesPerBodyRadius = enabled;
+            compute.SetInt("_XpbdUsePerBodyRadius", enabled ? 1 : 0);
         }
+
+        internal float GetPhysicalBodyRadius(AgentState state) => xpbdUsesPerBodyRadius
+            ? Mathf.Max(collisionDiameter * 0.5f,
+                state.Scale * Mathf.Clamp(solverProfile.bodyRadiusPerVisualScale, 0.1f, 1f))
+            : collisionDiameter * 0.5f;
 
         public void SetStationaryArena(
             bool enabled,
@@ -1846,13 +1857,6 @@ namespace TowerDefense.Runtime
             compute.SetInt("_StationaryHorde", enabled ? 1 : 0);
             compute.SetInt("_RandomArenaMovement", enabled && randomMovement ? 1 : 0);
             compute.SetInt("_CenterSeekingArena", enabled && centerSeeking ? 1 : 0);
-            // Tactical sprite units retain the one-way convoy rule. The Orc
-            // reference horde does not: at a choke point both equal-mass bodies
-            // must be able to yield and transmit pressure in either direction.
-            // Otherwise the row that happened to reach the junction first gets
-            // an invisible reservation and the incoming row tunnels into it.
-            compute.SetInt("_UnidirectionalHordeContacts",
-                hordeSpriteMesh != null && !centerSeekingArena && !referenceCrowd ? 1 : 0);
             compute.SetVector("_ArenaCenter", new Vector4(center.x, center.z, 0f, 0f));
             compute.SetInt("_ExitEnabled", enabled ? 0 : 1);
         }
@@ -1873,12 +1877,6 @@ namespace TowerDefense.Runtime
             spawnStates?.Dispose();
             spawnControls?.Dispose();
             spatialStates?.Dispose();
-            motionA?.Dispose();
-            motionB?.Dispose();
-            acceptedMotion?.Dispose();
-            motionNeighbors?.Dispose();
-            motionNeighborCounts?.Dispose();
-            motionObstacles?.Dispose();
             controls?.Dispose();
             impulses?.Dispose();
             flowVectors?.Dispose();
@@ -1901,6 +1899,8 @@ namespace TowerDefense.Runtime
             dynamicTargetCommands?.Dispose();
             dynamicTargetCellCounts?.Dispose();
             dynamicTargetCellIndices?.Dispose();
+            dynamicTargetActiveIndices?.Dispose();
+            dynamicTargetActiveCount?.Dispose();
             dynamicTargetBlockedMass?.Dispose();
             dynamicTargetDamage?.Dispose();
             dynamicTargetLastAttacker?.Dispose();
@@ -1909,6 +1909,22 @@ namespace TowerDefense.Runtime
             variantIndirectArgs?.Dispose();
             variantLodIndirectArgs?.Dispose();
             activeIndices?.Dispose();
+            xpbdCellCounts?.Dispose();
+            xpbdCellOffsets?.Dispose();
+            xpbdCellCursors?.Dispose();
+            xpbdCellAgents?.Dispose();
+            xpbdBlockSums?.Dispose();
+            xpbdBlockOffsets?.Dispose();
+            xpbdPairs?.Dispose();
+            xpbdPairCount?.Dispose();
+            xpbdPairDispatchArgs?.Dispose();
+            xpbdCorrectionX?.Dispose();
+            xpbdCorrectionY?.Dispose();
+            xpbdCorrectionCounts?.Dispose();
+            xpbdWallLambdas?.Dispose();
+            xpbdGridFailures?.Dispose();
+            xpbdDeepContactMarked?.Dispose();
+            xpbdDeepContactTicks?.Dispose();
             activeDispatchArgs?.Dispose();
             if (compute != null)
             {
@@ -1937,6 +1953,7 @@ namespace TowerDefense.Runtime
             if (!diagnosticsReadbackPending)
             {
                 diagnosticsReadbackPending = true;
+                var sampleSimulationSeconds = simulationSeconds;
                 AsyncGPUReadback.Request(diagnostics, request =>
                 {
                     diagnosticsReadbackPending = false;
@@ -1961,6 +1978,19 @@ namespace TowerDefense.Runtime
                             ? data[9] / (data[10] * 1000f)
                             : 0f;
                         ActiveContactPairCount = data.Length >= 12 ? data[11] : 0u;
+                        ShallowContactPairCount = data.Length >= 13 ? data[12] : 0u;
+                        DeepOverlapPairCount = data.Length >= 14 ? data[13] : 0u;
+                        GridCapacityFailureCount = data.Length >= 15 ? data[14] : 0u;
+                        PersistentDeepContactBodyCount = data.Length >= 16 ? data[15] : 0u;
+                        DeepDiskContactPairCount = data.Length >= 17 ? data[16] : 0u;
+                        DeepBlockerContactCount = data.Length >= 18 ? data[17] : 0u;
+                        DeepWallContactCount = data.Length >= 19 ? data[18] : 0u;
+                        var elapsedSimulation = Mathf.Max(0f,
+                            (float)(sampleSimulationSeconds - lastDiagnosticsSimulationSeconds));
+                        DeepContactDurationSeconds = PersistentDeepContactBodyCount > 0u
+                            ? DeepContactDurationSeconds + elapsedSimulation
+                            : 0f;
+                        lastDiagnosticsSimulationSeconds = sampleSimulationSeconds;
                     }
                 });
             }
@@ -2200,6 +2230,7 @@ namespace TowerDefense.Runtime
                 compute.SetInt("_CullingEnabled", 0);
                 compute.SetVector("_LodCameraPosition", Vector4.zero);
                 compute.SetMatrix("_ViewProjection", Matrix4x4.identity);
+                SetSpriteDepthSort(Vector2.down);
                 return;
             }
 
@@ -2212,6 +2243,22 @@ namespace TowerDefense.Runtime
                     camera.pixelHeight / (2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f)),
                 camera.orthographic ? 1f : 0f, SimplifiedGoblinLodMaxHeightPixels));
             compute.SetMatrix("_ViewProjection", projection * camera.worldToCameraMatrix);
+            var towardCamera = -camera.transform.forward;
+            var sortAxis = new Vector2(towardCamera.x, towardCamera.z);
+            SetSpriteDepthSort(sortAxis.sqrMagnitude > 0.0001f ? sortAxis.normalized : Vector2.down);
+        }
+
+        private void SetSpriteDepthSort(Vector2 axis)
+        {
+            var sort = new Vector4(axis.x, axis.y, 0f, 0f);
+            properties.SetVector("_SpriteDepthSortAxis", sort);
+            lodProperties.SetVector("_SpriteDepthSortAxis", sort);
+            variantProperties.SetVector("_SpriteDepthSortAxis", sort);
+            variantLodProperties.SetVector("_SpriteDepthSortAxis", sort);
+            properties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
+            lodProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
+            variantProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
+            variantLodProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
         }
 
         private static int DivideRoundUp(int value, int divisor) => (value + divisor - 1) / divisor;

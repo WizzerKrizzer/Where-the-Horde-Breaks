@@ -132,6 +132,86 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
+        public IEnumerator SpriteTorsoContacts_PackWithoutTransparentCardGap()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null, 3f, 0.62f);
+            foreach (var secondScale in new[] { 0.203f, 0.29f })
+            {
+                Assert.That(GpuHordeSimulation.TryCreate(2, field,
+                    EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+                using (simulation)
+                {
+                    var profile = CrowdSolverProfile.Default;
+                    simulation.SetCrowdSolverProfile(profile);
+                    simulation.SetCollisionDiameter(profile.bodyDiameterPerEnemyScale *
+                        0.7f * profile.bodyRadiusPerVisualScale);
+                    simulation.SetXpbdPerBodyRadius(true);
+                    var scaleSum = 0.203f + secondScale;
+                    var initialHalfSpacing = scaleSum * profile.bodyRadiusPerVisualScale * 0.45f;
+                    var states = new[] { State(-initialHalfSpacing, 100f, 0f, false), State(initialHalfSpacing, 100f, 0f, false) };
+                    states[0].Scale = 0.203f;
+                    states[1].Scale = secondScale;
+                    states[0].Velocity = states[1].Velocity = Vector2.zero;
+                    var controls = new[] { new Vector4(0f, 1f, 0f, 0f), new Vector4(0f, 1f, 0f, 0f) };
+                    simulation.SpawnBatch(states, controls, 0, states.Length);
+                    simulation.Dispatch(profile.FixedStep, null, null, false);
+                    simulation.ReadStatesSynchronous(states, states.Length);
+                    var spacing = Vector2.Distance(states[0].Position, states[1].Position);
+                    Assert.That(spacing, Is.GreaterThanOrEqualTo(scaleSum * profile.bodyRadiusPerVisualScale * 0.95f),
+                        "Torso contacts must still resolve physical overlap.");
+                    Assert.That(spacing, Is.LessThanOrEqualTo(scaleSum * 0.72f),
+                        "Transparent card padding must not leave a gap between painted bodies.");
+                    Assert.That(states[0].Scale, Is.EqualTo(0.203f));
+                    Assert.That(states[1].Scale, Is.EqualTo(secondScale), "Packing must not resize the artwork.");
+                }
+                yield return null;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator LargeGridScan_PreservesEveryBodyAcrossScanChunks()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var field = HordeFlowField.CreateOpenField(Vector3.zero, new Vector2(200f, 200f),
+                new Vector3(-99f, 0f, 0f), new Vector3(99f, 0f, 0f), 50f, 0.5f);
+            var cellCount = field.Width * field.Height;
+            Assert.That(cellCount, Is.GreaterThan(256 * 256 * 2), "Exercise more than two scan chunks.");
+            Assert.That(GpuHordeSimulation.TryCreate(4, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                var states = new[] { State(-90f, 100f, 0f, false), State(90f, 100f, 0f, false),
+                    State(-90f, 100f, 0f, false), State(90f, 100f, 0f, false) };
+                states[0].Position.y = states[1].Position.y = -90f;
+                states[2].Position.y = states[3].Position.y = 90f;
+                var controls = new Vector4[4];
+                for (var i = 0; i < 4; i++) controls[i] = new Vector4(0f, 1f, 0f, 0f);
+                simulation.SpawnBatch(states, controls, 0, 4);
+                simulation.DispatchFixedTick(null, null, requestReadback: false);
+                var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                var counts = new uint[cellCount];
+                var offsets = new uint[cellCount + 1];
+                var agents = new uint[4];
+                ((GraphicsBuffer)typeof(GpuHordeSimulation).GetField("xpbdCellCounts", flags).GetValue(simulation)).GetData(counts);
+                ((GraphicsBuffer)typeof(GpuHordeSimulation).GetField("xpbdCellOffsets", flags).GetValue(simulation)).GetData(offsets);
+                ((GraphicsBuffer)typeof(GpuHordeSimulation).GetField("xpbdCellAgents", flags).GetValue(simulation)).GetData(agents);
+                uint sum = 0;
+                for (var cell = 0; cell < cellCount; cell++)
+                {
+                    if (offsets[cell] != sum) Assert.Fail($"Cell {cell}: expected offset {sum}, got {offsets[cell]}.");
+                    sum += counts[cell];
+                }
+                Assert.That(sum, Is.EqualTo(4));
+                Assert.That(offsets[cellCount], Is.EqualTo(4));
+                CollectionAssert.AreEquivalent(new uint[] { 0, 1, 2, 3 }, agents,
+                    "Chunk carry must not overwrite or lose spatial-grid membership.");
+            }
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator HardContactIterations_SeparateDenseMixedSizeGroup()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -1195,10 +1275,10 @@ namespace TowerDefense.Tests
             simulation.Dispose();
 
             Assert.That(states[0].Padding, Is.GreaterThan(0f));
-            Assert.That(states[0].Velocity.x, Is.GreaterThan(10f),
-                "The normal movement speed clamp swallowed the catapult impulse.");
-            Assert.That(states[0].Position.x, Is.GreaterThan(-4.3f),
-                "The strong area knockback did not visibly displace the enemy.");
+            Assert.That(states[0].KnockbackVelocity.x, Is.GreaterThan(10f),
+                "The per-tick travel cap swallowed the remaining external impulse.");
+            Assert.That(states[0].Position.x + 4.5f, Is.InRange(0.115f, 0.125f),
+                "The strong area knockback did not use the configured XPBD travel cap.");
             yield return null;
         }
 
@@ -1288,7 +1368,6 @@ namespace TowerDefense.Tests
                 EnemyManager.GetDetailedEnemyMesh(),
                 out var simulation), Is.True);
             simulation.SetCollisionDiameter(0.5f);
-            simulation.SetMovementDynamics(1.4f, 1.5f);
             simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
             simulation.SpawnBatch(states, count);
             Assert.That(simulation.QueueAreaEffect(
@@ -1492,7 +1571,6 @@ namespace TowerDefense.Tests
                 EnemyManager.GetDetailedEnemyMesh(),
                 out var simulation), Is.True);
             simulation.SetCollisionDiameter(0.5f);
-            simulation.SetMovementDynamics(1.4f, 1.5f);
             simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
             simulation.SpawnBatch(states, 1);
             Assert.That(simulation.QueueAreaEffect(
@@ -1591,7 +1669,6 @@ namespace TowerDefense.Tests
                 EnemyManager.GetDetailedEnemyMesh(),
                 out var simulation), Is.True);
             simulation.SetCollisionDiameter(0.5f);
-            simulation.SetMovementDynamics(1.4f, 1.5f);
             simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
             simulation.SpawnBatch(states, count);
             Assert.That(simulation.QueueAreaEffect(
@@ -1706,7 +1783,6 @@ namespace TowerDefense.Tests
                 EnemyManager.GetDetailedEnemyMesh(),
                 out var simulation), Is.True);
             simulation.SetCollisionDiameter(0.5f);
-            simulation.SetMovementDynamics(1.4f, 1.5f);
             simulation.SetStationaryArena(true, centerSeeking: true, center: Vector3.zero);
             simulation.SpawnBatch(states, count);
             Assert.That(simulation.QueueAreaEffect(

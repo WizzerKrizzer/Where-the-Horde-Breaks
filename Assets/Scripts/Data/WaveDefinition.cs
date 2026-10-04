@@ -41,7 +41,7 @@ namespace TowerDefense.Data
         public Vector2 openFieldSize;
         [Min(0.25f), Tooltip("Half-width of the entrance and exit gates in Open Field mode.")]
         public float openFieldGateHalfWidth = 2.65f;
-        [Tooltip("Optional locomotion tuning profile. Level 2 uses the Orc Reference profile.")]
+        [HideInInspector, Tooltip("Deprecated serialized data; the runtime always uses CrowdSolverProfile.Default.")]
         public HordePhysicsProfile hordePhysicsProfile;
         public WaveEntry[] entries;
     }

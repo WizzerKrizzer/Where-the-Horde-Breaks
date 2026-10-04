@@ -91,6 +91,8 @@ Shader "TowerDefense/HordeIndirect"
             float _HordeSpriteFarLod;
             float _HordeSpriteStride;
             float _PresentationAlpha;
+            float2 _SpriteDepthSortAxis;
+            float _SpriteDepthSortSlope;
             sampler2D _HordeSpriteAtlas;
 
             struct Attributes
@@ -169,9 +171,17 @@ Shader "TowerDefense/HordeIndirect"
                 float2 renderedPosition = lerp(state.stepStartPosition, state.position, _PresentationAlpha);
                 float3 world = localVertex * (state.scale * _VisualScaleMultiplier) +
                     float3(renderedPosition.x, 0.0, renderedPosition.y);
-                // Road y is 0.092. This prevents depth fighting without changing
-                // collision, pathing or the authoritative GPU positions.
-                if (_HordeSpriteEnabled > 0.5) world.y += 0.10;
+                // Cards are flat and therefore overlap on exactly the same depth
+                // plane. Give them a stable, camera-relative micro elevation so
+                // their draw order does not depend on the unordered GPU cull list.
+                // The road is at y=0.092; the complete range remains above it and
+                // affects rendering only, never physics or pathing.
+                if (_HordeSpriteEnabled > 0.5)
+                {
+                    float stableJitter = frac((float)agentIndex * 0.7548777);
+                    float cameraOrder = dot(renderedPosition, _SpriteDepthSortAxis);
+                    world.y += 0.13 + cameraOrder * _SpriteDepthSortSlope + stableJitter * 0.00035;
+                }
                 world.y += (1.0 - active) * -100000.0;
 
                 output.position = UnityWorldToClipPos(world);
