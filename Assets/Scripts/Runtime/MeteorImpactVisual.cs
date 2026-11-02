@@ -50,11 +50,11 @@ namespace TowerDefense.Runtime
             flashRenderer = CreateDisc(
                 "MeteorImpactFlash",
                 0.08f,
-                new Color(1f, 0.76f, 0.24f, 0.82f));
+                PlaceholderPalette.Grey(.772f, 0.82f));
             craterRenderer = CreateDisc(
                 "MeteorScorchedCrater",
                 0.025f,
-                new Color(0.12f, 0.09f, 0.07f, 0.62f));
+                PlaceholderPalette.Grey(.097f, 0.62f));
             craterRenderer.transform.localScale = new Vector3(radius * 1.25f, 0.012f, radius * 1.25f);
             CreateGroundDust();
             CreateDebris();
@@ -91,8 +91,8 @@ namespace TowerDefense.Runtime
             main.startSpeed = 0f;
             main.startSize = new ParticleSystem.MinMaxCurve(0.45f, 1.35f);
             main.startColor = new ParticleSystem.MinMaxGradient(
-                new Color(0.58f, 0.49f, 0.37f, 0.34f),
-                new Color(0.82f, 0.73f, 0.58f, 0.16f));
+                PlaceholderPalette.Grey(.503f, 0.34f),
+                PlaceholderPalette.Grey(.74f, 0.16f));
             main.gravityModifier = -0.08f;
             main.maxParticles = 96;
             var emission = particles.emission;
@@ -101,7 +101,7 @@ namespace TowerDefense.Runtime
             shape.enabled = false;
             var renderer = particles.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Billboard;
-            renderer.material = BootstrapMaterials.GetUnlit(new Color(0.7f, 0.62f, 0.48f, 0.3f));
+            renderer.material = BootstrapMaterials.GetUnlit(PlaceholderPalette.Grey(.628f, 0.3f));
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             for (var i = 0; i < 72; i++)
@@ -137,8 +137,8 @@ namespace TowerDefense.Runtime
             main.startSpeed = new ParticleSystem.MinMaxCurve(radius * 0.55f, radius * 1.15f);
             main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.38f);
             main.startColor = new ParticleSystem.MinMaxGradient(
-                new Color(0.2f, 0.16f, 0.12f, 1f),
-                new Color(0.5f, 0.31f, 0.14f, 1f));
+                PlaceholderPalette.Grey(.167f, 1f),
+                PlaceholderPalette.Grey(.347f, 1f));
             main.gravityModifier = 2.6f;
             main.maxParticles = 32;
             var emission = particles.emission;
@@ -152,7 +152,7 @@ namespace TowerDefense.Runtime
             var renderer = particles.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Mesh;
             renderer.mesh = GetCubeMesh();
-            renderer.material = BootstrapMaterials.Get(new Color(0.28f, 0.2f, 0.13f, 1f));
+            renderer.material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.216f, 1f));
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             particles.Emit(24);
@@ -187,10 +187,10 @@ namespace TowerDefense.Runtime
             flashRenderer.transform.localScale = new Vector3(flashDiameter, 0.012f, flashDiameter);
             SetRendererColor(
                 flashRenderer,
-                new Color(1f, 0.72f, 0.2f, (1f - flashProgress) * 0.8f));
+                PlaceholderPalette.Grey(.744f, (1f - flashProgress) * 0.8f));
 
             var craterFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(4.5f, VisualLifetime, elapsed));
-            SetRendererColor(craterRenderer, new Color(0.12f, 0.09f, 0.07f, craterFade * 0.62f));
+            SetRendererColor(craterRenderer, PlaceholderPalette.Grey(.097f, craterFade * 0.62f));
             if (elapsed >= VisualLifetime)
             {
                 Destroy(gameObject);

@@ -416,7 +416,7 @@ namespace TowerDefense.Runtime
             }
 
             bodyRenderer.sharedMaterial = BootstrapMaterials.Get(slowed
-                ? Color.Lerp(definition.color, new Color(0.28f, 0.72f, 1f), 0.58f)
+                ? Color.Lerp(definition.color, PlaceholderPalette.Grey(.62f), 0.58f)
                 : definition.color);
         }
 
@@ -853,7 +853,7 @@ namespace TowerDefense.Runtime
             background.transform.SetParent(root.transform, false);
             background.transform.localPosition = Vector3.zero;
             background.transform.localScale = new Vector3(1.05f, 0.06f, 0.1f);
-            background.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.03f, 0.03f, 0.035f, 1f));
+            background.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.031f, 1f));
             RemovePrimitiveColliders(background);
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -861,7 +861,7 @@ namespace TowerDefense.Runtime
             fill.transform.SetParent(root.transform, false);
             fill.transform.localPosition = new Vector3(-0.525f, 0.01f, 0f);
             fill.transform.localScale = new Vector3(1.05f, 0.07f, 0.12f);
-            fill.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(new Color(0.22f, 1f, 0.25f, 1f));
+            fill.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.681f, 1f));
             RemovePrimitiveColliders(fill);
             healthFill = fill.transform;
         }

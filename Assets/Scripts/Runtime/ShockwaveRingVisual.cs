@@ -191,7 +191,7 @@ namespace TowerDefense.Runtime
             shape.enabled = false;
             var renderer = particles.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Billboard;
-            renderer.material = BootstrapMaterials.GetUnlit(new Color(0.68f, 0.61f, 0.48f, 0.16f));
+            renderer.material = BootstrapMaterials.GetUnlit(PlaceholderPalette.Grey(.616f, 0.16f));
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
@@ -213,7 +213,7 @@ namespace TowerDefense.Runtime
                     startLifetime = travelDistance / Mathf.Max(0.01f,
                         (endRadius - startRadius) / Mathf.Max(0.01f, duration)),
                     startSize = Mathf.Lerp(0.55f, 1.35f, Mathf.Repeat(i * 0.6180339f, 1f)),
-                    startColor = new Color(0.72f, 0.66f, 0.54f, 0.14f)
+                    startColor = PlaceholderPalette.Grey(.664f, 0.14f)
                 };
                 particles.Emit(emit, 1);
             }
@@ -228,7 +228,7 @@ namespace TowerDefense.Runtime
             renderer.loop = true;
             renderer.positionCount = SegmentCount;
             renderer.numCornerVertices = 3;
-            renderer.material = BootstrapMaterials.GetUnlit(new Color(1f, 1f, 1f, 0.5f));
+            renderer.material = BootstrapMaterials.GetUnlit(PlaceholderPalette.Grey(1.0f, 0.5f));
             renderer.startColor = color;
             renderer.endColor = color;
             renderer.shadowCastingMode = ShadowCastingMode.Off;

@@ -239,8 +239,8 @@ namespace TowerDefense.Runtime
             marker.transform.position = impactPosition + Vector3.up * 0.2f;
             marker.transform.localScale = new Vector3(radius * 2f, 0.04f, radius * 2f);
             marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(sourceTower != null && sourceTower.appliesFire
-                ? new Color(1f, 0.32f, 0.05f, 0.42f)
-                : new Color(0.58f, 0.44f, 0.27f, 0.35f));
+                ? PlaceholderPalette.Grey(.493f, 0.42f)
+                : PlaceholderPalette.Grey(.462f, 0.35f));
             RemovePrimitiveCollider(marker);
             Destroy(marker, 0.25f);
         }

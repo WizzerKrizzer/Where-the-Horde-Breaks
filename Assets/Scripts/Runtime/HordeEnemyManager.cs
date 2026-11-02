@@ -288,9 +288,9 @@ namespace TowerDefense.Runtime
             }
 
             mesh = EnemyManager.GetLowEnemyMesh();
-            material = BootstrapMaterials.Get(new Color(0.08f, 0.82f, 0.29f, 1f));
+            material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.538f, 1f));
             material.enableInstancing = true;
-            slowedMaterial = BootstrapMaterials.Get(new Color(0.16f, 0.50f, 1f, 1f));
+            slowedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.455f, 1f));
             slowedMaterial.enableInstancing = true;
             properties ??= new MaterialPropertyBlock();
             if (!GpuHordeSimulation.TryCreate(count, flowField, mesh, out gpuSimulation))
@@ -1850,7 +1850,7 @@ namespace TowerDefense.Runtime
             boundaryDebugObject.transform.SetParent(transform, false);
             boundaryDebugObject.AddComponent<MeshFilter>().sharedMesh = boundaryDebugMesh;
             var renderer = boundaryDebugObject.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = BootstrapMaterials.GetUnlit(new Color(0.05f, 0.95f, 1f, 1f));
+            renderer.sharedMaterial = BootstrapMaterials.GetUnlit(PlaceholderPalette.Grey(.687f, 1f));
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 #endif

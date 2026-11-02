@@ -164,8 +164,8 @@ namespace TowerDefense.Runtime
         private void Fire(EnemyActor target)
         {
             var projectileColor = definition.appliesFire
-                ? new Color(1f, 0.32f, 0.05f)
-                : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
+                ? PlaceholderPalette.Grey(.493f)
+                : definition.projectilePattern == ProjectilePattern.ArcSplash ? PlaceholderPalette.Grey(.369f) : PlaceholderPalette.Grey(.841f);
             ProjectileActor.Spawn(this, definition, target, enemies, definition.damage * damageMultiplier, projectileColor);
         }
 
@@ -304,7 +304,7 @@ namespace TowerDefense.Runtime
             HordeProjectileVisual.Spawn(
                 start,
                 end,
-                Color.yellow,
+                PlaceholderPalette.Grey(.841f),
                 false,
                 duration,
                 0.12f,
@@ -384,8 +384,8 @@ namespace TowerDefense.Runtime
         private void SpawnHordeShotVisual(Vector3 targetPosition, float duration)
         {
             var projectileColor = definition.appliesFire
-                ? new Color(1f, 0.32f, 0.05f)
-                : definition.projectilePattern == ProjectilePattern.ArcSplash ? new Color(0.42f, 0.36f, 0.28f) : Color.yellow;
+                ? PlaceholderPalette.Grey(.493f)
+                : definition.projectilePattern == ProjectilePattern.ArcSplash ? PlaceholderPalette.Grey(.369f) : PlaceholderPalette.Grey(.841f);
             var start = transform.position + Vector3.up * 0.82f;
             var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
             var markerRadius = definition.projectilePattern == ProjectilePattern.ArcSplash
@@ -546,7 +546,7 @@ namespace TowerDefense.Runtime
             }
 
             var healthPercent = Mathf.Clamp01(health / Mathf.Max(1f, maxHealth));
-            renderer.material = BootstrapMaterials.Get(Color.Lerp(new Color(0.75f, 0.12f, 0.08f), definition.color, healthPercent));
+            renderer.material = BootstrapMaterials.Get(Color.Lerp(PlaceholderPalette.Grey(.304f), definition.color, healthPercent));
         }
 
         private void EnsureBarrierHealthBar()
@@ -567,14 +567,14 @@ namespace TowerDefense.Runtime
             background.transform.SetParent(root.transform, false);
             background.transform.localPosition = Vector3.zero;
             background.transform.localScale = new Vector3(1.28f, 0.08f, 0.12f);
-            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.035f, 0.025f, 0.02f, 1f));
+            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.027f, 1f));
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fill.name = "BarrierHealthBarFill";
             fill.transform.SetParent(root.transform, false);
             fill.transform.localPosition = new Vector3(-0.64f, 0.012f, 0f);
             fill.transform.localScale = new Vector3(1.28f, 0.09f, 0.14f);
-            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.95f, 0.55f, 0.2f, 1f));
+            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.63f, 1f));
             barrierHealthFill = fill.transform;
         }
 
@@ -637,7 +637,7 @@ namespace TowerDefense.Runtime
 
             auraDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             auraDisc.name = "BellSlowAura";
-            auraDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.3f, 0.75f, 1f, 0.12f));
+            auraDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.644f, 0.12f));
         }
 
         private void EnsureSelectionVisual()
@@ -649,7 +649,7 @@ namespace TowerDefense.Runtime
 
             selectionDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             selectionDisc.name = "TowerSelectionRange";
-            selectionDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.9f, 0.25f, 0.16f));
+            selectionDisc.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.856f, 0.16f));
             selectionDisc.SetActive(false);
         }
     }

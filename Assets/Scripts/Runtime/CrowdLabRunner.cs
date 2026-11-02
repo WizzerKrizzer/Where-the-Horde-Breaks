@@ -494,7 +494,7 @@ namespace TowerDefense.Runtime
         private void OnDrawGizmosSelected()
         {
             if (states == null) return;
-            Gizmos.color = new Color(0.18f, 0.85f, 1f, 0.85f);
+            Gizmos.color = PlaceholderPalette.Grey(.667f, 0.85f);
             var radius = BodyDiameter * 0.5f;
             for (var i = 0; i < states.Length; i++)
             {
@@ -505,7 +505,7 @@ namespace TowerDefense.Runtime
                 Gizmos.DrawLine(position, position + desired * radius * 1.6f);
             }
             if (!drawTrails) return;
-            Gizmos.color = new Color(1f, 0.76f, 0.2f, 0.35f);
+            Gizmos.color = PlaceholderPalette.Grey(.768f, 0.35f);
             foreach (var frame in trailFrames)
             {
                 for (var i = 0; i < frame.Length; i++)

@@ -191,7 +191,7 @@ namespace TowerDefense.Runtime
             go.name = "AlliedArrow";
             go.transform.position = transform.position + Vector3.up * 0.65f;
             go.transform.localScale = new Vector3(0.08f, 0.08f, 0.34f);
-            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.88f, 0.32f, 1f));
+            go.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.852f, 1f));
             var projectile = go.AddComponent<AlliedArrowProjectile>();
             projectile.Fire(owner, target, definition.alliedUnitDamage, 16f);
         }
@@ -201,7 +201,7 @@ namespace TowerDefense.Runtime
             var start = transform.position + Vector3.up * 0.65f;
             var end = targetPosition + Vector3.up * 0.45f;
             var duration = Mathf.Clamp(Vector3.Distance(start, end) / 16f, 0.06f, 0.24f);
-            HordeProjectileVisual.Spawn(start, end, new Color(1f, 0.88f, 0.32f, 1f), arcProjectile: false, travelDuration: duration, markerRadius: 0.12f);
+            HordeProjectileVisual.Spawn(start, end, PlaceholderPalette.Grey(.852f, 1f), arcProjectile: false, travelDuration: duration, markerRadius: 0.12f);
         }
 
         public void TakeDamage(float damage, EnemyActor source)
@@ -383,11 +383,11 @@ namespace TowerDefense.Runtime
             switch (towerDefinition.barracksUnitType)
             {
                 case AlliedUnitType.Archer:
-                    return new Color(0.75f, 0.95f, 0.45f);
+                    return PlaceholderPalette.Grey(.833f);
                 case AlliedUnitType.Paladin:
-                    return new Color(0.95f, 0.92f, 0.55f);
+                    return PlaceholderPalette.Grey(.887f);
                 default:
-                    return new Color(0.62f, 0.72f, 0.95f);
+                    return PlaceholderPalette.Grey(.716f);
             }
         }
 
@@ -409,14 +409,14 @@ namespace TowerDefense.Runtime
             background.transform.SetParent(root.transform, false);
             background.transform.localPosition = Vector3.zero;
             background.transform.localScale = new Vector3(1.05f, 0.075f, 0.12f);
-            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.025f, 0.03f, 0.04f, 1f));
+            background.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.03f, 1f));
 
             var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fill.name = "AlliedHealthBarFill";
             fill.transform.SetParent(root.transform, false);
             fill.transform.localPosition = new Vector3(-0.525f, 0.011f, 0f);
             fill.transform.localScale = new Vector3(1.05f, 0.085f, 0.14f);
-            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.35f, 0.88f, 1f, 1f));
+            fill.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.735f, 1f));
             healthFill = fill.transform;
         }
 

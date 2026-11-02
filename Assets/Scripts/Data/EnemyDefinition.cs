@@ -1,3 +1,4 @@
+using TowerDefense.Runtime;
 using UnityEngine;
 
 namespace TowerDefense.Data
@@ -35,7 +36,7 @@ namespace TowerDefense.Data
         public float reviveDelay = 3f;
         public int lifeDamage = 1;
         public int killReward = 1;
-        public Color color = Color.red;
+        public Color color = PlaceholderPalette.Grey(.299f);
         public float visualScale = 0.45f;
     }
 }

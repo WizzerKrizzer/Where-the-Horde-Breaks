@@ -41,7 +41,7 @@ namespace TowerDefense.Runtime
             textMesh.alignment = TextAlignment.Center;
             textMesh.fontSize = 48;
             textMesh.characterSize = 0.1f;
-            textMesh.color = new Color(1f, 0.78f, 0.28f, 1f);
+            textMesh.color = PlaceholderPalette.Grey(.789f, 1f);
         }
 
         private void Update()
@@ -57,7 +57,7 @@ namespace TowerDefense.Runtime
             }
 
             var remaining = Mathf.Clamp01(1f - age / Lifetime);
-            textMesh.color = new Color(1f, 0.78f, 0.28f, remaining);
+            textMesh.color = PlaceholderPalette.Grey(.789f, remaining);
 
             if (age >= Lifetime)
             {

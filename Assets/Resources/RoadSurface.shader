@@ -2,7 +2,9 @@ Shader "TowerDefense/WeatheredRoad"
 {
     Properties
     {
-        _RoadField ("Footprint", 2D) = "black" {}
+        _RoadField ("Footprint and wheel ruts", 2D) = "black" {}
+        _GroundColor ("Ground", Color) = (0.3, 0.3, 0.3, 1)
+        _RoadColor ("Road", Color) = (0.4, 0.4, 0.4, 1)
         _WorldRect ("World bounds", Vector) = (0,0,100,100)
     }
     SubShader
@@ -16,30 +18,30 @@ Shader "TowerDefense/WeatheredRoad"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
+            #pragma multi_compile_fwdbase
             #include "UnityCG.cginc"
+            #include "Lighting.cginc"
+            #include "AutoLight.cginc"
             sampler2D _RoadField;
+            fixed4 _GroundColor, _RoadColor;
             float4 _WorldRect;
             struct appdata { float4 vertex : POSITION; };
-            struct v2f { float4 pos : SV_POSITION; float3 world : TEXCOORD0; };
+            struct v2f { float4 pos : SV_POSITION; float3 world : TEXCOORD0; SHADOW_COORDS(1) };
             v2f vert(appdata v)
             {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
+                v2f o; o.pos = UnityObjectToClipPos(v.vertex);
                 o.world = mul(unity_ObjectToWorld, v.vertex).xyz;
-                return o;
+                TRANSFER_SHADOW(o); return o;
             }
             fixed4 frag(v2f i) : SV_Target
             {
+                // Greybox placeholder: two flat values split by the road field.
                 float2 p = i.world.xz;
-                float3 roadColour = float3(.34, .39, .44);
-                // The dark field exists only to show the route silhouette.  It is
-                // deliberately flat: all scenery and surface texture are removed.
-                float3 backgroundColour = float3(.035, .045, .05);
                 float4 field = tex2D(_RoadField, (p-_WorldRect.xy) / _WorldRect.zw);
                 float distance = (field.r-.5)*8;
-                float aa = max(fwidth(distance), .025);
-                float road = smoothstep(-aa,aa,distance);
-                float3 colour = lerp(backgroundColour, roadColour, road);
+                float road = smoothstep(-.05, .05, distance);
+                float3 colour = lerp(_GroundColor.rgb, _RoadColor.rgb, road);
+                colour *= lerp(.65, 1.0, SHADOW_ATTENUATION(i));
                 return fixed4(colour,1);
             }
             ENDCG

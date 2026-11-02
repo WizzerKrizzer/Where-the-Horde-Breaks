@@ -20,8 +20,6 @@ namespace TowerDefense.Tests
             var shared = EnvironmentTilePackages.Resolve(content.Levels[0].environmentTilePackage);
             Assert.That(shared.Id, Is.EqualTo(EnvironmentTilePackageId.Prehistoric));
             Assert.That(shared.UsesRoadMarkings, Is.False);
-            Assert.That(shared.Contains(EnvironmentTileKind.Trees | EnvironmentTileKind.Huts |
-                EnvironmentTileKind.Fires | EnvironmentTileKind.Rivers), Is.True);
             for (var i = 0; i < 4; i++)
             {
                 Assert.That(content.Levels[i].environmentTilePackage,
@@ -32,7 +30,7 @@ namespace TowerDefense.Tests
         }
 
         [UnityTest]
-        public IEnumerator LevelTwoMap_BuildsOnlyTheFlatRoute()
+        public IEnumerator LevelTwoMap_BuildsOnlyGroundAndRoad()
         {
             yield return SceneManager.LoadSceneAsync("Main");
             var bootstrap = Object.FindAnyObjectByType<TowerDefenseBootstrap>();
@@ -44,13 +42,10 @@ namespace TowerDefense.Tests
             var road = Object.FindAnyObjectByType<RoadSurface>();
             Assert.That(road.PackageId, Is.EqualTo(EnvironmentTilePackageId.Prehistoric));
             Assert.That(road.UsesRoadMarkings, Is.False);
-            Assert.That(Object.FindAnyObjectByType<EnvironmentTilePackageInstance>(), Is.Null);
-            Assert.That(GameObject.Find("MapDecor"), Is.Null);
-            Assert.That(GameObject.Find("TreeTiles"), Is.Null);
-            Assert.That(GameObject.Find("HutTiles"), Is.Null);
-            Assert.That(GameObject.Find("FireTiles"), Is.Null);
-            Assert.That(GameObject.Find("RiverTiles"), Is.Null);
-            Assert.That(GameObject.Find("NaturalTrailEdge"), Is.Null);
+            var map = GameObject.Find("LevelMap");
+            Assert.That(map, Is.Not.Null);
+            Assert.That(map.GetComponentsInChildren<Renderer>().Length, Is.EqualTo(2),
+                "Placeholder map is only the ground support and the road surface; no scenery.");
             Assert.That(road.GetComponentsInChildren<Renderer>().Length, Is.EqualTo(1));
         }
 

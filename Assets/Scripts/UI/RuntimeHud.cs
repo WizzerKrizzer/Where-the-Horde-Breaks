@@ -262,10 +262,10 @@ namespace TowerDefense.UI
             latestFps = fps;
             fpsText.text = $"FPS: {fps:0}";
             fpsText.color = fps >= 55f
-                ? new Color(0.55f, 1f, 0.6f, 0.95f)
+                ? PlaceholderPalette.Grey(.82f, 0.95f)
                 : fps >= 30f
-                    ? new Color(1f, 0.85f, 0.35f, 0.95f)
-                    : new Color(1f, 0.35f, 0.3f, 0.95f);
+                    ? PlaceholderPalette.Grey(.838f, 0.95f)
+                    : PlaceholderPalette.Grey(.539f, 0.95f);
             nextFpsRefreshTime = Time.realtimeSinceStartup + 1f;
             fpsAccumulatedTime = 0f;
             fpsAccumulatedFrames = 0;
@@ -360,14 +360,14 @@ namespace TowerDefense.UI
             performancePanel = CreatePanel("PerformancePanel", parent, new Vector2(-12f, -104f), new Vector2(390f, 142f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             if (performancePanel.TryGetComponent<Image>(out var image))
             {
-                image.color = new Color(0.018f, 0.028f, 0.035f, 0.46f);
+                image.color = PlaceholderPalette.Grey(.026f, 0.46f);
                 image.raycastTarget = false;
             }
 
             perfText = CreateText("HordePerformance", performancePanel.transform, Vector2.zero, TextAnchor.UpperLeft, 9);
             ConfigureCenteredRect(perfText.GetComponent<RectTransform>(), new Vector2(10f, -8f), new Vector2(370f, 128f), new Vector2(0f, 1f), new Vector2(0f, 1f));
             perfText.text = "PERFORMANCE MONITOR\nCollecting frame timings...";
-            perfText.color = new Color(0.82f, 0.93f, 1f, 0.9f);
+            perfText.color = PlaceholderPalette.Grey(.905f, 0.9f);
             perfText.lineSpacing = 0.9f;
         }
 
@@ -527,7 +527,7 @@ namespace TowerDefense.UI
             devAutoPurchaseTitle = CreateText("DevAutoPurchaseTitle", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 16);
             ConfigureCenteredRect(devAutoPurchaseTitle.GetComponent<RectTransform>(), new Vector2(0f, 140f), new Vector2(410f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             devAutoPurchaseTitle.text = "AUTO LOOP PURCHASES";
-            devAutoPurchaseTitle.color = new Color(0.74f, 0.95f, 1f, 1f);
+            devAutoPurchaseTitle.color = PlaceholderPalette.Grey(.893f, 1f);
             devAutoPurchaseBody = CreateText("DevAutoPurchaseBody", devAutoPurchasePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(devAutoPurchaseBody.GetComponent<RectTransform>(), new Vector2(0f, 70f), new Vector2(420f, 110f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             devAutoPurchasePanel.SetActive(false);
@@ -540,7 +540,7 @@ namespace TowerDefense.UI
             var title = CreateText("DevBestBotReportTitle", devBestBotReportPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 20);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 368f), new Vector2(590f, 30f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             title.text = "BOT REPORT";
-            title.color = new Color(0.72f, 1f, 0.66f, 1f);
+            title.color = PlaceholderPalette.Grey(.878f, 1f);
             devBestBotReportBody = CreateText("DevBestBotReportBody", devBestBotReportPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 12);
             ConfigureCenteredRect(devBestBotReportBody.GetComponent<RectTransform>(), new Vector2(0f, 198f), new Vector2(590f, 310f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             devBestBotReportBody.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -558,7 +558,7 @@ namespace TowerDefense.UI
             var purchaseTitle = CreateText("DevBestBotPurchasesTitle", devBestBotPurchasesDropdown.transform, Vector2.zero, TextAnchor.MiddleCenter, 14);
             ConfigureCenteredRect(purchaseTitle.GetComponent<RectTransform>(), new Vector2(0f, 276f), new Vector2(560f, 24f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             purchaseTitle.text = "PURCHASE HISTORY BY ATTEMPT";
-            purchaseTitle.color = new Color(1f, 0.76f, 0.28f, 1f);
+            purchaseTitle.color = PlaceholderPalette.Grey(.777f, 1f);
 
             var viewport = new GameObject("DevBestBotPurchasesViewport");
             viewport.transform.SetParent(devBestBotPurchasesDropdown.transform, false);
@@ -566,7 +566,7 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(viewportRect, new Vector2(0f, 139f), new Vector2(560f, 242f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             viewport.AddComponent<RectMask2D>();
             var viewportImage = viewport.AddComponent<Image>();
-            viewportImage.color = new Color(0.015f, 0.022f, 0.028f, 0.88f);
+            viewportImage.color = PlaceholderPalette.Grey(.021f, 0.88f);
 
             var contentObject = new GameObject("DevBestBotPurchasesContent");
             contentObject.transform.SetParent(viewport.transform, false);
@@ -623,7 +623,7 @@ namespace TowerDefense.UI
             panelRect.anchorMax = Vector2.one;
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
-            upgradePanel.GetComponent<Image>().color = new Color(0.015f, 0.02f, 0.024f, 1f);
+            upgradePanel.GetComponent<Image>().color = PlaceholderPalette.Grey(.019f, 1f);
 
             var title = CreateText("UpgradeTitle", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
             ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, -22f), new Vector2(460f, 32f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
@@ -634,11 +634,11 @@ namespace TowerDefense.UI
 
             var hint = CreateText("UpgradeHint", upgradePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, -72f), new Vector2(680f, 20f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
-            hint.color = new Color(0.68f, 0.78f, 0.86f, 1f);
+            hint.color = PlaceholderPalette.Grey(.759f, 1f);
             hint.text = "Hover for 0.3 seconds to inspect. Click a node to buy its next rank. Right-click refunds one rank. Drag to pan. Mouse wheel zooms.";
 
             var viewport = CreatePanel("UpgradeTreeViewport", upgradePanel.transform, new Vector2(0f, -94f), Vector2.zero, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.18f);
+            viewport.GetComponent<Image>().color = PlaceholderPalette.Grey(.0f, 0.18f);
             upgradeTreeViewport = viewport.GetComponent<RectTransform>();
             upgradeTreeViewport.anchorMin = new Vector2(0f, 0f);
             upgradeTreeViewport.anchorMax = new Vector2(1f, 1f);
@@ -669,17 +669,17 @@ namespace TowerDefense.UI
 
             upgradeDetailPanel = CreatePanel("UpgradeDetails", upgradePanel.transform, new Vector2(-14f, 44f), new Vector2(300f, 124f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             var upgradeDetailImage = upgradeDetailPanel.GetComponent<Image>();
-            upgradeDetailImage.color = new Color(0.018f, 0.035f, 0.052f, 0.96f);
+            upgradeDetailImage.color = PlaceholderPalette.Grey(.032f, 0.96f);
             upgradeDetailImage.raycastTarget = false;
             var detailOutline = upgradeDetailPanel.AddComponent<Outline>();
-            detailOutline.effectColor = new Color(0.2f, 0.65f, 0.88f, 0.78f);
+            detailOutline.effectColor = PlaceholderPalette.Grey(.542f, 0.78f);
             detailOutline.effectDistance = new Vector2(2f, -2f);
             var detailIconObject = new GameObject("DetailIcon");
             detailIconObject.transform.SetParent(upgradeDetailPanel.transform, false);
             var detailIconRect = detailIconObject.AddComponent<RectTransform>();
             ConfigureCenteredRect(detailIconRect, new Vector2(-131f, 47f), new Vector2(24f, 24f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailIcon = detailIconObject.AddComponent<SkillTreeIconGraphic>();
-            upgradeDetailIcon.color = new Color(0.72f, 0.93f, 1f, 1f);
+            upgradeDetailIcon.color = PlaceholderPalette.Grey(.875f, 1f);
             upgradeDetailIcon.raycastTarget = false;
             upgradeDetailTitle = CreateText("DetailTitle", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 11);
             upgradeDetailTitle.raycastTarget = false;
@@ -688,14 +688,14 @@ namespace TowerDefense.UI
             upgradeDetailRank = CreateText("DetailRank", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleRight, 10);
             upgradeDetailRank.raycastTarget = false;
             upgradeDetailRank.fontStyle = FontStyle.Bold;
-            upgradeDetailRank.color = new Color(0.72f, 0.93f, 1f, 1f);
+            upgradeDetailRank.color = PlaceholderPalette.Grey(.875f, 1f);
             ConfigureCenteredRect(upgradeDetailRank.GetComponent<RectTransform>(), new Vector2(128f, 47f), new Vector2(40f, 22f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
 
-            var detailDivider = CreateImage("DetailDivider", upgradeDetailPanel.transform, new Vector2(0f, 31f), new Vector2(276f, 1f), new Color(0.78f, 0.88f, 0.94f, 0.9f));
+            var detailDivider = CreateImage("DetailDivider", upgradeDetailPanel.transform, new Vector2(0f, 31f), new Vector2(276f, 1f), PlaceholderPalette.Grey(.857f, 0.9f));
             detailDivider.raycastTarget = false;
             upgradeDetailBody = CreateText("DetailBody", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 10);
             upgradeDetailBody.raycastTarget = false;
-            upgradeDetailBody.color = new Color(0.82f, 0.89f, 0.94f, 1f);
+            upgradeDetailBody.color = PlaceholderPalette.Grey(.875f, 1f);
             upgradeDetailBody.verticalOverflow = VerticalWrapMode.Truncate;
             ConfigureCenteredRect(upgradeDetailBody.GetComponent<RectTransform>(), new Vector2(0f, 3f), new Vector2(272f, 44f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             upgradeDetailCost = CreateText("DetailCost", upgradeDetailPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
@@ -864,7 +864,7 @@ namespace TowerDefense.UI
             from += direction * (prerequisite.isMajorUnlock ? 42f : 34f);
             to -= direction * (target.isMajorUnlock ? 42f : 34f);
             delta = to - from;
-            var image = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(Mathf.Max(1f, delta.magnitude), 3f), new Color(0.15f, 0.75f, 1f, 0.65f));
+            var image = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(Mathf.Max(1f, delta.magnitude), 3f), PlaceholderPalette.Grey(.599f, 0.65f));
             image.raycastTarget = false;
             var go = image.gameObject;
             var rect = go.GetComponent<RectTransform>();
@@ -880,7 +880,7 @@ namespace TowerDefense.UI
             var button = CreateAnchoredButton($"Node_{node.id}", parent, string.Empty, position, size, new Vector2(0.5f, 0.5f), 10);
             button.onClick.AddListener(() => PurchaseUpgradeNode(node));
             var nodeOutline = button.gameObject.AddComponent<Outline>();
-            nodeOutline.effectColor = new Color(0.18f, 0.67f, 0.9f, 0.72f);
+            nodeOutline.effectColor = PlaceholderPalette.Grey(.55f, 0.72f);
             nodeOutline.effectDistance = node.isMajorUnlock ? new Vector2(3f, -3f) : new Vector2(2f, -2f);
 
             var label = button.GetComponentInChildren<Text>();
@@ -890,7 +890,7 @@ namespace TowerDefense.UI
             label.alignment = TextAnchor.MiddleCenter;
             label.raycastTarget = false;
             var rankTextOutline = label.gameObject.AddComponent<Outline>();
-            rankTextOutline.effectColor = new Color(0.015f, 0.055f, 0.085f, 0.98f);
+            rankTextOutline.effectColor = PlaceholderPalette.Grey(.046f, 0.98f);
             rankTextOutline.effectDistance = new Vector2(1.25f, -1.25f);
 
             var rankBadgeObject = new GameObject("RankBadge");
@@ -921,7 +921,7 @@ namespace TowerDefense.UI
                 new Vector2(0.5f, 0.5f));
             var icon = iconObject.AddComponent<SkillTreeIconGraphic>();
             icon.Kind = ResolveSkillTreeIcon(node);
-            icon.color = new Color(0.82f, 0.95f, 1f, 1f);
+            icon.color = PlaceholderPalette.Grey(.917f, 1f);
             icon.raycastTarget = false;
 
             var events = button.gameObject.AddComponent<EventTrigger>();
@@ -1315,7 +1315,7 @@ namespace TowerDefense.UI
             var image = selectedTowerPanel.GetComponent<Image>();
             if (image != null)
             {
-                image.color = new Color(0.02f, 0.025f, 0.03f, 0.74f);
+                image.color = PlaceholderPalette.Grey(.024f, 0.74f);
             }
 
             selectedTowerTitle = CreateText("SelectedTowerTitle", selectedTowerPanel.transform, Vector2.zero, TextAnchor.MiddleLeft, 13);
@@ -1381,8 +1381,8 @@ namespace TowerDefense.UI
                 {
                     var mode = (TowerTargetingMode)i;
                     image.color = tower != null && tower.TargetingMode == mode
-                        ? new Color(0.25f, 0.72f, 1f, 1f)
-                        : new Color(0.15f, 0.45f, 0.82f, 1f);
+                        ? PlaceholderPalette.Grey(.611f, 1f)
+                        : PlaceholderPalette.Grey(.402f, 1f);
                 }
             }
         }
@@ -1486,7 +1486,7 @@ namespace TowerDefense.UI
             devSpeedSlider.onValueChanged.AddListener(SetTestSpeed);
             devSpeedValueText = CreateText("DevSpeedValue", content.transform, Vector2.zero, TextAnchor.MiddleRight, 11);
             ConfigureCenteredRect(devSpeedValueText.GetComponent<RectTransform>(), new Vector2(70f, -178f), new Vector2(36f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
-            devSpeedValueText.color = new Color(0.82f, 0.93f, 1f, 1f);
+            devSpeedValueText.color = PlaceholderPalette.Grey(.905f, 1f);
             SetTestSpeed(selectedTestSpeed);
 
             var testingLabel = CreateText("DevTestingTitle", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
@@ -1596,7 +1596,7 @@ namespace TowerDefense.UI
             var autoResolveNote = CreateText("AutoResolveNote", content.transform, Vector2.zero, TextAnchor.MiddleCenter, 8);
             ConfigureCenteredRect(autoResolveNote.GetComponent<RectTransform>(), new Vector2(0f, -724f), new Vector2(178f, 22f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             autoResolveNote.text = "AFK estimate, not perfect play";
-            autoResolveNote.color = new Color(0.78f, 0.86f, 0.95f, 0.82f);
+            autoResolveNote.color = PlaceholderPalette.Grey(.846f, 0.82f);
 
             devPanelVisible = false;
             devPanel.SetActive(false);
@@ -1616,7 +1616,7 @@ namespace TowerDefense.UI
                 if (devSaveSlotStatusTexts[slot] != null)
                 {
                     devSaveSlotStatusTexts[slot].text = hasSave ? "SAVED" : "EMPTY";
-                    devSaveSlotStatusTexts[slot].color = hasSave ? new Color(0.55f, 1f, 0.6f, 1f) : new Color(0.85f, 0.85f, 0.85f, 0.72f);
+                    devSaveSlotStatusTexts[slot].color = hasSave ? PlaceholderPalette.Grey(.82f, 1f) : PlaceholderPalette.Grey(.85f, 0.72f);
                 }
 
                 if (devLoadSlotButtons[slot] != null)
@@ -1875,7 +1875,7 @@ namespace TowerDefense.UI
             statsEmptyTowerText = CreateText("StatsNoTowers", statsPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(statsEmptyTowerText.GetComponent<RectTransform>(), new Vector2(-96f, -62f), new Vector2(176f, 42f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
             statsEmptyTowerText.text = "No towers unlocked";
-            statsEmptyTowerText.color = new Color(0.7f, 0.78f, 0.86f, 1f);
+            statsEmptyTowerText.color = PlaceholderPalette.Grey(.765f, 1f);
 
             statsPanelVisible = false;
             statsPanel.SetActive(false);
@@ -1916,7 +1916,7 @@ namespace TowerDefense.UI
                 var empty = CreateText("DebugSpawnEmpty", debugSpawnPanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
                 ConfigureCenteredRect(empty.GetComponent<RectTransform>(), new Vector2(0f, -70f), new Vector2(180f, 38f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
                 empty.text = "No enemies in this level";
-                empty.color = new Color(0.72f, 0.8f, 0.88f, 1f);
+                empty.color = PlaceholderPalette.Grey(.785f, 1f);
                 return;
             }
 
@@ -1948,7 +1948,7 @@ namespace TowerDefense.UI
                 .onClick.AddListener(() => SetCodexSector(CodexSector.Levels));
 
             var listViewport = CreatePanel("CodexListViewport", codexPanel.transform, new Vector2(-185f, -82f), new Vector2(190f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            listViewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.28f);
+            listViewport.GetComponent<Image>().color = PlaceholderPalette.Grey(.0f, 0.28f);
             listViewport.AddComponent<Mask>().showMaskGraphic = false;
             var scrollInput = listViewport.AddComponent<CodexListScrollInput>();
             scrollInput.Initialize(OnCodexListScrolled);
@@ -1962,7 +1962,7 @@ namespace TowerDefense.UI
             codexListContent.sizeDelta = new Vector2(178f, 400f);
 
             var detailPanel = CreatePanel("CodexDetails", codexPanel.transform, new Vector2(118f, -82f), new Vector2(366f, 400f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            detailPanel.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.36f);
+            detailPanel.GetComponent<Image>().color = PlaceholderPalette.Grey(.0f, 0.36f);
             detailPanel.AddComponent<Mask>().showMaskGraphic = false;
             var detailScrollInput = detailPanel.AddComponent<CodexListScrollInput>();
             detailScrollInput.Initialize(OnCodexDetailScrolled);
@@ -1978,7 +1978,7 @@ namespace TowerDefense.UI
 
             codexDetailText = CreateText("CodexDetailText", codexDetailContent, Vector2.zero, TextAnchor.UpperLeft, 11);
             ConfigureCenteredRect(codexDetailText.GetComponent<RectTransform>(), new Vector2(0f, -14f), new Vector2(330f, 360f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            codexDetailText.color = new Color(0.86f, 0.93f, 1f, 1f);
+            codexDetailText.color = PlaceholderPalette.Grey(.917f, 1f);
 
             codexPanelVisible = false;
             codexPanel.SetActive(false);
@@ -2004,7 +2004,7 @@ namespace TowerDefense.UI
             }
 
             resultTitle.text = session.Won ? "VICTORY" : "DEFEAT";
-            resultTitle.color = session.Won ? new Color(0.7f, 1f, 0.55f, 1f) : new Color(1f, 0.35f, 0.25f, 1f);
+            resultTitle.color = session.Won ? PlaceholderPalette.Grey(.859f, 1f) : PlaceholderPalette.Grey(.533f, 1f);
             var earnedText = FormatRunCurrencyDeltas();
             var testingText = session.RewardTestingEnabled ? $"\nTesting rewards: x{session.RewardTestMultiplier}" : string.Empty;
             var progress = session.GetLevelProgress();
@@ -2187,7 +2187,7 @@ namespace TowerDefense.UI
             if (devBestBotProfileText != null)
             {
                 devBestBotProfileText.text = $"BOT: {session.DevBestBotSelectedProfileName.ToUpperInvariant()}";
-                devBestBotProfileText.color = session.DevBestBotRunning ? new Color(0.55f, 0.86f, 1f, 1f) : Color.white;
+                devBestBotProfileText.color = session.DevBestBotRunning ? PlaceholderPalette.Grey(.783f, 1f) : Color.white;
             }
             HighlightSpeedButton(devBestBotSpeed20Button, Mathf.Approximately(session.DevBestBotSelectedTimeScale, 20f));
             HighlightSpeedButton(devBestBotSpeed30Button, Mathf.Approximately(session.DevBestBotSelectedTimeScale, 30f));
@@ -2199,7 +2199,7 @@ namespace TowerDefense.UI
         {
             if (button?.targetGraphic is Image image)
             {
-                image.color = active ? new Color(0.25f, 0.7f, 1f, 1f) : new Color(0.15f, 0.45f, 0.82f, 1f);
+                image.color = active ? PlaceholderPalette.Grey(.6f, 1f) : PlaceholderPalette.Grey(.402f, 1f);
             }
         }
 
@@ -2207,7 +2207,7 @@ namespace TowerDefense.UI
         {
             if (button?.targetGraphic is Image image)
             {
-                image.color = active ? new Color(0.25f, 0.7f, 1f, 1f) : new Color(0.12f, 0.32f, 0.58f, 1f);
+                image.color = active ? PlaceholderPalette.Grey(.6f, 1f) : PlaceholderPalette.Grey(.29f, 1f);
             }
         }
 
@@ -2316,7 +2316,7 @@ namespace TowerDefense.UI
                 var empty = CreateText("EmptyCodexList", codexListContent, Vector2.zero, TextAnchor.MiddleCenter, 11);
                 ConfigureCenteredRect(empty.GetComponent<RectTransform>(), new Vector2(0f, -18f), new Vector2(168f, 32f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
                 empty.text = "Nothing catalogued";
-                empty.color = new Color(0.7f, 0.78f, 0.86f, 1f);
+                empty.color = PlaceholderPalette.Grey(.765f, 1f);
                 selectedCodexId = null;
                 ApplyCodexScroll(entries.Count);
                 return;
@@ -2340,7 +2340,7 @@ namespace TowerDefense.UI
                 });
                 if (button.targetGraphic is Image image && entry.id == selectedCodexId)
                 {
-                    image.color = new Color(0.25f, 0.7f, 1f, 1f);
+                    image.color = PlaceholderPalette.Grey(.6f, 1f);
                 }
             }
 
@@ -2803,39 +2803,39 @@ namespace TowerDefense.UI
                     button.interactable = true;
                     if (image != null)
                     {
-                        image.color = new Color(0.08f, 0.58f, 0.54f, 1f);
+                        image.color = PlaceholderPalette.Grey(.426f, 1f);
                     }
-                    label.color = new Color(0.6f, 1f, 0.85f, 1f);
-                    if (icon != null) icon.color = new Color(0.68f, 1f, 0.86f, 1f);
+                    label.color = PlaceholderPalette.Grey(.863f, 1f);
+                    if (icon != null) icon.color = PlaceholderPalette.Grey(.888f, 1f);
                 }
                 else if (session.CanPurchaseUpgrade(nodeId))
                 {
                     button.interactable = true;
                     if (image != null)
                     {
-                        image.color = new Color(0.95f, 0.5f, 0.12f, 1f);
+                        image.color = PlaceholderPalette.Grey(.591f, 1f);
                     }
-                    label.color = new Color(1f, 0.86f, 0.35f, 1f);
-                    if (icon != null) icon.color = new Color(1f, 0.9f, 0.5f, 1f);
+                    label.color = PlaceholderPalette.Grey(.844f, 1f);
+                    if (icon != null) icon.color = PlaceholderPalette.Grey(.884f, 1f);
                 }
                 else
                 {
                     button.interactable = true;
                     if (image != null)
                     {
-                        image.color = new Color(0.08f, 0.2f, 0.32f, 1f);
+                        image.color = PlaceholderPalette.Grey(.178f, 1f);
                     }
-                    label.color = new Color(0.45f, 0.55f, 0.65f, 1f);
-                    if (icon != null) icon.color = new Color(0.4f, 0.54f, 0.66f, 1f);
+                    label.color = PlaceholderPalette.Grey(.532f, 1f);
+                    if (icon != null) icon.color = PlaceholderPalette.Grey(.512f, 1f);
                 }
 
                 if (outline != null)
                 {
                     outline.effectColor = isInspected
-                        ? new Color(0.96f, 0.9f, 0.42f, 1f)
+                        ? PlaceholderPalette.Grey(.863f, 1f)
                         : rank >= maxRank
-                            ? new Color(0.18f, 0.9f, 0.72f, 0.85f)
-                            : new Color(0.18f, 0.67f, 0.9f, 0.72f);
+                            ? PlaceholderPalette.Grey(.664f, 0.85f)
+                            : PlaceholderPalette.Grey(.55f, 0.72f);
                 }
             }
 
@@ -2877,10 +2877,10 @@ namespace TowerDefense.UI
                     if (visible && child.TryGetComponent<Image>(out var linkImage))
                     {
                         linkImage.color = session.IsUpgradePurchased(node.id)
-                            ? new Color(0.18f, 0.9f, 0.72f, 0.9f)
+                            ? PlaceholderPalette.Grey(.664f, 0.9f)
                             : session.CanPurchaseUpgrade(node.id)
-                                ? new Color(0.95f, 0.54f, 0.15f, 0.92f)
-                                : new Color(0.15f, 0.48f, 0.68f, 0.52f);
+                                ? PlaceholderPalette.Grey(.618f, 0.92f)
+                                : PlaceholderPalette.Grey(.404f, 0.52f);
                     }
                 }
             }
@@ -4089,8 +4089,8 @@ namespace TowerDefense.UI
             rect.anchoredPosition = new Vector2(0f, 12f);
             rect.sizeDelta = new Vector2(72f, 86f);
 
-            activeWeaponIcon = CreateImage("Icon", root.transform, new Vector2(0f, 30f), new Vector2(50f, 50f), new Color(0.9f, 0.35f, 0.1f, 1f));
-            activeWeaponCooldownFill = CreateImage("CooldownFill", root.transform, new Vector2(0f, 30f), new Vector2(50f, 50f), new Color(0f, 0f, 0f, 0.65f));
+            activeWeaponIcon = CreateImage("Icon", root.transform, new Vector2(0f, 30f), new Vector2(50f, 50f), PlaceholderPalette.Grey(.486f, 1f));
+            activeWeaponCooldownFill = CreateImage("CooldownFill", root.transform, new Vector2(0f, 30f), new Vector2(50f, 50f), PlaceholderPalette.Grey(.0f, 0.65f));
             activeWeaponCooldownFill.type = Image.Type.Filled;
             activeWeaponCooldownFill.fillMethod = Image.FillMethod.Vertical;
             activeWeaponCooldownFill.fillOrigin = (int)Image.OriginVertical.Bottom;
@@ -4116,7 +4116,7 @@ namespace TowerDefense.UI
                 return;
             }
 
-            activeWeaponIcon.color = activeWeapon.IsReady ? new Color(1f, 0.5f, 0.16f, 1f) : new Color(0.45f, 0.45f, 0.45f, 1f);
+            activeWeaponIcon.color = activeWeapon.IsReady ? PlaceholderPalette.Grey(.611f, 1f) : PlaceholderPalette.Grey(.45f, 1f);
             if (activeWeaponLabel != null)
             {
                 activeWeaponLabel.text = activeWeapon.KnockbackDistance > 0f ? "LMB: EXPLODE" : "Active";
@@ -4129,8 +4129,8 @@ namespace TowerDefense.UI
                     ? "OK"
                     : activeWeapon.CanFire ? activeWeapon.CooldownRemaining.ToString("0.0") : "--";
             activeWeaponCooldownText.color = activeWeapon.AutoFireEnabled
-                ? new Color(1f, 0.85f, 0.25f, 1f)
-                : activeWeapon.IsReady ? new Color(0.6f, 1f, 0.55f, 1f) : Color.white;
+                ? PlaceholderPalette.Grey(.826f, 1f)
+                : activeWeapon.IsReady ? PlaceholderPalette.Grey(.829f, 1f) : Color.white;
         }
 
         private static Image CreateImage(string name, Transform parent, Vector2 anchoredPosition, Vector2 size, Color color)
@@ -4160,7 +4160,7 @@ namespace TowerDefense.UI
             rect.anchoredPosition = anchoredPosition;
             rect.sizeDelta = size;
             var image = go.AddComponent<Image>();
-            image.color = new Color(0.035f, 0.045f, 0.05f, 0.76f);
+            image.color = PlaceholderPalette.Grey(.043f, 0.76f);
             return go;
         }
 
@@ -4176,7 +4176,7 @@ namespace TowerDefense.UI
             var rect = go.AddComponent<RectTransform>();
             ConfigureCenteredRect(rect, anchoredPosition, size, anchor, new Vector2(0.5f, 0.5f));
             var image = go.AddComponent<Image>();
-            image.color = new Color(0.15f, 0.45f, 0.82f, 1f);
+            image.color = PlaceholderPalette.Grey(.402f, 1f);
             var button = go.AddComponent<Button>();
             button.targetGraphic = image;
             button.transition = Selectable.Transition.ColorTint;
@@ -4195,7 +4195,7 @@ namespace TowerDefense.UI
             var rect = go.AddComponent<RectTransform>();
             ConfigureCenteredRect(rect, anchoredPosition, size, new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
 
-            var background = CreateImage("Background", go.transform, Vector2.zero, size, new Color(0.06f, 0.16f, 0.26f, 1f));
+            var background = CreateImage("Background", go.transform, Vector2.zero, size, PlaceholderPalette.Grey(.142f, 1f));
             var backgroundRect = background.GetComponent<RectTransform>();
             ConfigureCenteredRect(backgroundRect, Vector2.zero, size, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
 
@@ -4207,7 +4207,7 @@ namespace TowerDefense.UI
             fillAreaRect.offsetMin = new Vector2(4f, 0f);
             fillAreaRect.offsetMax = new Vector2(-4f, 0f);
 
-            var fill = CreateImage("Fill", fillArea.transform, Vector2.zero, size, new Color(0.25f, 0.7f, 1f, 1f));
+            var fill = CreateImage("Fill", fillArea.transform, Vector2.zero, size, PlaceholderPalette.Grey(.6f, 1f));
             var fillRect = fill.GetComponent<RectTransform>();
             fillRect.anchorMin = Vector2.zero;
             fillRect.anchorMax = Vector2.one;
@@ -4222,7 +4222,7 @@ namespace TowerDefense.UI
             handleAreaRect.offsetMin = new Vector2(5f, -1f);
             handleAreaRect.offsetMax = new Vector2(-5f, 1f);
 
-            var handle = CreateImage("Handle", handleArea.transform, Vector2.zero, new Vector2(8f, 14f), new Color(0.9f, 0.96f, 1f, 1f));
+            var handle = CreateImage("Handle", handleArea.transform, Vector2.zero, new Vector2(8f, 14f), PlaceholderPalette.Grey(.947f, 1f));
             var handleRect = handle.GetComponent<RectTransform>();
             ConfigureCenteredRect(handleRect, Vector2.zero, new Vector2(8f, 14f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
 
@@ -4242,11 +4242,11 @@ namespace TowerDefense.UI
         {
             return new ColorBlock
             {
-                normalColor = new Color(0.15f, 0.45f, 0.82f, 1f),
-                highlightedColor = new Color(0.28f, 0.68f, 1f, 1f),
-                pressedColor = new Color(0.08f, 0.28f, 0.62f, 1f),
-                selectedColor = new Color(0.22f, 0.58f, 0.94f, 1f),
-                disabledColor = new Color(0.08f, 0.16f, 0.26f, 0.72f),
+                normalColor = PlaceholderPalette.Grey(.402f, 1f),
+                highlightedColor = PlaceholderPalette.Grey(.597f, 1f),
+                pressedColor = PlaceholderPalette.Grey(.259f, 1f),
+                selectedColor = PlaceholderPalette.Grey(.513f, 1f),
+                disabledColor = PlaceholderPalette.Grey(.147f, 0.72f),
                 colorMultiplier = 1f,
                 fadeDuration = 0.08f
             };

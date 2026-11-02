@@ -34,6 +34,7 @@ namespace TowerDefense.Runtime
             controlledCamera = camera;
             input = router;
             authoredFieldOfView = camera != null ? camera.fieldOfView : 60f;
+            if (camera != null) camera.orthographic = true;
         }
 
         public void ApplyView(Vector3 position, float fieldOfView, float minZoomHeight, float maxZoomHeight, float levelPanSpeed, float levelMouseDragSensitivity, Vector2 min, Vector2 max)
@@ -106,6 +107,7 @@ namespace TowerDefense.Runtime
                 var closeZoomScale = Mathf.Clamp(position.y / 12f, 0.12f, 1f);
                 position.y = Mathf.Clamp(position.y - state.Zoom * zoomSpeed * closeZoomScale, minHeight, maxHeight);
                 controlledCamera.transform.position = position;
+                UpdateOrthographicScale();
                 var pointerAfterZoom = ScreenPointToGround(UnityEngine.Input.mousePosition);
                 controlledCamera.transform.position += pointerBeforeZoom - pointerAfterZoom;
                 ClampCameraPosition();
@@ -161,6 +163,8 @@ namespace TowerDefense.Runtime
 
             var zoomEnvelope = Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI) * (1f - progress * 0.35f);
             controlledCamera.fieldOfView = authoredFieldOfView + impactZoomAmount * zoomEnvelope;
+            if (controlledCamera.orthographic)
+                controlledCamera.orthographicSize *= 1f + impactZoomAmount / Mathf.Max(1f, authoredFieldOfView) * zoomEnvelope;
         }
 
         private void ClampCameraPosition()
@@ -168,6 +172,7 @@ namespace TowerDefense.Runtime
             var position = controlledCamera.transform.position;
             position.y = Mathf.Clamp(position.y, minHeight, maxHeight);
             controlledCamera.transform.position = position;
+            UpdateOrthographicScale();
 
             var focus = ScreenPointToGround(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
             var clampedFocus = new Vector3(
@@ -175,6 +180,16 @@ namespace TowerDefense.Runtime
                 focus.y,
                 Mathf.Clamp(focus.z, minBounds.y, maxBounds.y));
             controlledCamera.transform.position += clampedFocus - focus;
+        }
+
+        private void UpdateOrthographicScale()
+        {
+            if (controlledCamera == null || !controlledCamera.orthographic) return;
+            // Retain each level's authored framing and height-based zoom controls,
+            // while keeping the same character scale across the entire screen.
+            controlledCamera.orthographicSize = controlledCamera.transform.position.y /
+                Mathf.Sin(HordeReadableCameraPitch * Mathf.Deg2Rad) *
+                Mathf.Tan(authoredFieldOfView * .5f * Mathf.Deg2Rad);
         }
 
         private Vector3 ScreenPointToGround(Vector3 screenPosition)

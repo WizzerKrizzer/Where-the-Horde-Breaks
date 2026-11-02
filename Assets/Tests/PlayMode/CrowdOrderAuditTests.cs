@@ -15,8 +15,8 @@ namespace TowerDefense.Tests
         [UnityTest]
         public IEnumerator SameSeed_ForwardRepeatReverse_AfterOpeningSpace()
         {
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, GoblinPreviewAssets.DefaultEnabled);
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, HordePreviewSettings.DefaultEnabled);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             Directory.CreateDirectory("Logs/CrowdEnvelope");
             var summary = new System.Text.StringBuilder();
             try
@@ -44,7 +44,7 @@ namespace TowerDefense.Tests
                     Assert.That(GpuHordeSimulation.TryCreate(states.Length,field,EnemyManager.GetLowEnemyMesh(),out var simulation),Is.True);
                     using(simulation)
                     {
-                        simulation.SetCollisionDiameter(.203f*GoblinPreviewAssets.ContactRadiusPerScale/.5f);
+                        simulation.SetCollisionDiameter(.203f*HordePreviewSettings.ContactRadiusPerScale/.5f);
                         simulation.SpawnBatch(states,controls,0,states.Length);
                         var trace=new System.Text.StringBuilder("tick,id,x,z,dx,dz,gait,alive\n");
                         var maximumPairs=0; var meanSpeed=0f; var firstTickMoved=0; var releasedCount=0;
@@ -88,7 +88,7 @@ namespace TowerDefense.Tests
             {
                 File.WriteAllText("Logs/CrowdEnvelope/order-summary.txt",summary.ToString());
                 Debug.Log(summary.ToString());
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey,preference);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey,preference);
             }
         }
 

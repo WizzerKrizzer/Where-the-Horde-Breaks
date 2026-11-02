@@ -60,8 +60,8 @@ namespace TowerDefense.Runtime
             rangeDisc.transform.position = position + Vector3.up * 0.24f;
             rangeDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
 
-            previewRenderer.material = BootstrapMaterials.Get(canPlace ? new Color(0.82f, 0.95f, 1f, 0.78f) : new Color(1f, 0.72f, 0.32f, 0.78f));
-            rangeRenderer.material = BootstrapMaterials.Get(new Color(0.45f, 0.8f, 1f, canPlace ? 0.07f : 0.04f));
+            previewRenderer.material = BootstrapMaterials.Get(canPlace ? PlaceholderPalette.Grey(.917f, 0.78f) : PlaceholderPalette.Grey(.758f, 0.78f));
+            rangeRenderer.material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.718f, canPlace ? 0.07f : 0.04f));
         }
 
         private void CreatePreviewObjects()

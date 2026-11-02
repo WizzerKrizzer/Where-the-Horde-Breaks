@@ -161,7 +161,7 @@ namespace TowerDefense.Runtime
         {
             previewCamera.orthographic = true;
             previewCamera.clearFlags = CameraClearFlags.SolidColor;
-            previewCamera.backgroundColor = new Color(0.018f, 0.024f, 0.031f, 1f);
+            previewCamera.backgroundColor = PlaceholderPalette.Grey(.023f, 1f);
             previewCamera.nearClipPlane = 0.1f;
             previewCamera.farClipPlane = 600f;
             previewCamera.allowHDR = false;
@@ -328,7 +328,7 @@ namespace TowerDefense.Runtime
             if (!string.IsNullOrEmpty(previewError))
             {
                 var previous = GUI.color;
-                GUI.color = new Color(1f, 0.42f, 0.35f);
+                GUI.color = PlaceholderPalette.Grey(.585f);
                 GUILayout.Label(previewError, diagnosticStyle);
                 GUI.color = previous;
             }
@@ -375,13 +375,13 @@ namespace TowerDefense.Runtime
             {
                 fontSize = 19,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.32f, 0.9f, 1f) }
+                normal = { textColor = PlaceholderPalette.Grey(.738f) }
             };
             diagnosticStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 13,
                 wordWrap = true,
-                normal = { textColor = new Color(0.85f, 0.9f, 0.94f) }
+                normal = { textColor = PlaceholderPalette.Grey(.89f) }
             };
         }
 
@@ -425,7 +425,7 @@ namespace TowerDefense.Runtime
         {
             var half = runner.FlowField.CellSize * 0.51f;
             GL.Begin(GL.QUADS);
-            GL.Color(new Color(0.18f, 0.22f, 0.27f, 1f));
+            GL.Color(PlaceholderPalette.Grey(.214f, 1f));
             foreach (var center in walkableCells)
             {
                 GL.Vertex3(center.x - half, -0.04f, center.z - half);
@@ -443,11 +443,11 @@ namespace TowerDefense.Runtime
             {
                 if (states[i].Status != 1u) continue;
                 var position = states[i].Position;
-                DrawDisk(position, BodyRadius, new Color(0.12f, 0.69f, 0.94f, 0.92f), 0f);
+                DrawDisk(position, BodyRadius, PlaceholderPalette.Grey(.548f, 0.92f), 0f);
                 if (!showContactOutlines || contactKinds.Length <= i || contactKinds[i] == 0) continue;
                 var outline = contactKinds[i] >= 2
-                    ? new Color(1f, 0.18f, 0.12f, 1f)
-                    : new Color(1f, 0.78f, 0.12f, 1f);
+                    ? PlaceholderPalette.Grey(.418f, 1f)
+                    : PlaceholderPalette.Grey(.771f, 1f);
                 DrawCircle(position, BodyRadius * 1.08f, outline, 0.02f);
             }
         }
@@ -455,7 +455,7 @@ namespace TowerDefense.Runtime
         private void DrawBoundaries()
         {
             GL.Begin(GL.LINES);
-            GL.Color(new Color(0.72f, 0.8f, 0.88f, 0.95f));
+            GL.Color(PlaceholderPalette.Grey(.785f, 0.95f));
             foreach (var segment in boundaries)
             {
                 GL.Vertex3(segment.From.x, 0.035f, segment.From.z);
@@ -469,7 +469,7 @@ namespace TowerDefense.Runtime
             if (states.Length == 0) return;
             var stride = Mathf.Max(1, states.Length / MaximumFlowArrows);
             GL.Begin(GL.LINES);
-            GL.Color(new Color(0.3f, 1f, 0.42f, 0.82f));
+            GL.Color(PlaceholderPalette.Grey(.725f, 0.82f));
             for (var i = 0; i < states.Length; i += stride)
             {
                 if (states[i].Status != 1u) continue;
@@ -495,7 +495,7 @@ namespace TowerDefense.Runtime
         {
             if (trailFrames.Count < 2) return;
             GL.Begin(GL.LINES);
-            GL.Color(new Color(1f, 0.48f, 0.12f, 0.42f));
+            GL.Color(PlaceholderPalette.Grey(.594f, 0.42f));
             for (var frame = 1; frame < trailFrames.Count; frame++)
             {
                 var from = trailFrames[frame - 1];
@@ -514,8 +514,8 @@ namespace TowerDefense.Runtime
             var blocker = runner.ActiveBlocker;
             if (blocker == null) return;
             var position = new Vector2(blocker.Position.x, blocker.Position.z);
-            DrawDisk(position, blocker.CombatRadius, new Color(0.76f, 0.18f, 0.85f, 0.72f), 0.01f);
-            DrawCircle(position, blocker.CombatRadius, new Color(1f, 0.45f, 1f, 1f), 0.04f);
+            DrawDisk(position, blocker.CombatRadius, PlaceholderPalette.Grey(.43f, 0.72f), 0.01f);
+            DrawCircle(position, blocker.CombatRadius, PlaceholderPalette.Grey(.677f, 1f), 0.04f);
         }
 
         private static void DrawDisk(Vector2 center, float radius, Color color, float height)

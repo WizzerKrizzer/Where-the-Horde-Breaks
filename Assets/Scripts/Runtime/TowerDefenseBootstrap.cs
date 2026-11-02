@@ -87,7 +87,6 @@ namespace TowerDefense.Runtime
             mapRoot = new GameObject("LevelMap");
             CreateGround(mapRoot.transform, level);
             var route = CreatePath(level, mapRoot.transform);
-            CreateMapDecor(mapRoot.transform, level);
             ApplyLevelCamera(level);
             return route;
         }
@@ -113,8 +112,10 @@ namespace TowerDefense.Runtime
             camera.transform.position = new Vector3(0f, 24f, -20f);
             camera.transform.rotation = Quaternion.Euler(75f, 0f, 0f);
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.08f, 0.1f, 0.11f);
+            camera.backgroundColor = PlaceholderPalette.Background;
             camera.fieldOfView = 45f;
+            camera.orthographic = true;
+            camera.orthographicSize = 24f / Mathf.Sin(75f * Mathf.Deg2Rad) * Mathf.Tan(22.5f * Mathf.Deg2Rad);
             return camera;
         }
 
@@ -134,8 +135,18 @@ namespace TowerDefense.Runtime
             var go = light != null ? light.gameObject : new GameObject("Sun");
             light ??= go.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.1f;
-            go.transform.rotation = Quaternion.Euler(78f, 25f, 0f);
+            light.intensity = 1.05f;
+            light.color = Color.white;
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = .7f;
+            light.shadowBias = .035f;
+            light.shadowNormalBias = .18f;
+            go.transform.rotation = Quaternion.Euler(52f, -38f, 0f);
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = PlaceholderPalette.Grey(.35f);
+            RenderSettings.sun = light;
+            QualitySettings.shadows = ShadowQuality.All;
+            QualitySettings.shadowDistance = 110f;
         }
 
         private static void CreateGround(Transform parent, LevelDefinition level)
@@ -148,7 +159,7 @@ namespace TowerDefense.Runtime
                 arenaGround.transform.position = level.groundCenter;
                 var groundRadius = Mathf.Max(2f, level.arenaRadius + 5f);
                 arenaGround.transform.localScale = new Vector3(groundRadius * 2f, 0.05f, groundRadius * 2f);
-                arenaGround.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(.035f, .045f, .05f));
+                arenaGround.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Dark);
                 RemovePrimitiveCollider(arenaGround);
                 return;
             }
@@ -158,8 +169,7 @@ namespace TowerDefense.Runtime
             ground.transform.SetParent(parent, false);
             ground.transform.position = level != null ? level.groundCenter : new Vector3(0f, -0.08f, 1.5f);
             ground.transform.localScale = level != null ? level.groundSize : new Vector3(82f, 0.1f, 50f);
-            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(.035f, .045f, .05f));
-            // A plain board supports the route without adding terrain detail.
+            ground.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Dark);
         }
 
 
@@ -230,9 +240,9 @@ namespace TowerDefense.Runtime
         private static void CreateCircularArenaVisual(Transform parent, Vector3 center, float radius)
         {
             CreateArenaDisc(parent, "ArenaContactShadow", center, radius + 0.45f, 0.002f,
-                BootstrapMaterials.Get(new Color(0.2f, 0.24f, 0.16f)));
+                BootstrapMaterials.Get(PlaceholderPalette.Dark));
             CreateArenaDisc(parent, "ArenaFloor", center, radius, 0.092f,
-                BootstrapMaterials.Get(new Color(0.55f, 0.44f, 0.31f)));
+                BootstrapMaterials.Get(PlaceholderPalette.Road));
 
             var boundary = new GameObject("ArenaBoundary");
             boundary.transform.SetParent(parent, false);
@@ -243,7 +253,7 @@ namespace TowerDefense.Runtime
             line.positionCount = segmentCount;
             line.widthMultiplier = 0.22f;
             line.numCornerVertices = 2;
-            line.material = BootstrapMaterials.Get(new Color(0.29f, 0.36f, 0.25f));
+            line.material = BootstrapMaterials.Get(PlaceholderPalette.Ground);
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
             for (var i = 0; i < segmentCount; i++)
@@ -282,249 +292,6 @@ namespace TowerDefense.Runtime
 
             return widths;
         }
-
-
-        private static void CreateMapDecor(Transform parent, LevelDefinition level)
-        {
-            // The play space is intentionally a clean board: no trees, water,
-            // fires, huts, stones or other scenery should obscure the route.
-            // Decoration is visual-only, so omitting it leaves navigation,
-            // build placement and enemy physics unchanged.
-        }
-
-        private static void CreateLevelTwoDecor(Transform parent)
-        {
-            CreateTreeCluster(parent, new Vector3(-58f, 0f, 23f), 5, 0);
-            CreateTreeCluster(parent, new Vector3(-52f, 0f, -23f), 4, 10);
-            CreateTreeCluster(parent, new Vector3(54f, 0f, 23f), 5, 20);
-            CreateTreeCluster(parent, new Vector3(57f, 0f, -22f), 4, 30);
-            CreateTreeCluster(parent, new Vector3(0f, 0f, 28f), 3, 40);
-            CreateTreeCluster(parent, new Vector3(0f, 0f, -28f), 3, 50);
-            CreateRuinedHouse(parent, new Vector3(-44f, 0f, 18f), 0.9f, -8f);
-            CreateRuinedHouse(parent, new Vector3(44f, 0f, -18f), 0.9f, 172f);
-            CreateWell(parent, new Vector3(0f, 0f, 25f), 0.7f);
-            CreateDecorCube(parent, "DecorLevel2MarkerStoneA", new Vector3(-34f, 0.12f, -4.3f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
-            CreateDecorCube(parent, "DecorLevel2MarkerStoneB", new Vector3(34f, 0.12f, 4.3f), new Vector3(0.8f, 0.24f, 0.55f), new Color(0.24f, 0.23f, 0.2f));
-        }
-
-        private static void CreateLevelThreeDecor(Transform parent)
-        {
-            CreateTreeCluster(parent, new Vector3(-58f, 0f, -28f), 5, 70);
-            CreateTreeCluster(parent, new Vector3(-48f, 0f, 29f), 4, 80);
-            CreateTreeCluster(parent, new Vector3(54f, 0f, 28f), 5, 90);
-            CreateTreeCluster(parent, new Vector3(24f, 0f, -34f), 4, 100);
-            CreateRuinedHouse(parent, new Vector3(-18f, 0f, 25f), 1.05f, 22f);
-            CreateRuinedHouse(parent, new Vector3(31f, 0f, -32f), 0.95f, -18f);
-            CreateRuinedHouse(parent, new Vector3(57f, 0f, 8f), 0.75f, 82f);
-            CreateWell(parent, new Vector3(-34f, 0f, -24f), 0.68f);
-            CreateDecorCube(parent, "DecorLevel3BrokenCartA", new Vector3(-42f, 0.18f, 0f), new Vector3(2.3f, 0.34f, 1.0f), new Color(0.23f, 0.14f, 0.08f));
-            CreateDecorCube(parent, "DecorLevel3BrokenCartB", new Vector3(45f, 0.18f, -8f), new Vector3(2.1f, 0.34f, 0.9f), new Color(0.23f, 0.14f, 0.08f));
-            CreateDecorCube(parent, "DecorLevel3GraveMarkerA", new Vector3(-4f, 0.18f, 31f), new Vector3(0.5f, 0.55f, 0.18f), new Color(0.38f, 0.38f, 0.36f));
-            CreateDecorCube(parent, "DecorLevel3GraveMarkerB", new Vector3(1f, 0.18f, 33f), new Vector3(0.5f, 0.55f, 0.18f), new Color(0.38f, 0.38f, 0.36f));
-            CreateDecorCube(parent, "DecorLevel3GraveMarkerC", new Vector3(6f, 0.18f, 31.5f), new Vector3(0.5f, 0.55f, 0.18f), new Color(0.38f, 0.38f, 0.36f));
-        }
-
-        private static void CreateTreeCluster(Transform parent, Vector3 center, int count, int seed)
-        {
-            for (var i = 0; i < count; i++)
-            {
-                var offset = new Vector3(Mathf.Sin((seed + i) * 1.7f) * 2.4f, 0f, Mathf.Cos((seed + i) * 1.31f) * 2.1f);
-                CreateTree(parent, center + offset, 0.75f + 0.12f * (i % 4), seed + i);
-            }
-        }
-
-        private static void CreateTrees(Transform parent)
-        {
-            var trees = new[]
-            {
-                new Vector3(-35f, 0f, -17f), new Vector3(-31f, 0f, -18.5f), new Vector3(-28f, 0f, 18f),
-                new Vector3(-6.5f, 0f, 18.5f), new Vector3(12f, 0f, -18.8f), new Vector3(23f, 0f, -16.5f),
-                new Vector3(33.5f, 0f, -10f), new Vector3(35f, 0f, 15.5f), new Vector3(0f, 0f, 19.2f)
-            };
-
-            for (var i = 0; i < trees.Length; i++)
-            {
-                CreateTree(parent, trees[i], 0.85f + 0.15f * (i % 3), i);
-            }
-        }
-
-        private static void CreateTree(Transform parent, Vector3 position, float scale, int index)
-        {
-            var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            trunk.name = "DecorTree_Trunk";
-            trunk.transform.SetParent(parent, false);
-            trunk.transform.position = position + Vector3.up * 0.45f;
-            trunk.transform.localScale = new Vector3((0.18f + 0.04f * (index % 3)) * scale, 0.55f * scale, (0.2f + 0.03f * ((index + 1) % 3)) * scale);
-            trunk.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.24f, 0.16f, 0.09f));
-            RemovePrimitiveCollider(trunk);
-
-            var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            crown.name = "DecorTree_Crown";
-            crown.transform.SetParent(parent, false);
-            crown.transform.position = position + Vector3.up * (1.06f * scale);
-            crown.transform.localScale = new Vector3((0.9f + 0.13f * (index % 3)) * scale, (0.55f + 0.07f * ((index + 2) % 3)) * scale, (0.98f + 0.16f * ((index + 1) % 3)) * scale);
-            var green = index % 4 == 0
-                ? new Color(0.35f, 0.42f, 0.23f)
-                : index % 3 == 0
-                    ? new Color(0.18f, 0.35f, 0.15f)
-                    : new Color(0.13f, 0.31f, 0.12f);
-            crown.GetComponent<Renderer>().material = BootstrapMaterials.Get(green);
-            RemovePrimitiveCollider(crown);
-
-            if (index % 5 == 2)
-            {
-                var sideBlob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                sideBlob.name = "DecorTree_CrownLobe";
-                sideBlob.transform.SetParent(parent, false);
-                sideBlob.transform.position = position + new Vector3(0.28f * scale, 0.94f * scale, -0.2f * scale);
-                sideBlob.transform.localScale = new Vector3(0.55f, 0.36f, 0.52f) * scale;
-                sideBlob.GetComponent<Renderer>().material = BootstrapMaterials.Get(green * 0.92f);
-                RemovePrimitiveCollider(sideBlob);
-            }
-        }
-
-        private static void CreateRuinedHouses(Transform parent)
-        {
-            CreateRuinedHouse(parent, new Vector3(-25.5f, 0f, -15f), 1.1f, 8f);
-            CreateRuinedHouse(parent, new Vector3(20.5f, 0f, 17f), 0.95f, -11f);
-            CreateRuinedHouse(parent, new Vector3(31f, 0f, -17.5f), 0.82f, 18f);
-        }
-
-        private static void CreateRuinedHouse(Transform parent, Vector3 position, float scale, float yaw)
-        {
-            var root = new GameObject("DecorRuinedHouse");
-            root.transform.SetParent(parent, false);
-            root.transform.position = position;
-            root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-
-            var stone = new Color(0.36f, 0.33f, 0.27f);
-            var darkStone = new Color(0.24f, 0.23f, 0.2f);
-            var timber = new Color(0.23f, 0.13f, 0.065f);
-            var thatch = new Color(0.38f, 0.29f, 0.15f);
-
-            CreateDecorCube(root.transform, "Ruin_Floor", new Vector3(0f, 0.015f, 0f), new Vector3(2.8f, 0.03f, 2.05f) * scale, new Color(0.2f, 0.18f, 0.14f));
-            CreateDecorCube(root.transform, "Ruin_BackWall", new Vector3(0f, 0.44f, 0.92f), new Vector3(2.65f, 0.88f, 0.2f) * scale, stone);
-            CreateDecorCube(root.transform, "Ruin_LeftWall", new Vector3(-1.22f, 0.34f, -0.08f), new Vector3(0.22f, 0.68f, 1.85f) * scale, stone);
-            CreateDecorCube(root.transform, "Ruin_RightStub", new Vector3(1.18f, 0.24f, 0.48f), new Vector3(0.2f, 0.48f, 0.82f) * scale, darkStone);
-            CreateDecorCube(root.transform, "Ruin_DoorGapLintel", new Vector3(0.15f, 0.82f, -0.98f), new Vector3(1.35f, 0.16f, 0.18f) * scale, timber);
-
-            var roofA = CreateDecorCube(root.transform, "Ruin_CollapsedRoofA", new Vector3(-0.45f, 0.82f, 0.1f), new Vector3(1.65f, 0.16f, 1.05f) * scale, thatch);
-            roofA.transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
-            var roofB = CreateDecorCube(root.transform, "Ruin_CollapsedRoofB", new Vector3(0.6f, 0.34f, -0.45f), new Vector3(1.2f, 0.13f, 0.85f) * scale, thatch * 0.82f);
-            roofB.transform.localRotation = Quaternion.Euler(0f, 0f, 24f);
-
-            CreateDecorCube(root.transform, "Ruin_BeamA", new Vector3(-0.1f, 0.67f, 0.2f), new Vector3(2.45f, 0.12f, 0.14f) * scale, timber);
-            CreateDecorCube(root.transform, "Ruin_BeamB", new Vector3(0.35f, 0.18f, -0.85f), new Vector3(1.65f, 0.12f, 0.13f) * scale, timber);
-            CreateDecorCube(root.transform, "Ruin_RubbleA", new Vector3(0.95f, 0.08f, -0.1f), new Vector3(0.5f, 0.16f, 0.34f) * scale, darkStone);
-            CreateDecorCube(root.transform, "Ruin_RubbleB", new Vector3(-0.2f, 0.07f, -0.78f), new Vector3(0.48f, 0.14f, 0.28f) * scale, darkStone);
-            CreateDecorCube(root.transform, "Ruin_RubbleC", new Vector3(0.35f, 0.06f, 1.22f), new Vector3(0.62f, 0.12f, 0.26f) * scale, darkStone);
-        }
-
-        private static void CreatePondAndVillageProps(Transform parent)
-        {
-            CreatePond(parent, new Vector3(-34f, 0f, 2.5f), 1.05f);
-            CreateWell(parent, new Vector3(31.5f, 0f, 3.8f), 0.85f);
-            CreateDecorCube(parent, "DecorCartBroken_Axle", new Vector3(29.4f, 0.13f, -12.5f), new Vector3(1.35f, 0.12f, 0.16f), new Color(0.24f, 0.14f, 0.075f));
-            var cartBed = CreateDecorCube(parent, "DecorCartBroken_Bed", new Vector3(29.1f, 0.18f, -12.15f), new Vector3(1.15f, 0.16f, 0.65f), new Color(0.3f, 0.19f, 0.09f));
-            cartBed.transform.rotation = Quaternion.Euler(0f, -18f, 0f);
-            CreateDecorCube(parent, "DecorCrates", new Vector3(-30.5f, 0.16f, 15.4f), new Vector3(0.62f, 0.32f, 0.62f), new Color(0.31f, 0.2f, 0.1f));
-            CreateDecorCube(parent, "DecorCrates", new Vector3(-29.8f, 0.12f, 16.1f), new Vector3(0.48f, 0.24f, 0.48f), new Color(0.27f, 0.17f, 0.085f));
-        }
-
-        private static void CreateVillageFires(Transform parent)
-        {
-            CreateFire(parent, new Vector3(-24.6f, 0f, -13.9f), 0.75f);
-            CreateFire(parent, new Vector3(21.3f, 0f, 15.9f), 0.65f);
-            CreateFire(parent, new Vector3(30.2f, 0f, -16.4f), 0.55f);
-        }
-
-        private static void CreateFire(Transform parent, Vector3 position, float scale)
-        {
-            var baseAsh = CreateDecorCube(parent, "DecorFire_Ash", position + Vector3.up * 0.02f, new Vector3(0.9f, 0.035f, 0.65f) * scale, new Color(0.08f, 0.075f, 0.07f));
-            baseAsh.transform.rotation = Quaternion.Euler(0f, 24f, 0f);
-            for (var i = 0; i < 6; i++)
-            {
-                var angle = i * Mathf.PI * 2f / 6f;
-                var rockPosition = position + new Vector3(Mathf.Cos(angle) * 0.48f * scale, 0.07f, Mathf.Sin(angle) * 0.36f * scale);
-                CreateDecorCube(parent, "DecorFire_RingStone", rockPosition, new Vector3(0.18f, 0.12f, 0.16f) * scale, new Color(0.18f, 0.17f, 0.15f));
-            }
-
-            var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            flame.name = "DecorFire_Flame";
-            flame.transform.SetParent(parent, false);
-            flame.transform.position = position + Vector3.up * (0.34f * scale);
-            flame.transform.localScale = new Vector3(0.32f, 0.58f, 0.32f) * scale;
-            flame.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.44f, 0.08f));
-            flame.AddComponent<FireFlicker>();
-            RemovePrimitiveCollider(flame);
-
-            var flameCore = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            flameCore.name = "DecorFire_Core";
-            flameCore.transform.SetParent(parent, false);
-            flameCore.transform.position = position + Vector3.up * (0.42f * scale);
-            flameCore.transform.localScale = new Vector3(0.18f, 0.38f, 0.18f) * scale;
-            flameCore.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(1f, 0.82f, 0.24f));
-            flameCore.AddComponent<FireFlicker>();
-            RemovePrimitiveCollider(flameCore);
-
-            var glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            glow.name = "DecorFire_Glow";
-            glow.transform.SetParent(parent, false);
-            glow.transform.position = position + Vector3.up * (0.2f * scale);
-            glow.transform.localScale = new Vector3(0.95f, 0.04f, 0.95f) * scale;
-            glow.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.75f, 0.22f, 0.04f, 0.55f));
-            RemovePrimitiveCollider(glow);
-        }
-
-        private static void CreatePond(Transform parent, Vector3 position, float scale)
-        {
-            var bank = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            bank.name = "DecorPond_Bank";
-            bank.transform.SetParent(parent, false);
-            bank.transform.position = position + Vector3.up * 0.005f;
-            bank.transform.localScale = new Vector3(3.4f * scale, 0.015f, 2.05f * scale);
-            bank.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.09f, 0.18f, 0.11f));
-            RemovePrimitiveCollider(bank);
-
-            var water = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            water.name = "DecorPond_Water";
-            water.transform.SetParent(parent, false);
-            water.transform.position = position + Vector3.up * 0.025f;
-            water.transform.localScale = new Vector3(2.75f * scale, 0.012f, 1.55f * scale);
-            water.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.06f, 0.26f, 0.36f));
-            RemovePrimitiveCollider(water);
-
-            CreateDecorCube(parent, "DecorPond_ReedA", position + new Vector3(-2.1f, 0.18f, 0.78f) * scale, new Vector3(0.12f, 0.36f, 0.08f) * scale, new Color(0.16f, 0.31f, 0.12f));
-            CreateDecorCube(parent, "DecorPond_ReedB", position + new Vector3(1.9f, 0.14f, -0.62f) * scale, new Vector3(0.1f, 0.28f, 0.08f) * scale, new Color(0.14f, 0.29f, 0.1f));
-        }
-
-        private static void CreateWell(Transform parent, Vector3 position, float scale)
-        {
-            var baseStone = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            baseStone.name = "DecorWell_StoneRing";
-            baseStone.transform.SetParent(parent, false);
-            baseStone.transform.position = position + Vector3.up * 0.24f * scale;
-            baseStone.transform.localScale = new Vector3(0.9f * scale, 0.26f * scale, 0.9f * scale);
-            baseStone.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.28f, 0.27f, 0.24f));
-            RemovePrimitiveCollider(baseStone);
-
-            CreateDecorCube(parent, "DecorWell_PostA", position + new Vector3(-0.62f, 0.76f, 0f) * scale, new Vector3(0.13f, 0.92f, 0.13f) * scale, new Color(0.22f, 0.13f, 0.065f));
-            CreateDecorCube(parent, "DecorWell_PostB", position + new Vector3(0.62f, 0.76f, 0f) * scale, new Vector3(0.13f, 0.92f, 0.13f) * scale, new Color(0.22f, 0.13f, 0.065f));
-            var roof = CreateDecorCube(parent, "DecorWell_Roof", position + new Vector3(0f, 1.28f, 0f) * scale, new Vector3(1.65f, 0.16f, 1f) * scale, new Color(0.38f, 0.25f, 0.12f));
-            roof.transform.rotation = Quaternion.Euler(0f, 0f, 6f);
-        }
-
-        private static GameObject CreateDecorCube(Transform parent, string name, Vector3 localPosition, Vector3 scale, Color color)
-        {
-            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = name;
-            cube.transform.SetParent(parent, false);
-            cube.transform.localPosition = localPosition;
-            cube.transform.localScale = scale;
-            cube.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
-            RemovePrimitiveCollider(cube);
-            return cube;
-        }
     }
 
     internal sealed class SampleContent
@@ -539,27 +306,27 @@ namespace TowerDefense.Runtime
             var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner,
                 "Fast and fragile. Dangerous in large groups because it slips past slow towers.",
                 "Weak to rapid-fire towers, bends with overlapping coverage, and well-timed arrow volleys.",
-                12f, 5.35f, 1, 1, new Color(0.2f, 0.9f, 0.25f), 0.36f);
+                12f, 5.35f, 1, 1, PlaceholderPalette.Enemy, 0.36f);
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy,
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
-                72f, 2.28f, 2, 4, new Color(0.05f, 0.45f, 0.08f), 0.39f);
+                72f, 2.28f, 2, 4, PlaceholderPalette.Enemy, 0.39f);
             var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support,
                 "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
-                32f, 3.35f, 1, 2, new Color(0.55f, 0.18f, 0.75f), 0.5f);
+                32f, 3.35f, 1, 2, PlaceholderPalette.Enemy, 0.5f);
             var vampire = CreateEnemy("vampire", "Vampire", EnemyRole.Saboteur,
                 "A duelist that hunts allied troops. Damaging allied units heals it and can raise its maximum health.",
                 "Weak to ranged focus fire before it reaches your frontline.",
-                48f, 3.55f, 2, 5, new Color(0.45f, 0.02f, 0.08f), 0.52f);
+                48f, 3.55f, 2, 5, PlaceholderPalette.Enemy, 0.52f);
             var harpy = CreateEnemy("harpy", "Harpy", EnemyRole.Flying,
                 "Flying enemy. It ignores ground pressure and can only be hit by anti-air towers or archers.",
                 "Weak to Archer Towers, Ballistae, and Archer units from barracks.",
-                24f, 4.2f, 1, 3, new Color(0.62f, 0.62f, 0.86f), 0.44f);
+                24f, 4.2f, 1, 3, PlaceholderPalette.Enemy, 0.44f);
             var zombie = CreateEnemy("zombie", "Gravebound Zombie", EnemyRole.Undead,
                 "Slow undead. The first time it falls, it rises once more at half health.",
                 "Weak to sustained damage after its revival has been spent.",
-                34f, 2.05f, 1, 2, new Color(0.38f, 0.5f, 0.34f), 0.5f);
+                34f, 2.05f, 1, 2, PlaceholderPalette.Enemy, 0.5f);
             runner.alliedDamageMultiplier = 1.7f;
             runner.mass = 1f;
             brute.wallDamageMultiplier = 1.8f;
@@ -580,32 +347,32 @@ namespace TowerDefense.Runtime
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine,
                 "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.",
                 "Weak against high-health enemies and dense waves once too many targets pass through at once.",
-                0, 1, 7f, 4.2f, 1f / 2.3f, 18f, new Color(0.9f, 0.85f, 0.4f));
+                0, 1, 7f, 4.2f, 1f / 2.3f, 18f, PlaceholderPalette.Tower);
             archer.canHitFlying = true;
             var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine,
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
-                0, 1, 11f, 16f, 1f / 0.7f, 14f, new Color(0.7f, 0.35f, 0.16f));
+                0, 1, 11f, 16f, 1f / 0.7f, 14f, PlaceholderPalette.Tower);
             ballista.canHitFlying = true;
             var bell = CreateTower("bell", "Bell Tower", TowerRole.ControlLine,
                 "A lookout and alarm tower. Once tuned, its ringing slows a capped amount of enemies in its radius.",
                 "Weak against very dense hordes until its slow capacity is upgraded.",
-                0, 1, 6.5f, 2.4f, 0.24f, 22f, new Color(0.45f, 0.72f, 1f));
+                0, 1, 6.5f, 2.4f, 0.24f, 22f, PlaceholderPalette.Tower);
             bell.behavior = TowerBehavior.SlowAura;
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
-                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, new Color(0.46f, 0.32f, 0.18f), ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
+                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, PlaceholderPalette.Tower, ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
             var barrier = CreateTower("barrier", "Timber Barrier", TowerRole.BarrierLine,
                 "A physical barricade that can be placed on the path. It absorbs enemy attacks until destroyed.",
                 "Weak to enemies that specialize in breaking walls, especially orcs.",
-                0, 1, 1.4f, 0f, 1f, 0f, new Color(0.46f, 0.28f, 0.13f));
+                0, 1, 1.4f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             barrier.behavior = TowerBehavior.Barrier;
             barrier.health = 65f;
             var knightBarracks = CreateTower("knight_barracks", "Knight Barracks", TowerRole.BarracksLine,
                 "Spawns knights that hold the line and fight enemies in melee.",
                 "Weak to enemies that specialize in killing allied troops.",
-                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.36f, 0.36f, 0.52f));
+                0, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             knightBarracks.behavior = TowerBehavior.Barracks;
             knightBarracks.barracksUnitType = AlliedUnitType.Knight;
             knightBarracks.alliedUnitHealth = 26f;
@@ -616,7 +383,7 @@ namespace TowerDefense.Runtime
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
                 "Spawns archers that stand beside the road and fire arrows into the path.",
                 "Weak to future ranged enemies and enemies that bypass the melee line.",
-                0, 1, 3.8f, 0f, 1f, 0f, new Color(0.42f, 0.54f, 0.28f));
+                0, 1, 3.8f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             archerBarracks.behavior = TowerBehavior.Barracks;
             archerBarracks.barracksUnitType = AlliedUnitType.Archer;
             archerBarracks.alliedUnitCanHitFlying = true;
@@ -629,7 +396,7 @@ namespace TowerDefense.Runtime
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
                 "Spawns a durable paladin. Paladins take more space but bring higher defense.",
                 "Weak because each paladin takes extra capacity and respawns slowly.",
-                0, 1, 3.2f, 0f, 1f, 0f, new Color(0.72f, 0.66f, 0.35f));
+                0, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             paladinBarracks.behavior = TowerBehavior.Barracks;
             paladinBarracks.barracksUnitType = AlliedUnitType.Paladin;
             paladinBarracks.barracksCapacity = 2;
@@ -660,7 +427,6 @@ namespace TowerDefense.Runtime
             level.groundCenter = new Vector3(0f, -0.08f, 1.5f);
             level.groundSize = new Vector3(82f, 0.1f, 50f);
             level.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            level.decorVariant = 1;
             level.cameraPosition = new Vector3(0f, 24f, -20f);
             level.cameraFieldOfView = 45f;
             level.cameraMinHeight = 8f;
@@ -713,7 +479,6 @@ namespace TowerDefense.Runtime
             levelTwo.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelTwo.groundSize = new Vector3(126f, 0.1f, 70f);
             levelTwo.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            levelTwo.decorVariant = 2;
             levelTwo.cameraPosition = new Vector3(0f, 42f, -32f);
             levelTwo.cameraFieldOfView = 50f;
             levelTwo.cameraMinHeight = 10f;
@@ -764,7 +529,6 @@ namespace TowerDefense.Runtime
             levelTwoPointOne.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelTwoPointOne.groundSize = new Vector3(126f, 0.1f, 70f);
             levelTwoPointOne.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            levelTwoPointOne.decorVariant = 2;
             levelTwoPointOne.cameraPosition = new Vector3(0f, 42f, -32f);
             levelTwoPointOne.cameraFieldOfView = 50f;
             levelTwoPointOne.cameraMinHeight = 10f;
@@ -798,7 +562,6 @@ namespace TowerDefense.Runtime
             levelThree.groundCenter = new Vector3(0f, -0.08f, 1f);
             levelThree.groundSize = new Vector3(150f, 0.1f, 84f);
             levelThree.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            levelThree.decorVariant = 3;
             levelThree.cameraPosition = new Vector3(0f, 50f, -38f);
             levelThree.cameraFieldOfView = 52f;
             levelThree.cameraMinHeight = 12f;
@@ -833,7 +596,6 @@ namespace TowerDefense.Runtime
             levelFour.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelFour.groundSize = new Vector3(230f, 0.1f, 132f);
             levelFour.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            levelFour.decorVariant = 4;
             levelFour.useDataHordePrototype = true;
             levelFour.cameraPosition = new Vector3(0f, 78f, -62f);
             levelFour.cameraFieldOfView = 54f;
@@ -877,7 +639,6 @@ namespace TowerDefense.Runtime
             levelFive.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelFive.groundSize = new Vector3(400f, 0.1f, 360f);
             levelFive.environmentTilePackage = EnvironmentTilePackageId.WeatheredRoad;
-            levelFive.decorVariant = 4;
             levelFive.useDataHordePrototype = true;
             levelFive.cameraPosition = new Vector3(0f, 150f, -155f);
             levelFive.cameraFieldOfView = 55f;
@@ -929,7 +690,6 @@ namespace TowerDefense.Runtime
             levelSix.groundCenter = new Vector3(0f, -0.08f, 3f);
             levelSix.groundSize = new Vector3(160f, 0.1f, 72f);
             levelSix.environmentTilePackage = EnvironmentTilePackageId.WeatheredRoad;
-            levelSix.decorVariant = 4;
             levelSix.useDataHordePrototype = true;
             levelSix.cameraPosition = new Vector3(0f, 54f, -43f);
             levelSix.cameraFieldOfView = 52f;
@@ -987,7 +747,6 @@ namespace TowerDefense.Runtime
             levelSeven.groundCenter = new Vector3(0f, -0.08f, 0f);
             levelSeven.groundSize = new Vector3(140f, 0.1f, 140f);
             levelSeven.environmentTilePackage = EnvironmentTilePackageId.Arena;
-            levelSeven.decorVariant = 5;
             levelSeven.useDataHordePrototype = true;
             levelSeven.cameraPosition = new Vector3(0f, 104f, -80f);
             levelSeven.cameraFieldOfView = 48f;

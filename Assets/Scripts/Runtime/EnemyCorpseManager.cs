@@ -27,7 +27,7 @@ namespace TowerDefense.Runtime
             corpse.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
             var size = enemy.Definition.visualScale * Random.Range(0.75f, 1.05f);
             corpse.transform.localScale = new Vector3(size * 0.9f, 0.025f, size * 1.25f);
-            corpse.GetComponent<Renderer>().material = BootstrapMaterials.Get(Color.Lerp(enemy.Definition.color, new Color(0.08f, 0.06f, 0.045f), 0.62f));
+            corpse.GetComponent<Renderer>().material = BootstrapMaterials.Get(Color.Lerp(enemy.Definition.color, PlaceholderPalette.Grey(.064f), 0.62f));
             RemovePrimitiveCollider(corpse);
             corpses.Enqueue(corpse);
             Trim(corpses, maxCorpses);
@@ -50,7 +50,7 @@ namespace TowerDefense.Runtime
             decal.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
             var radius = scale * Random.Range(0.65f, 1.25f);
             decal.transform.localScale = new Vector3(radius, 0.01f, radius * Random.Range(0.65f, 1.1f));
-            decal.GetComponent<Renderer>().material = BootstrapMaterials.Get(new Color(0.32f, 0.015f, 0.01f));
+            decal.GetComponent<Renderer>().material = BootstrapMaterials.Get(PlaceholderPalette.Grey(.106f));
             RemovePrimitiveCollider(decal);
             bloodDecals.Enqueue(decal);
             Trim(bloodDecals, maxBloodDecals);

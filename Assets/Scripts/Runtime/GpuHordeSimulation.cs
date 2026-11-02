@@ -317,10 +317,7 @@ namespace TowerDefense.Runtime
         private float maximumMotionDistance;
         private double motionTravelBudget;
         private float MaximumPairDiameter => collisionDiameter * 1.55f;
-        // Sprite cards remain in one render list, so a distance boundary cannot
-        // change their size or their order against overlapping neighbours.
         private const float FarLodVisibilityScale = 1f;
-        private const float SpriteDepthSortSlope = 0.00022f;
         // Above this height players can read the authored limb animation. Below it,
         // the compact LOD communicates only collective direction and travel.
         private const float SimplifiedGoblinLodMaxHeightPixels = 96f;
@@ -418,8 +415,6 @@ namespace TowerDefense.Runtime
         private readonly Mesh stableRenderMesh;
         private readonly Mesh variantRenderMesh;
         private readonly Mesh variantLodRenderMesh;
-        private readonly Mesh hordeSpriteMesh;
-        private readonly Texture2D hordeSpriteTexture;
         private readonly Bounds drawBounds;
         private readonly uint[] drawArgs = new uint[5];
         private readonly uint[] lodDrawArgs = new uint[5];
@@ -566,51 +561,23 @@ namespace TowerDefense.Runtime
 
             compute = UnityEngine.Object.Instantiate(sourceCompute);
             material = new Material(shader) { enableInstancing = true };
-            hordeSpriteTexture = Resources.Load<Texture2D>(HordeRaiderSpriteAssets.TextureResourcePath);
-            if (hordeSpriteTexture != null)
-            {
-                // The card is an atlas, not a pixel-art texture. Bilinear sampling
-                // keeps the painted outline smooth, while Clamp prevents a frame
-                // from sampling an unrelated direction at the texture boundary.
-                hordeSpriteTexture.wrapMode = TextureWrapMode.Clamp;
-                hordeSpriteTexture.filterMode = FilterMode.Bilinear;
-                hordeSpriteMesh = HordeRaiderSpriteAssets.CreateGroundCard();
-                material.SetFloat("_HordeSpriteEnabled", 1f);
-                material.SetTexture("_HordeSpriteAtlas", hordeSpriteTexture);
-                material.SetFloat("_HordeSpriteStride", 5.5f);
-                material.SetFloat("_PackingScale", 1.18f);
-            }
-            else
-            {
-                // Keep the game runnable if Unity has not yet imported the new art.
-                // The next domain reload automatically takes the sprite path.
-                hordeSpriteMesh = null;
-                material.SetFloat("_HordeSpriteEnabled", 0f);
-            }
-            lowDetailMesh = hordeSpriteMesh != null ? hordeSpriteMesh : EnemyManager.GetLowEnemyMesh();
+            lowDetailMesh = EnemyManager.GetLowEnemyMesh();
             stableRenderMesh = lowDetailMesh;
-            // These colours are tuned against the cool road material: each is
-            // readable at horde zoom without turning the ground into a second UI.
-            material.SetColor("_BaseColor", new Color(0.08f, 0.82f, 0.29f, 1f));
-            material.SetColor("_SlowColor", new Color(0.16f, 0.50f, 1f, 1f));
-            material.SetColor("_RareColor", new Color(0.82f, 0.18f, 0.96f, 1f));
-            material.SetColor("_SpeedColor0", new Color(0.96f, 0.16f, 0.10f, 1f));
-            material.SetColor("_SpeedColor1", new Color(1f, 0.45f, 0.05f, 1f));
-            material.SetColor("_SpeedColor2", new Color(1f, 0.86f, 0.12f, 1f));
-            material.SetColor("_SpeedColor3", new Color(0.08f, 0.82f, 0.29f, 1f));
+            // Greybox placeholders: the horde reads as one neutral value; slow,
+            // rare and speed bands differ only in brightness.
+            material.SetColor("_BaseColor", PlaceholderPalette.Enemy);
+            material.SetColor("_SlowColor", PlaceholderPalette.Grey(0.80f));
+            material.SetColor("_RareColor", PlaceholderPalette.Accent);
+            material.SetColor("_SpeedColor0", PlaceholderPalette.Grey(0.30f));
+            material.SetColor("_SpeedColor1", PlaceholderPalette.Grey(0.42f));
+            material.SetColor("_SpeedColor2", PlaceholderPalette.Grey(0.55f));
+            material.SetColor("_SpeedColor3", PlaceholderPalette.Grey(0.68f));
             material.SetFloat("_UseSpeedColors", 0f);
             properties.SetFloat("_LightingVariation", 1f);
             lodProperties.SetFloat("_LightingVariation", 1f);
             variantProperties.SetFloat("_LightingVariation", 1f);
             variantLodProperties.SetFloat("_LightingVariation", 1f);
             properties.SetFloat("_VisualScaleMultiplier", 1f);
-            properties.SetFloat("_HordeSpriteFarLod", 0f);
-            // Mipmapped authored art is stable at overview zoom. Do not replace it
-            // with a green procedural token: that changed the enemy's colour and
-            // made the horde read as terrain instead of individual opponents.
-            lodProperties.SetFloat("_HordeSpriteFarLod", 0f);
-            variantProperties.SetFloat("_HordeSpriteFarLod", 0f);
-            variantLodProperties.SetFloat("_HordeSpriteFarLod", 0f);
             // The low-poly model takes fewer pixels at distance. A modest visual
             // compensation preserves a readable crowd without increasing physics
             // radii or rendering the full mesh for every distant agent.
@@ -774,7 +741,7 @@ namespace TowerDefense.Runtime
             compute.SetFloat("_CellSize", field.CellSize);
             SetCollisionDiameter(0.72f);
             compute.SetInt("_AnimatedGoblin", 0);
-            compute.SetInt("_SpriteCardRendering", hordeSpriteMesh != null ? 1 : 0);
+            compute.SetInt("_SpriteCardRendering", 0);
             compute.SetInt("_StationaryHorde", 0);
             compute.SetInt("_RandomArenaMovement", 0);
             compute.SetInt("_CenterSeekingArena", 0);
@@ -1935,10 +1902,6 @@ namespace TowerDefense.Runtime
             {
                 UnityEngine.Object.Destroy(material);
             }
-            if (hordeSpriteMesh != null)
-            {
-                UnityEngine.Object.Destroy(hordeSpriteMesh);
-            }
         }
 
         private void RequestDiagnosticsReadback()
@@ -2230,7 +2193,6 @@ namespace TowerDefense.Runtime
                 compute.SetInt("_CullingEnabled", 0);
                 compute.SetVector("_LodCameraPosition", Vector4.zero);
                 compute.SetMatrix("_ViewProjection", Matrix4x4.identity);
-                SetSpriteDepthSort(Vector2.down);
                 return;
             }
 
@@ -2243,22 +2205,6 @@ namespace TowerDefense.Runtime
                     camera.pixelHeight / (2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f)),
                 camera.orthographic ? 1f : 0f, SimplifiedGoblinLodMaxHeightPixels));
             compute.SetMatrix("_ViewProjection", projection * camera.worldToCameraMatrix);
-            var towardCamera = -camera.transform.forward;
-            var sortAxis = new Vector2(towardCamera.x, towardCamera.z);
-            SetSpriteDepthSort(sortAxis.sqrMagnitude > 0.0001f ? sortAxis.normalized : Vector2.down);
-        }
-
-        private void SetSpriteDepthSort(Vector2 axis)
-        {
-            var sort = new Vector4(axis.x, axis.y, 0f, 0f);
-            properties.SetVector("_SpriteDepthSortAxis", sort);
-            lodProperties.SetVector("_SpriteDepthSortAxis", sort);
-            variantProperties.SetVector("_SpriteDepthSortAxis", sort);
-            variantLodProperties.SetVector("_SpriteDepthSortAxis", sort);
-            properties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
-            lodProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
-            variantProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
-            variantLodProperties.SetFloat("_SpriteDepthSortSlope", SpriteDepthSortSlope);
         }
 
         private static int DivideRoundUp(int value, int divisor) => (value + divisor - 1) / divisor;

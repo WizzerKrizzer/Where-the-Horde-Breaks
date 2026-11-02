@@ -168,8 +168,8 @@ namespace TowerDefense.Runtime
             go.transform.position = position + Vector3.up * 0.2f;
             go.transform.localScale = new Vector3(Radius * 2f, 0.05f, Radius * 2f);
             var color = KnockbackDistance > 0f
-                ? new Color(1f, 0.62f, 0.08f, 0.55f)
-                : new Color(1f, 0.35f, 0.12f, 0.45f);
+                ? PlaceholderPalette.Grey(.672f, 0.55f)
+                : PlaceholderPalette.Grey(.518f, 0.45f);
             go.GetComponent<Renderer>().material = BootstrapMaterials.Get(color);
             RemovePrimitiveCollider(go);
             Destroy(go, 0.18f);

@@ -58,7 +58,7 @@ namespace TowerDefense.Tests
         [UnityTest, Timeout(480000), Explicit("One full real-wave validation, including the merge and the 1800-body tail")]
         public IEnumerator ActualTenThousand_ThroughMergeAndTail()
         {
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, 1);
             var timeScale = Time.timeScale;
             var vsync = QualitySettings.vSyncCount;
             var frameRate = Application.targetFrameRate;
@@ -69,7 +69,7 @@ namespace TowerDefense.Tests
             RenderTexture target = null;
             try
             {
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = -1;
                 Time.timeScale = 1;
@@ -327,7 +327,7 @@ namespace TowerDefense.Tests
                     target.Release();
                     UnityEngine.Object.Destroy(target);
                 }
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
                 QualitySettings.vSyncCount = vsync;
                 Application.targetFrameRate = frameRate;
                 Time.timeScale = timeScale;
@@ -353,8 +353,8 @@ namespace TowerDefense.Tests
         private IEnumerator StageAudit(bool tight)
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required");
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, 1);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             try
             {
                 // The last three incoming segments and shared outlet of level 2.
@@ -383,7 +383,7 @@ namespace TowerDefense.Tests
                 Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
                 using (simulation)
                 {
-                    simulation.SetCollisionDiameter(0.203f * GoblinPreviewAssets.ContactRadiusPerScale / 0.5f);
+                    simulation.SetCollisionDiameter(0.203f * HordePreviewSettings.ContactRadiusPerScale / 0.5f);
                     simulation.SpawnBatch(states, controls, 0, count);
                     var report = new System.Text.StringBuilder($"Dense merge count={count}; seed pairs={Pairs(states).pairs}\n");
                     var timer = Stopwatch.StartNew();
@@ -449,7 +449,7 @@ namespace TowerDefense.Tests
                     Assert.That(maxInterpolatedPairs, Is.Zero);
                 }
             }
-            finally { PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference); }
+            finally { PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference); }
         }
 
         [Serializable]
@@ -464,11 +464,11 @@ namespace TowerDefense.Tests
         {
             var snapshotPath = Environment.GetEnvironmentVariable("CROWD_SNAPSHOT");
             Assert.That(File.Exists(snapshotPath), Is.True, "Set CROWD_SNAPSHOT to the saved peak-snapshot.json.");
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, 1);
             var report = new System.Text.StringBuilder("trial,tick,alive,speed,forward,stopped,pairs,depth\n");
             try
             {
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
                 yield return SceneManager.LoadSceneAsync("Main");
                 var level = SampleContent.Create().Levels[1];
                 var bootstrap = UnityEngine.Object.FindAnyObjectByType<TowerDefenseBootstrap>();
@@ -520,7 +520,7 @@ namespace TowerDefense.Tests
             {
                 Directory.CreateDirectory("Logs/MergeValidation");
                 File.WriteAllText("Logs/MergeValidation/replay.csv", report.ToString());
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
             }
         }
 
@@ -530,10 +530,10 @@ namespace TowerDefense.Tests
             var snapshotPath = Environment.GetEnvironmentVariable("CROWD_SNAPSHOT");
             Assert.That(File.Exists(snapshotPath), Is.True,
                 "Set CROWD_SNAPSHOT to Logs/MergeValidation/persistent-snapshot.json from the full-wave test.");
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, 1);
             try
             {
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
                 yield return SceneManager.LoadSceneAsync("Main");
                 var level = SampleContent.Create().Levels[1];
                 var bootstrap = UnityEngine.Object.FindAnyObjectByType<TowerDefenseBootstrap>();
@@ -580,7 +580,7 @@ namespace TowerDefense.Tests
             }
             finally
             {
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
             }
         }
 

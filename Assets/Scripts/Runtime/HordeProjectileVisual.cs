@@ -124,7 +124,7 @@ namespace TowerDefense.Runtime
             marker.transform.position = position + Vector3.up * 0.035f;
             marker.transform.localScale = arcProjectile ? new Vector3(radius * 2f, 0.025f, radius * 2f) : Vector3.one * radius;
             var impactColor = arcProjectile
-                ? new Color(1f, 0.22f, 0.08f, 0.86f)
+                ? PlaceholderPalette.Grey(.437f, 0.86f)
                 : new Color(color.r, color.g, color.b, 0.75f);
             marker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(impactColor);
             var components = marker.GetComponents<Component>();

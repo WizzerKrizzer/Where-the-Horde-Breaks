@@ -15,16 +15,16 @@ namespace TowerDefense.Tests
         [SetUp]
         public void UseOriginalCollisionGeometry()
         {
-            hadVisualPreference = PlayerPrefs.HasKey(GoblinPreviewAssets.PreferenceKey);
-            visualPreference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey);
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 0);
+            hadVisualPreference = PlayerPrefs.HasKey(HordePreviewSettings.PreferenceKey);
+            visualPreference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 0);
         }
 
         [TearDown]
         public void RestoreVisualPreference()
         {
-            if (hadVisualPreference) PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, visualPreference);
-            else PlayerPrefs.DeleteKey(GoblinPreviewAssets.PreferenceKey);
+            if (hadVisualPreference) PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, visualPreference);
+            else PlayerPrefs.DeleteKey(HordePreviewSettings.PreferenceKey);
         }
 
         [UnityTest]
@@ -1030,7 +1030,7 @@ namespace TowerDefense.Tests
         public IEnumerator PackedGoblinQueue_StartsTogetherOnFirstTickAfterBlockerRemoval()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             const int count = 24;
             var field = new HordeFlowField(
                 new[] { new Vector3(-12f, 0f, 0f), new Vector3(12f, 0f, 0f) },
@@ -1856,7 +1856,7 @@ namespace TowerDefense.Tests
         public IEnumerator MovingGoblinCrowd_TurnsWithoutContactJitter()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             const int count = 144;
             var field = new HordeFlowField(new[]
             {
@@ -1917,9 +1917,9 @@ namespace TowerDefense.Tests
         public IEnumerator RedGoblinQueue_TouchesBodiesAndSettlesWithoutRunningInPlace()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            var hadPreference = PlayerPrefs.HasKey(GoblinPreviewAssets.PreferenceKey);
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey);
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            var hadPreference = PlayerPrefs.HasKey(HordePreviewSettings.PreferenceKey);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             GpuHordeSimulation simulation = null;
             try
             {
@@ -1979,7 +1979,7 @@ namespace TowerDefense.Tests
                 var heldCount = 0;
                 foreach (var state in states) if (state.Padding2 >= 1f) heldCount++;
                 Debug.Log($"Goblin queue: median spacing={nearest[count / 2]:F4}, minimum={nearest[0]:F4}, max settled step={maxStep:F5}, mean last-second gait travel={animationTravel / count:F4}, held={heldCount}/{count}, largest-step=#{maximumStepBody} p={maximumStepState.Position} start={maximumStepState.StepStartPosition} v={maximumStepState.Velocity} blocker={maximumStepState.Padding2} flags={maximumStepState.Flags}");
-                var bodyDiameter = GoblinPreviewAssets.BodyDiameter(0.29f, 0.29f);
+                var bodyDiameter = HordePreviewSettings.BodyDiameter(0.29f, 0.29f);
                 Assert.That(nearest[count / 2], Is.GreaterThanOrEqualTo(bodyDiameter * 0.995f));
                 Assert.That(nearest[count / 2], Is.LessThan(bodyDiameter * 1.025f),
                     "A held queue should make readable body contact, not preserve a large idle gap.");
@@ -1990,8 +1990,8 @@ namespace TowerDefense.Tests
             finally
             {
                 simulation?.Dispose();
-                if (hadPreference) PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
-                else PlayerPrefs.DeleteKey(GoblinPreviewAssets.PreferenceKey);
+                if (hadPreference) PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
+                else PlayerPrefs.DeleteKey(HordePreviewSettings.PreferenceKey);
             }
         }
 
@@ -2045,7 +2045,7 @@ namespace TowerDefense.Tests
         public IEnumerator StationaryGoblin_KeepsPresentationClockAndAnimatesLateralPush()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(20, 0, 0) }, null, 5, 0.62f);
             Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
             using (simulation)
@@ -2077,7 +2077,7 @@ namespace TowerDefense.Tests
         public IEnumerator SpawnClearance_RejectsMovedQueriesAndDifferentPositions()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+            PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
             var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(20, 0, 0) }, null, 3, 0.62f);
             Assert.That(GpuHordeSimulation.TryCreate(2, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
             using (simulation)

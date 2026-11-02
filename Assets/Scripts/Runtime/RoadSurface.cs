@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 namespace TowerDefense.Runtime
 {
     /// <summary>
-    /// One continuous road/terrain material, plus one exterior kerb mesh.
+    /// One continuous painted road/terrain material.
     /// Baked only when loading a map; no updates, colliders or per-segment draws.
     /// The footprint follows the same variable-radius/square-joint rules as
     /// HordeFlowField, including the union of all three routes at junctions.
@@ -23,8 +23,7 @@ namespace TowerDefense.Runtime
         private EnvironmentTilePackage environmentPackage;
         public Rect WorldBounds => bounds;
         public EnvironmentTilePackageId PackageId => environmentPackage?.Id ?? EnvironmentTilePackageId.Prehistoric;
-        // The clean-board presentation deliberately has no paint, ruts or road
-        // markings, regardless of the level's historical environment package.
+        // Placeholder roads have no lane markings.
         public bool UsesRoadMarkings => false;
 
         private struct Segment
@@ -61,7 +60,9 @@ namespace TowerDefense.Runtime
                 min = Vector2.Min(min, Vector2.Min(segment.from, segment.from + segment.direction * segment.length) - padding);
                 max = Vector2.Max(max, Vector2.Max(segment.from, segment.from + segment.direction * segment.length) + padding);
             }
-            surface.bounds = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+            // A wooded apron keeps the playable area inside the landscape when
+            // panning, instead of exposing the old rectangular black board edge.
+            surface.bounds = Rect.MinMaxRect(min.x - 12, min.y - 12, max.x + 12, max.y + 12);
             surface.Build();
             return surface;
         }
@@ -158,9 +159,20 @@ namespace TowerDefense.Runtime
                 {
                     var p = new Vector2(bounds.xMin + (x + .5f) / width * bounds.width, bounds.yMin + (y + .5f) / height * bounds.height);
                     var sdf = -10000f;
+                    var rut = 0f;
+                    var closest = -10000f;
                     foreach (var s in segments)
                     {
-                        sdf = Mathf.Max(sdf, Distance(s, p, out _, out _));
+                        var distance = Distance(s, p, out var along, out var lateral);
+                        sdf = Mathf.Max(sdf, distance);
+                        if (distance > closest)
+                        {
+                            closest = distance;
+                            var radius = Mathf.Lerp(s.fromRadius, s.toRadius, Mathf.Clamp01(along / s.length));
+                            var wheelOffset = Mathf.Min(1.25f, radius * .42f);
+                            rut = 1 - SmoothRange(.07f, .23f, Mathf.Abs(lateral - wheelOffset));
+                            rut *= SmoothRange(0, 1.4f, along) * SmoothRange(0, 1.4f, s.length - along);
+                        }
                     }
                     foreach (var corner in corners)
                     {
@@ -169,9 +181,7 @@ namespace TowerDefense.Runtime
                             corner.outgoingRadius - Mathf.Abs(Vector2.Dot(offset, corner.incoming)),
                             corner.incomingRadius - Mathf.Abs(Vector2.Dot(offset, corner.outgoing))));
                     }
-                    // Only the signed road footprint is stored. The shader no
-                    // longer receives markings, ruts or weathering data.
-                    pixels[y * width + x] = new Color(Mathf.Clamp01(.5f + sdf / 8), 0f, 0f, 1f);
+                    pixels[y * width + x] = new Color(Mathf.Clamp01(.5f + sdf / 8), rut, 0f, 1f);
                 }
             });
             field.SetPixels32(pixels);
@@ -179,9 +189,11 @@ namespace TowerDefense.Runtime
             var shader = Resources.Load<Shader>("RoadSurface");
             var material = new Material(shader)
             {
-                name = "Solid route surface"
+                name = "Placeholder road and ground"
             };
             material.SetTexture("_RoadField", field);
+            material.SetColor("_GroundColor", PlaceholderPalette.Ground);
+            material.SetColor("_RoadColor", PlaceholderPalette.Road);
             material.SetVector("_WorldRect", new Vector4(bounds.xMin, bounds.yMin, bounds.width, bounds.height));
             owned.Add(material);
             var mesh = new Mesh { name = "Continuous road and terrain" };

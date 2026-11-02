@@ -16,8 +16,8 @@ namespace TowerDefense.Tests
         public IEnumerator CollisionLab_LiveSpawningAndSettledFrames()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
-            var hadPreference = PlayerPrefs.HasKey(GoblinPreviewAssets.PreferenceKey);
-            var preference = PlayerPrefs.GetInt(GoblinPreviewAssets.PreferenceKey);
+            var hadPreference = PlayerPrefs.HasKey(HordePreviewSettings.PreferenceKey);
+            var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey);
             var oldScale = Time.timeScale;
             var oldVsync = QualitySettings.vSyncCount;
             var oldRate = Application.targetFrameRate;
@@ -34,7 +34,7 @@ namespace TowerDefense.Tests
             camera.targetTexture = renderTarget;
             try
             {
-                PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, 1);
+                PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
                 Time.timeScale = 1;
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = -1;
@@ -76,7 +76,7 @@ namespace TowerDefense.Tests
                 var snapshot = new GpuHordeSimulation.AgentState[10000];
                 simulation.ReadStatesSynchronous(snapshot, snapshot.Length);
                 var deepestPair = DescribeDeepestPair(snapshot, 0.58f * level.wave.enemyScaleMultiplier *
-                    GoblinPreviewAssets.ContactRadiusPerScale);
+                    HordePreviewSettings.ContactRadiusPerScale);
                 Directory.CreateDirectory("Logs/CrowdSmooth");
                 var report = $"10K spawn duration: {duration:F2}s\nSpawning frames: {Summarize(frames)}\nSpawn CPU: {Summarize(spawningCpu)}\nAfter spawning: {Summarize(settled)}\nGrid: max={diagnostics[2]}, overflow={diagnostics[0]}, dropped={diagnostics[1]}\nCollision pairs: {diagnostics[5]}, deepest: {diagnostics[6] / 10000f:F2}%\n{deepestPair}\n";
                 File.WriteAllText("Logs/CrowdSmooth/spawning-metrics.txt", report);
@@ -97,8 +97,8 @@ namespace TowerDefense.Tests
                 QualitySettings.vSyncCount = oldVsync;
                 Application.targetFrameRate = oldRate;
                 Random.state = randomState;
-                if (hadPreference) PlayerPrefs.SetInt(GoblinPreviewAssets.PreferenceKey, preference);
-                else PlayerPrefs.DeleteKey(GoblinPreviewAssets.PreferenceKey);
+                if (hadPreference) PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
+                else PlayerPrefs.DeleteKey(HordePreviewSettings.PreferenceKey);
             }
         }
 
@@ -127,7 +127,7 @@ namespace TowerDefense.Tests
                     var b = live[sortedB];
                     if (states[b].Position.x - states[a].Position.x > collisionDiameter * 1.6f) break;
                     var pairDiameter = Mathf.Clamp(
-                        (states[a].Scale + states[b].Scale) * GoblinPreviewAssets.ContactRadiusPerScale * 1.04f,
+                        (states[a].Scale + states[b].Scale) * HordePreviewSettings.ContactRadiusPerScale * 1.04f,
                         collisionDiameter * 0.82f,
                         collisionDiameter * 1.55f);
                     var fraction = 1f - Vector2.Distance(states[a].Position, states[b].Position) / pairDiameter;
