@@ -470,7 +470,7 @@ namespace TowerDefense.Tests
             Assert.That(material.HasProperty("_RareColor"), Is.True);
             Assert.That(material.HasProperty("_PackingScale"), Is.True);
             Assert.That(material.HasProperty("_VisualScaleMultiplier"), Is.True);
-            Assert.That(material.GetFloat("_PackingScale"), Is.EqualTo(1.04f).Within(0.001f));
+            Assert.That(material.GetFloat("_PackingScale"), Is.EqualTo(1.18f).Within(0.001f));
             Object.DestroyImmediate(material);
         }
 

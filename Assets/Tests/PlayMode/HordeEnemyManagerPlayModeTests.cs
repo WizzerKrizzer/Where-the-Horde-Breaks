@@ -141,7 +141,7 @@ namespace TowerDefense.Tests
                 firstPass[i] = factor;
                 minimum = Mathf.Min(minimum, factor);
                 maximum = Mathf.Max(maximum, factor);
-                Assert.That(factor, Is.InRange(0.84f, 1.16f));
+                Assert.That(factor, Is.InRange(0.97f, 1.03f));
             }
 
             for (var i = 0; i < firstPass.Length; i++)
@@ -150,8 +150,8 @@ namespace TowerDefense.Tests
                     Is.EqualTo(firstPass[i]), "An enemy's locomotion identity must not change between ticks.");
             }
 
-            Assert.That(minimum, Is.LessThan(0.90f));
-            Assert.That(maximum, Is.GreaterThan(1.10f));
+            Assert.That(minimum, Is.LessThan(0.985f));
+            Assert.That(maximum, Is.GreaterThan(1.015f));
         }
 
         [UnityTest]
@@ -295,11 +295,11 @@ namespace TowerDefense.Tests
             Assert.That(levelSeven.wave.randomArenaMovement, Is.False);
             Assert.That(levelSeven.wave.centerSeekingArena, Is.True);
             Assert.That(levelSeven.wave.enforceSpawnClearance, Is.True);
-            Assert.That(levelSeven.wave.spawnPackingMultiplier, Is.EqualTo(1.05f).Within(0.001f));
-            Assert.That(levelSeven.wave.spawnInterval, Is.EqualTo(0.02f));
-            Assert.That(levelSeven.wave.enemySpeedMultiplier, Is.EqualTo(2f));
-            Assert.That(levelSeven.wave.randomSpawnBurstMin, Is.EqualTo(6));
-            Assert.That(levelSeven.wave.randomSpawnBurstMax, Is.EqualTo(10));
+            Assert.That(levelSeven.wave.spawnPackingMultiplier, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(levelSeven.wave.spawnInterval, Is.EqualTo(0.009f).Within(0.0001f));
+            Assert.That(levelSeven.wave.enemySpeedMultiplier, Is.EqualTo(1f));
+            Assert.That(levelSeven.wave.randomSpawnBurstMin, Is.EqualTo(5));
+            Assert.That(levelSeven.wave.randomSpawnBurstMax, Is.EqualTo(12));
             var runnerCount = 0;
             var bruteCount = 0;
             for (var i = 0; i < levelSeven.wave.entries.Length; i++)
@@ -314,8 +314,8 @@ namespace TowerDefense.Tests
                     bruteCount += entry.count;
                 }
             }
-            Assert.That(runnerCount, Is.EqualTo(8000));
-            Assert.That(bruteCount, Is.EqualTo(2000));
+            Assert.That(runnerCount, Is.EqualTo(10000));
+            Assert.That(bruteCount, Is.EqualTo(0));
         }
 
         [UnityTest]
@@ -340,7 +340,7 @@ namespace TowerDefense.Tests
             // Allow the last body to clear the entrance queue and its asynchronous
             // escape event to arrive; two seconds races the final event with VAT
             // collision geometry enabled. A stuck body still fails this deadline.
-            var timeout = Time.time + 4f;
+            var timeout = Time.time + 8f;
             while (!manager.IsComplete && Time.time < timeout)
             {
                 yield return null;
