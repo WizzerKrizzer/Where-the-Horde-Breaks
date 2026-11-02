@@ -397,6 +397,11 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer xpbdPairs;
         private readonly GraphicsBuffer xpbdPairCount;
         private readonly GraphicsBuffer xpbdPairDispatchArgs;
+        private readonly GraphicsBuffer auxiliary;
+        private readonly GraphicsBuffer corpseArgs;
+        private readonly Material corpseMaterial;
+        private readonly Mesh corpseMesh;
+        private readonly uint[] corpseDrawArgs = new uint[5];
         private readonly GraphicsBuffer xpbdCorrectionX;
         private readonly GraphicsBuffer xpbdCorrectionY;
         private readonly GraphicsBuffer xpbdCorrectionCounts;
@@ -522,7 +527,18 @@ namespace TowerDefense.Runtime
             compute.SetFloat("_XpbdBodyRadiusPerVisualScale", Mathf.Clamp(solverProfile.bodyRadiusPerVisualScale, 0.1f, 1f));
             compute.SetFloat("_FlowAcceleration", Mathf.Max(0.1f, solverProfile.propulsionAcceleration));
             compute.SetFloat("_VelocityDamping", Mathf.Max(0.01f, solverProfile.velocityDamping));
+            compute.SetFloat("_KnockbackDamping", KnockbackDamping);
+            compute.SetFloat("_ImpulseTransfer", ImpulseTransfer);
         }
+
+        /// <summary>Decay rate (1/s) of the single knockback channel.</summary>
+        public const float KnockbackDamping = 1.8f;
+
+        /// <summary>Neighbour impulse exchange; 0 keeps knockback body-local until the pair pass uses it.</summary>
+        public const float ImpulseTransfer = 0f;
+
+        /// <summary>Ring-buffer size of the GPU corpse layer.</summary>
+        public const int CorpseCapacity = 16384;
 
         /// <summary>
         /// Advances one exact simulation tick. Tests use this instead of a render
@@ -673,6 +689,26 @@ namespace TowerDefense.Runtime
             xpbdPairs = new GraphicsBuffer(GraphicsBuffer.Target.Structured, xpbdPairCapacity, Marshal.SizeOf<XpbdPair>());
             xpbdPairCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
             xpbdPairDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
+            var corpseBase = 1 + capacity * 2;
+            auxiliary = new GraphicsBuffer(GraphicsBuffer.Target.Structured, corpseBase + CorpseCapacity * 4, sizeof(int));
+            auxiliary.SetData(new int[corpseBase + CorpseCapacity * 4]);
+            var corpseShader = Resources.Load<Shader>("HordeCorpse");
+            corpseMesh = lowDetailMesh;
+            if (corpseShader != null && corpseMesh != null)
+            {
+                corpseMaterial = new Material(corpseShader);
+                corpseMaterial.SetColor("_Color", PlaceholderPalette.Grey(0.22f));
+                corpseMaterial.SetBuffer("_Aux", auxiliary);
+                corpseMaterial.SetInt("_CorpseBase", corpseBase);
+                corpseArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+                corpseDrawArgs[0] = corpseMesh.GetIndexCount(0);
+                corpseDrawArgs[1] = (uint)CorpseCapacity;
+                corpseDrawArgs[2] = corpseMesh.GetIndexStart(0);
+                corpseDrawArgs[3] = (uint)corpseMesh.GetBaseVertex(0);
+                corpseArgs.SetData(corpseDrawArgs);
+            }
+            compute.SetInt("_CorpseCapacity", CorpseCapacity);
+            compute.SetInt("_CorpseBase", corpseBase);
             xpbdCorrectionX = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
             xpbdCorrectionY = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
             xpbdCorrectionCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
@@ -762,6 +798,10 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(finalizeActiveKernel, "_ActiveDispatchArgs", activeDispatchArgs);
             compute.SetBuffer(simulateKernel, "_Controls", controls);
             compute.SetBuffer(simulateKernel, "_Impulses", impulses);
+            foreach (var kernel in new[] { simulateKernel, projectileKernel, unlimitedAreaEffectsKernel, solveXpbdPairsKernel })
+            {
+                compute.SetBuffer(kernel, "_Aux", auxiliary);
+            }
             compute.SetBuffer(simulateKernel, "_FlowVectors", flowVectors);
             compute.SetBuffer(simulateKernel, "_FlowData", flowData);
             compute.SetBuffer(simulateKernel, "_CellCountsRead", cellCounts);
@@ -1758,6 +1798,20 @@ namespace TowerDefense.Runtime
             variantProperties.SetBuffer("_VisibleIndices", visibleIndices);
             variantLodProperties.SetBuffer("_AgentStates", readStates);
             variantLodProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            if (corpseMaterial != null)
+            {
+                Graphics.DrawMeshInstancedIndirect(
+                    corpseMesh,
+                    0,
+                    corpseMaterial,
+                    drawBounds,
+                    corpseArgs,
+                    0,
+                    null,
+                    ShadowCastingMode.Off,
+                    false,
+                    layer);
+            }
             Graphics.DrawMeshInstancedIndirect(
                 stableRenderMesh,
                 0,
@@ -1885,6 +1939,9 @@ namespace TowerDefense.Runtime
             xpbdPairs?.Dispose();
             xpbdPairCount?.Dispose();
             xpbdPairDispatchArgs?.Dispose();
+            auxiliary?.Dispose();
+            corpseArgs?.Dispose();
+            if (corpseMaterial != null) UnityEngine.Object.Destroy(corpseMaterial);
             xpbdCorrectionX?.Dispose();
             xpbdCorrectionY?.Dispose();
             xpbdCorrectionCounts?.Dispose();

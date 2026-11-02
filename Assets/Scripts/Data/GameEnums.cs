@@ -100,4 +100,15 @@ namespace TowerDefense.Data
         UnlockTower,
         UnlockEra
     }
+
+    /// <summary>The six eras of the campaign. TowerDefinition.eraIndex stores the value.</summary>
+    public enum EraId
+    {
+        Prehistoric = 0,
+        Medieval = 1,
+        Gunpowder = 2,
+        Industrial = 3,
+        Electric = 4,
+        Future = 5
+    }
 }

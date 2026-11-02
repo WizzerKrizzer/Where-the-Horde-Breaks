@@ -167,6 +167,98 @@ namespace TowerDefense.Tests
             }
         }
 
+        private static readonly int[] ImpactAgentCounts = { 1000, 100000 };
+
+        [UnityTest, Explicit("Run explicitly for GPU capacity measurements.")]
+        [Category("Performance")]
+        public IEnumerator MeasureGpuHordeWithPeriodicImpacts()
+        {
+            Assert.That(SystemInfo.supportsComputeShaders, Is.True, "A compute-capable graphics device is required.");
+            var field = new HordeFlowField(BuildBenchmarkRoute(), null, 2.31f, 0.62f);
+            var spawnCells = CollectWalkableCells(field);
+            var mesh = EnemyManager.GetDetailedEnemyMesh();
+            var results = new List<BenchmarkResult>();
+
+            foreach (var count in ImpactAgentCounts)
+            {
+                Assert.That(GpuHordeSimulation.TryCreate(count, field, mesh, out var simulation), Is.True);
+                var states = BuildStates(count, spawnCells, field);
+                var controls = Enumerable.Repeat(new Vector4(4.8f, 1f, 0f, 0f), count).ToArray();
+                simulation.SpawnBatch(states, count);
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count]);
+                yield return null;
+
+                for (var frame = 0; frame < 20; frame++)
+                {
+                    simulation.Dispatch(1f / 60f, null, null);
+                    simulation.Draw(mesh, 0);
+                    yield return null;
+                }
+
+                // Every 30 frames one shockwave-style area push and one catapult-style splash hit.
+                var samples = new Samples();
+                for (var frame = 0; frame < 240; frame++)
+                {
+                    if (frame % 30 == 0)
+                    {
+                        var target = spawnCells[(frame / 30 * 97) % spawnCells.Count];
+                        simulation.QueueAreaEffect(target, 6f, 0f, 12f, 1, 0f, 0f, 1);
+                        simulation.QueueProjectile(target, target + Vector3.right * 0.05f, 3f, 5f, 2f, 100000, true, true);
+                    }
+
+                    var allocated = GC.GetAllocatedBytesForCurrentThread();
+                    var start = Stopwatch.GetTimestamp();
+                    simulation.Dispatch(1f / 60f, null, null);
+                    var dispatchMs = ElapsedMs(start);
+                    start = Stopwatch.GetTimestamp();
+                    simulation.Draw(mesh, 0);
+                    var drawMs = ElapsedMs(start);
+                    samples.dispatchMs.Add(dispatchMs);
+                    samples.drawMs.Add(drawMs);
+                    samples.submitMs.Add(dispatchMs + drawMs);
+                    samples.allocations.Add(GC.GetAllocatedBytesForCurrentThread() - allocated);
+                    FrameTimingManager.CaptureFrameTimings();
+                    yield return null;
+                    CaptureFrame(samples);
+                }
+
+                results.Add(new BenchmarkResult
+                {
+                    agents = count,
+                    scenario = "periodic-impacts",
+                    cpuDispatchMs = Average(samples.dispatchMs),
+                    cpuDrawSubmitMs = Average(samples.drawMs),
+                    cpuSubmitP95Ms = Percentile(samples.submitMs, 0.95),
+                    gcBytesPerFrame = Average(samples.allocations),
+                    gpuTotalFrameMs = Average(samples.gpuMs),
+                    gpuTotalP95Ms = Percentile(samples.gpuMs, 0.95),
+                    gpuTotalMaxMs = Max(samples.gpuMs),
+                    cpuFrameMs = Average(samples.cpuFrameMs),
+                    cpuFrameP95Ms = Percentile(samples.cpuFrameMs, 0.95)
+                });
+                simulation.Dispose();
+                yield return null;
+            }
+
+            var report = new BenchmarkReport
+            {
+                device = SystemInfo.graphicsDeviceName,
+                graphicsApi = SystemInfo.graphicsDeviceType.ToString(),
+                unityVersion = Application.unityVersion,
+                utcTimestamp = DateTime.UtcNow.ToString("O"),
+                results = results.ToArray()
+            };
+            var output = Path.Combine(Application.persistentDataPath, "gpu-horde-impact-benchmark.json");
+            File.WriteAllText(output, JsonUtility.ToJson(report, true));
+            foreach (var result in results)
+            {
+                TestContext.Progress.WriteLine(
+                    $"IMPACT {result.agents,6} | dispatch {result.cpuDispatchMs:0.000} ms | draw {result.cpuDrawSubmitMs:0.000} ms | " +
+                    $"submit p95 {result.cpuSubmitP95Ms:0.000} | GPU total {result.gpuTotalFrameMs:0.000} ms p95 {result.gpuTotalP95Ms:0.000} | " +
+                    $"CPU frame {result.cpuFrameMs:0.000} p95 {result.cpuFrameP95Ms:0.000} | gc {result.gcBytesPerFrame:0}");
+            }
+        }
+
         private static void MeasureSubmit(Samples samples, Action action)
         {
             var allocated = GC.GetAllocatedBytesForCurrentThread();

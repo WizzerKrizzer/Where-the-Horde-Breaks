@@ -330,5 +330,130 @@ namespace TowerDefense.Tests
             }
             simulation.Dispose();
         }
+    
+
+        [UnityTest]
+        public IEnumerator ProjectileKnockback_ReturnsToFlowWithoutBodyOverlap()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(300f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            const int count = 12;
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                states[i] = new GpuHordeSimulation.AgentState
+                {
+                    Position = new Vector2(-6f + (i / 3) * 0.7f, (i % 3 - 1) * 0.5f),
+                    Scale = 0.34f,
+                    Status = 1,
+                    Health = 100f,
+                    Progress = -16f + i * 0.1f,
+                    SlowMultiplier = 1f,
+                    Mass = 1f
+                };
+                controls[i] = new Vector4(3.84f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueProjectile(
+                new Vector3(-8f, 0f, 0.25f), new Vector3(-5.3f, 0f, 0.25f), 0.6f, 1f, 0.5f, 8, true, true), Is.True);
+
+            var settled = new GpuHordeSimulation.AgentState[count];
+            for (var frame = 0; frame < 900; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count]);
+                if (frame == 420)
+                {
+                    simulation.ReadStatesSynchronous(settled, count);
+                }
+
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+
+            for (var i = 0; i < count; i++)
+            {
+                Assert.That(states[i].Status, Is.EqualTo(1), $"Agent {i} did not survive the knockback test.");
+                Assert.That(field.IsWalkable(new Vector3(states[i].Position.x, 0f, states[i].Position.y)), Is.True,
+                    $"Agent {i} was knocked off the road and never returned.");
+                Assert.That(states[i].Position.x - settled[i].Position.x, Is.GreaterThan(0.5f),
+                    $"Agent {i} did not resume forward flow after the knockback decayed.");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ProjectileKnockback_LeavesNoDeepBodyOverlapAfterSettling()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(300f, 0f, 0f) },
+                null,
+                2.31f,
+                0.62f);
+            const int count = 24;
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                states[i] = new GpuHordeSimulation.AgentState
+                {
+                    Position = new Vector2(-6f + (i / 4) * 0.69f, (i % 4 - 1.5f) * 0.55f),
+                    Scale = 0.34f,
+                    Status = 1,
+                    Health = 100f,
+                    Progress = -16f + i * 0.1f,
+                    SlowMultiplier = 1f,
+                    Mass = 1f
+                };
+                controls[i] = new Vector4(3.84f, 1f, 0f, 0f);
+            }
+
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            simulation.SpawnBatch(states, count);
+            Assert.That(simulation.QueueProjectile(
+                new Vector3(-8f, 0f, 0f), new Vector3(-4.5f, 0f, 0f), 0.8f, 1f, 3f, 24, true, true), Is.True);
+
+            for (var frame = 0; frame < 480; frame++)
+            {
+                simulation.Dispatch(1f / 60f, controls, new Vector2[count]);
+                if ((frame & 15) == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.ReadStatesSynchronous(states, count);
+            simulation.Dispose();
+
+            var closest = float.MaxValue;
+            for (var i = 0; i < count; i++)
+            {
+                for (var j = i + 1; j < count; j++)
+                {
+                    closest = Mathf.Min(closest, Vector2.Distance(states[i].Position, states[j].Position));
+                }
+            }
+
+            Assert.That(closest, Is.GreaterThan(0.42f), $"Bodies overlap after the knockback settled ({closest:0.000} m).");
+        }
     }
 }

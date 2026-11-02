@@ -347,32 +347,32 @@ namespace TowerDefense.Runtime
             var archer = CreateTower("archer", "Archer Tower", TowerRole.ArcherLine,
                 "Reliable rapid-fire turret. Good against steady streams and weak enemies, but struggles with heavy targets.",
                 "Weak against high-health enemies and dense waves once too many targets pass through at once.",
-                0, 1, 7f, 4.2f, 1f / 2.3f, 18f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 7f, 4.2f, 1f / 2.3f, 18f, PlaceholderPalette.Tower);
             archer.canHitFlying = true;
             var ballista = CreateTower("ballista", "Ballista", TowerRole.ArtilleryLine,
                 "Long-range heavy hitter. Excellent against brutes and priority targets, but its slow rate can waste shots on swarms.",
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
-                0, 1, 11f, 16f, 1f / 0.7f, 14f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 11f, 16f, 1f / 0.7f, 14f, PlaceholderPalette.Tower);
             ballista.canHitFlying = true;
             var bell = CreateTower("bell", "Bell Tower", TowerRole.ControlLine,
                 "A lookout and alarm tower. Once tuned, its ringing slows a capped amount of enemies in its radius.",
                 "Weak against very dense hordes until its slow capacity is upgraded.",
-                0, 1, 6.5f, 2.4f, 0.24f, 22f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 6.5f, 2.4f, 0.24f, 22f, PlaceholderPalette.Tower);
             bell.behavior = TowerBehavior.SlowAura;
             var catapult = CreateTower("catapult", "Catapult", TowerRole.ArtilleryLine,
                 "Throws boulders in a high arc. When a boulder lands, it damages enemies in an area and knocks survivors outward.",
                 "Weak against single fast enemies because the shot lands where the target was when fired.",
-                0, 1, 9.5f, 7.5f, 2.8f, 8.5f, PlaceholderPalette.Tower, ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
+                (int)EraId.Medieval, 1, 9.5f, 7.5f, 2.8f, 8.5f, PlaceholderPalette.Tower, ProjectilePattern.ArcSplash, 1.75f, 1.15f, 1.65f);
             var barrier = CreateTower("barrier", "Timber Barrier", TowerRole.BarrierLine,
                 "A physical barricade that can be placed on the path. It absorbs enemy attacks until destroyed.",
                 "Weak to enemies that specialize in breaking walls, especially orcs.",
-                0, 1, 1.4f, 0f, 1f, 0f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 1.4f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             barrier.behavior = TowerBehavior.Barrier;
             barrier.health = 65f;
             var knightBarracks = CreateTower("knight_barracks", "Knight Barracks", TowerRole.BarracksLine,
                 "Spawns knights that hold the line and fight enemies in melee.",
                 "Weak to enemies that specialize in killing allied troops.",
-                0, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             knightBarracks.behavior = TowerBehavior.Barracks;
             knightBarracks.barracksUnitType = AlliedUnitType.Knight;
             knightBarracks.alliedUnitHealth = 26f;
@@ -383,7 +383,7 @@ namespace TowerDefense.Runtime
             var archerBarracks = CreateTower("archer_barracks", "Archer Post", TowerRole.BarracksLine,
                 "Spawns archers that stand beside the road and fire arrows into the path.",
                 "Weak to future ranged enemies and enemies that bypass the melee line.",
-                0, 1, 3.8f, 0f, 1f, 0f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 3.8f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             archerBarracks.behavior = TowerBehavior.Barracks;
             archerBarracks.barracksUnitType = AlliedUnitType.Archer;
             archerBarracks.alliedUnitCanHitFlying = true;
@@ -396,7 +396,7 @@ namespace TowerDefense.Runtime
             var paladinBarracks = CreateTower("paladin_barracks", "Paladin Chapter", TowerRole.BarracksLine,
                 "Spawns a durable paladin. Paladins take more space but bring higher defense.",
                 "Weak because each paladin takes extra capacity and respawns slowly.",
-                0, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
+                (int)EraId.Medieval, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             paladinBarracks.behavior = TowerBehavior.Barracks;
             paladinBarracks.barracksUnitType = AlliedUnitType.Paladin;
             paladinBarracks.barracksCapacity = 2;

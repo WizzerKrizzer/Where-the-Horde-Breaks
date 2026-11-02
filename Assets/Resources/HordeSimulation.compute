@@ -227,6 +227,14 @@ uint _SpawnStart;
 uint _SpawnCount;
 uint _SpawnHasControls;
 RWStructuredBuffer<float2> _Impulses;
+// One shared auxiliary buffer keeps kernels within the 8-UAV limit:
+//   [0]                       corpse ring cursor
+//   [1 + 2i], [2 + 2i]        fixed-point knockback exchanged by contact pairs (agent i)
+//   [_CorpseBase + 4s ..]     corpse slot s: position x, position y, scale, valid (float bits)
+// The corpse ring is presentation only and never takes part in the XPBD contact solve.
+RWStructuredBuffer<int> _Aux;
+uint _CorpseCapacity;
+uint _CorpseBase;
 StructuredBuffer<float4> _FlowVectors;
 StructuredBuffer<float4> _FlowData;
 RWStructuredBuffer<uint> _CellCounts;
@@ -324,6 +332,10 @@ float _CollisionDiameter;
 uint _AnimatedGoblin;
 float _FlowAcceleration;
 float _VelocityDamping;
+// Single decay rate for the shared knockback channel (projectiles, impulses, shockwaves).
+float _KnockbackDamping;
+// Fraction of an over-threshold knockback difference exchanged between XPBD contact pairs.
+float _ImpulseTransfer;
 float _MovementSpeedMultiplier;
 float _ShockwavePropagationSpeed;
 // The fixed-step XPBD contract is configured from CrowdSolverProfile.
@@ -350,6 +362,18 @@ void EmitDetailedEvent(uint objectIndex, uint eventType, float value, uint gener
         result.padding = 0.0;
         _HordeEvents[eventIndex] = result;
     }
+}
+
+void RecordCorpse(AgentState state)
+{
+    if (_CorpseCapacity == 0u) return;
+    int cursor;
+    InterlockedAdd(_Aux[0], 1, cursor);
+    uint offset = _CorpseBase + ((uint)cursor % _CorpseCapacity) * 4u;
+    _Aux[offset] = asint(state.position.x);
+    _Aux[offset + 1u] = asint(state.position.y);
+    _Aux[offset + 2u] = asint(state.scale);
+    _Aux[offset + 3u] = asint(1.0);
 }
 
 void EmitEvent(uint agentIndex, uint eventType, float value)
@@ -1119,6 +1143,7 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             {
                 state.health = 0.0;
                 state.status = 3u;
+                RecordCorpse(state);
                 EmitEvent(agentIndex, 1u, appliedDamage);
             }
             else
@@ -1224,12 +1249,13 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                         float2 offset = state.position - command.end;
                         float offsetLength = length(offset);
                         float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
-                        state.velocity += direction * command.knockback * 5.0;
+                        state.knockbackVelocity += direction * command.knockback * 5.0;
                         state.padding = max(state.padding, 0.55);
                     }
                     if (state.health <= 0.0)
                     {
                         state.status = 3u;
+                        RecordCorpse(state);
                         EmitEvent(agentIndex, 1u, appliedDamage);
                     }
                     else
@@ -1704,6 +1730,7 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
                     if (state.health <= 0.0)
                     {
                         state.status = 3u;
+                        RecordCorpse(state);
                         EmitEvent(index, 1u, thornDamage);
                         _StatesWrite[index] = state;
                         return;
@@ -1741,7 +1768,10 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     float2 impulse = _Impulses[index];
     _Impulses[index] = 0.0;
     state.knockbackVelocity += impulse;
-    state.knockbackVelocity *= exp(-simulationDelta * 1.8);
+    state.knockbackVelocity += float2(_Aux[1u + index * 2u], _Aux[2u + index * 2u]) * 0.000001;
+    _Aux[1u + index * 2u] = 0;
+    _Aux[2u + index * 2u] = 0;
+    state.knockbackVelocity *= exp(-simulationDelta * (_KnockbackDamping > 0.0 ? _KnockbackDamping : 1.8));
     if (shockwaveRiding)
     {
         float2 shockwaveOffset = state.position - state.shockwaveCenter;
@@ -2074,6 +2104,25 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         firstGradient = -normal;
         secondGradient = normal;
         inverseSecond = rcp(max(0.1, second.mass));
+        if (_ImpulseTransfer > 0.0 && constraint < 0.0)
+        {
+            // Overlapping bodies share only the knockback that exceeds a small
+            // threshold along the contact normal, so a hit propagates through
+            // the mass instead of leaving the neighbour untouched.
+            float closing = dot(first.knockbackVelocity - second.knockbackVelocity, normal);
+            float excess = closing - 0.5;
+            if (excess > 0.0)
+            {
+                float exchange = _ImpulseTransfer * excess / max(0.000001, inverseFirst + inverseSecond);
+                float2 firstDelta = -normal * exchange * inverseFirst;
+                float2 secondDelta = normal * exchange * inverseSecond;
+                const float knockbackScale = 1000000.0;
+                InterlockedAdd(_Aux[1u + pair.first * 2u], (int)round(firstDelta.x * knockbackScale));
+                InterlockedAdd(_Aux[2u + pair.first * 2u], (int)round(firstDelta.y * knockbackScale));
+                InterlockedAdd(_Aux[1u + pair.second * 2u], (int)round(secondDelta.x * knockbackScale));
+                InterlockedAdd(_Aux[2u + pair.second * 2u], (int)round(secondDelta.y * knockbackScale));
+            }
+        }
     }
     float appliedLambda;
     if (_XpbdContactCompliance <= 0.0)
