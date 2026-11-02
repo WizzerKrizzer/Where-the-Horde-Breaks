@@ -971,6 +971,29 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(finalizeXpbdPersistentContactsKernel, "_Diagnostics", diagnostics);
         }
 
+        private static readonly List<GpuHordeSimulation> LiveSimulations = new List<GpuHordeSimulation>();
+
+        /// <summary>
+        /// Disposes simulations that were never released, for example by a test that
+        /// failed an assertion before its own Dispose call. Returns how many leaked.
+        /// </summary>
+        internal static int DisposeLeakedSimulations()
+        {
+            var leaked = 0;
+            for (var i = LiveSimulations.Count - 1; i >= 0; i--)
+            {
+                var simulation = LiveSimulations[i];
+                if (simulation != null && !simulation.disposed)
+                {
+                    leaked++;
+                    simulation.Dispose();
+                }
+            }
+
+            LiveSimulations.Clear();
+            return leaked;
+        }
+
         public static bool TryCreate(int capacity, HordeFlowField field, Mesh mesh, out GpuHordeSimulation simulation)
         {
             simulation = null;
@@ -982,6 +1005,7 @@ namespace TowerDefense.Runtime
             try
             {
                 simulation = new GpuHordeSimulation(capacity, field, mesh);
+                LiveSimulations.Add(simulation);
                 return true;
             }
             catch (Exception exception)
@@ -1890,6 +1914,7 @@ namespace TowerDefense.Runtime
             }
 
             disposed = true;
+            LiveSimulations.Remove(this);
             // Domain reload can otherwise release a GraphicsBuffer while one of
             // its callbacks is still copying native data into managed memory.
             AsyncGPUReadback.WaitAllRequests();

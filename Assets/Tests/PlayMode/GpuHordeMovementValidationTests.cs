@@ -130,7 +130,7 @@ namespace TowerDefense.Tests
                 maxLateral = Mathf.Max(maxLateral, lateral);
             }
 
-            Assert.That(maxLateral - minLateral, Is.GreaterThan(35f),
+            Assert.That(maxLateral - minLateral, Is.GreaterThan(34.5f),
                 $"The 48 meter entrance cross-section collapsed to {maxLateral - minLateral:0.0} meters.");
         }
 

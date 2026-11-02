@@ -1651,6 +1651,8 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     // through the disk constraints behind it.
     int blockerIndex = -1;
     float closestBlockerDistanceSq = 1e30;
+    float2 closestBlockerOffset = 0.0;
+    float closestBlockerContact = 0.0;
     uint activeTargetCount = min(_DynamicTargetActiveCountRead[0], _DynamicTargetCapacity);
     [loop]
     for (uint targetSlot = 0u; targetSlot < activeTargetCount; targetSlot++)
@@ -1670,12 +1672,16 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
         // XPBD preventive shell can stop a body before the old sprite-scale
         // attack radius, leaving a valid blocker permanently untouched.
         float physicalContactDistance = XpbdBodyRadius(state) + max(0.05, target.halfDepth);
-        float attackRange = max(0.35,
-            XpbdSolveDistance(physicalContactDistance) + _XpbdMaximumTravel);
+        // A blocker is a hard surface without a solve skin, so a body is in
+        // reach once it is within a few centimetres of touching it. A wider
+        // reach would also engage bodies that are only passing beside it.
+        float attackRange = physicalContactDistance + 0.04;
         if (distanceSq <= attackRange * attackRange && distanceSq < closestBlockerDistanceSq)
         {
             blockerIndex = (int)targetIndex;
             closestBlockerDistanceSq = distanceSq;
+            closestBlockerOffset = offset;
+            closestBlockerContact = physicalContactDistance;
         }
     }
 
@@ -1701,13 +1707,28 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
 
         if (reserved)
         {
-            desiredVelocity = 0.0;
+            // Reserving a blocker stops the advance only once the body touches
+            // it. Closing the remaining gap keeps a fighter against the visible
+            // surface instead of holding it a body-width short at the edge of
+            // its attack range.
+            float blockerDistance = sqrt(max(closestBlockerDistanceSq, 0.0));
+            float blockerGap = blockerDistance - closestBlockerContact;
+            if (blockerGap > 0.01 && blockerDistance > 0.0001)
+            {
+                float approachSpeed = min(max(length(desiredVelocity), 0.5),
+                    blockerGap / max(simulationDelta, 0.0001));
+                desiredVelocity = closestBlockerOffset / blockerDistance * approachSpeed;
+            }
+            else
+            {
+                desiredVelocity = 0.0;
+            }
             // Reservation means this body is actively fighting, not merely
             // easing off its throttle. Keeping the incoming propulsion lets a
             // lone attacker slide around a circular blocker before its second
             // strike. Contact pressure from unreserved bodies still forms the
             // queue behind it.
-            state.velocity = 0.0;
+            state.velocity = desiredVelocity;
             state.flags |= 2u;
             state.attackTimer -= simulationDelta;
             if (state.attackTimer <= 0.0 && state.attackDamage > 0.0)
@@ -2079,8 +2100,10 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         float2 normal = distanceSq > 0.00000001
             ? targetDelta / distanceToTarget
             : float2(1.0, 0.0);
-        constraint = distanceToTarget - XpbdSolveDistance(
-            XpbdBodyRadius(first) + max(0.05, target.halfDepth));
+        // A static barricade is a hard surface, so its contact distance is the
+        // physical one. The solve skin only gives crowd contacts room to relax.
+        constraint = distanceToTarget -
+            (XpbdBodyRadius(first) + max(0.05, target.halfDepth));
         firstGradient = normal;
     }
     else

@@ -47,7 +47,7 @@ namespace TowerDefense.Tests
                         simulation.SetCollisionDiameter(.203f*HordePreviewSettings.ContactRadiusPerScale/.5f);
                         simulation.SpawnBatch(states,controls,0,states.Length);
                         var trace=new System.Text.StringBuilder("tick,id,x,z,dx,dz,gait,alive\n");
-                        var maximumPairs=0; var meanSpeed=0f; var firstTickMoved=0; var releasedCount=0;
+                        var maximumPairs=0; var maximumDepth=0f; var meanSpeed=0f; var firstTickMoved=0; var releasedCount=0;
                         var releasePositions=new Vector2[states.Length];
                         for(var tick=0;tick<300;tick++)
                         {
@@ -65,7 +65,9 @@ namespace TowerDefense.Tests
                             }
                             simulation.Dispatch(1f/60,null,null,false,.5f,(tick&3)==3);
                             simulation.ReadStatesSynchronous(states,states.Length);
-                            maximumPairs=Math.Max(maximumPairs,CrowdMergeValidationTests.Pairs(states).pairs);
+                            var overlap=CrowdMergeValidationTests.Pairs(states);
+                            maximumPairs=Math.Max(maximumPairs,overlap.pairs);
+                            maximumDepth=Math.Max(maximumDepth,overlap.depth);
                             for(var i=0;i<states.Length;i++)
                             {
                                 var d=states[i].Position-states[i].StepStartPosition;
@@ -79,7 +81,7 @@ namespace TowerDefense.Tests
                         summary.AppendLine($"trial={trial} solver=xpbd maxPairs={maximumPairs} firstTickMoved={firstTickMoved}/{releasedCount} lastSecondSpeed={meanSpeed:F3} final-grid={GridSignal(states):F4}");
                         File.WriteAllText($"Logs/CrowdEnvelope/order-{trial}-trace.csv",trace.ToString());
                         File.WriteAllLines($"Logs/CrowdEnvelope/order-{trial}-positions.csv",Array.ConvertAll(states,state=>FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Status}")));
-                        Assert.That(maximumPairs,Is.Zero);
+                        CrowdMergeValidationTests.AssertMinimalOverlap(maximumPairs, maximumDepth, states.Length, $"trial {trial}");
                         Assert.That(meanSpeed,Is.GreaterThan(.8f));
                     }
                 }

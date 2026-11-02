@@ -8,6 +8,8 @@ namespace TowerDefense.Runtime
         public const int DefaultEnabled = 0;
         public const float ContactRadiusPerScale = 1f;
 
-        public static float BodyDiameter(float selfScale, float otherScale) => selfScale + otherScale;
+        // Physical contact diameter of two bodies under the shared crowd solver standard.
+        public static float BodyDiameter(float selfScale, float otherScale) =>
+            (selfScale + otherScale) * TowerDefense.Data.CrowdSolverProfile.DefaultBodyRadiusPerVisualScale;
     }
 }
