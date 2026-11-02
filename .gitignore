@@ -25,3 +25,7 @@ sysinfo.txt
 crashlytics-build.properties
 TestResults-*.xml
 unity-*.log
+
+# Scenes the Unity test runner generates
+Assets/InitTestScene*.unity
+Assets/InitTestScene*.unity.meta
