@@ -722,8 +722,8 @@ namespace TowerDefense.Runtime
             writeStates = stateB;
 
             var emptyStates = new AgentState[capacity];
-            stateA.SetData(emptyStates);
-            stateB.SetData(emptyStates);
+            UploadInChunks(stateA, emptyStates, 0, 0, capacity);
+            UploadInChunks(stateB, emptyStates, 0, 0, capacity);
             projectileHitCounts.SetData(new uint[TrackedProjectileCapacity]);
             agentLastProjectileIds.SetData(new uint[capacity]);
             controls.SetData(new Vector4[capacity]);
@@ -1097,8 +1097,34 @@ namespace TowerDefense.Runtime
             UploadSpawns(states, controlData, startIndex, startIndex, count);
         }
 
+        // D3D12 stages every CPU upload in a 16 MB upload buffer, and a request
+        // larger than that removes the device. A 100K crowd needs 17.2 MB of
+        // agent state, so large uploads are split below this limit.
+        private const int MaximumUploadBytes = 8 * 1024 * 1024;
+
+        private static void UploadInChunks(GraphicsBuffer buffer, AgentState[] data, int source, int destination, int count)
+        {
+            var perChunk = Mathf.Max(1, MaximumUploadBytes / Marshal.SizeOf<AgentState>());
+            for (var offset = 0; offset < count; offset += perChunk)
+            {
+                buffer.SetData(data, source + offset, destination + offset, Mathf.Min(perChunk, count - offset));
+            }
+        }
+
         private void UploadSpawns(AgentState[] states, Vector4[] controlData, int source, int destination, int count)
         {
+            var spawnsPerChunk = Mathf.Max(1, MaximumUploadBytes / Marshal.SizeOf<AgentState>());
+            if (count > spawnsPerChunk)
+            {
+                for (var offset = 0; offset < count; offset += spawnsPerChunk)
+                {
+                    UploadSpawns(states, controlData, source + offset, destination + offset,
+                        Mathf.Min(spawnsPerChunk, count - offset));
+                }
+
+                return;
+            }
+
             // Upload to read-only staging resources. CPU writes to the live UAVs
             // force the driver to synchronize with movement/contact/draw work.
             spawnStates.SetData(states, source, 0, count);

@@ -455,5 +455,49 @@ namespace TowerDefense.Tests
 
             Assert.That(closest, Is.GreaterThan(0.42f), $"Bodies overlap after the knockback settled ({closest:0.000} m).");
         }
+    
+
+        [UnityTest]
+        public IEnumerator HundredThousandAgents_UploadWithoutExceedingTheD3D12UploadLimit()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            // 100K agents of GPU state exceed D3D12's 16 MB upload buffer if sent in one
+            // piece, which removes the device when a Level 5 wave starts.
+            const int count = 100000;
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(300f, 0f, 0f) },
+                null,
+                60f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            var states = new GpuHordeSimulation.AgentState[count];
+            var controls = new Vector4[count];
+            for (var i = 0; i < count; i++)
+            {
+                states[i] = new GpuHordeSimulation.AgentState
+                {
+                    Position = new Vector2(-9f + (i % 500) * 0.3f, ((i / 500) % 200 - 100) * 0.3f),
+                    Scale = 0.34f,
+                    Status = 1,
+                    Health = 10f,
+                    SlowMultiplier = 1f,
+                    Mass = 1f
+                };
+                controls[i] = new Vector4(3f, 1f, 0f, 0f);
+            }
+
+            simulation.SpawnBatch(states, controls, 0, count);
+            yield return null;
+
+            var readback = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(readback, count);
+            simulation.Dispose();
+            Assert.That(readback[count - 1].Status, Is.EqualTo(1), "The last agent of the batch was not uploaded.");
+            Assert.That(readback[count / 2].Scale, Is.EqualTo(0.34f).Within(0.001f));
+        }
     }
 }
