@@ -251,3 +251,28 @@ remain as forensic history but must not replace this passing 19-counter run.
 5. Use the mouse wheel to zoom and right-drag to pan. The live panel reports
    deep/persistent contacts, constraints, occupancy, capacity failures, and
    walkability violations.
+
+## Phase 2/3: knockback unification and corpse layer (2026-11-02)
+
+Changes: projectile knockback uses the shared `knockbackVelocity` channel
+(`_KnockbackDamping`, default 1.8), contact pairs can exchange knockback
+(`_ImpulseTransfer`, currently 0 = off), dead bodies are recorded in a GPU ring
+buffer (16K) drawn with one indirect call. The new buffers share one `_Aux` UAV
+because `Simulate` and `SolveXpbdPairs` are at the 8-UAV limit.
+
+Benchmark `MeasureGpuHordeWithPeriodicImpacts` (shockwave area push + catapult
+splash every 30 frames, 240 frames), RTX 5070 Ti, Direct3D12, batchmode:
+
+| Agents | CPU frame before | CPU frame after | Change |
+|-------:|-----------------:|----------------:|-------:|
+| 1 000 | 0.404 ms | 0.802 ms | within run-to-run noise at this scale |
+| 100 000 | 11.402 ms | 11.333 ms | -0.6% (target: regression <= ~10%) |
+
+"Before" is the Phase 0 simulation (`8e03186`), "after" is Phase 2. GPU frame
+timings were not available in batchmode (reported 0), so only CPU frame time is
+compared. `_ImpulseTransfer` is off, so the neighbour exchange cost is not
+measured yet; repeat with it enabled before turning it on.
+
+Full PlayMode suite: 95 tests, 55 passed, 31 failed. The same 31 failed after
+Phase 0 (and most already failed before the art removal), so Phase 2 added no
+failures.
