@@ -79,8 +79,10 @@ Findings:
   size (ratios 1.4 to 1.6), but the swarm is at the edge at 5 px.
 - At the 360 m maximum zoom only the heavy class (6 px) is recognisable; swarm and runner are
   2 to 3 px and merge into texture.
-- Brightness is a weak channel with the current values: the enemy base reads at 1.13:1
-  against the road, and four brightness steps span only 1.13:1 to 1.48:1.
+- Brightness was a weak channel at first: the enemy base read at only 1.13:1 against the
+  0.40 road. The greybox road is now 0.22, which gives 1.76:1 for a normal enemy and 2.33:1
+  for a slowed one (a 1.32 step between the two states). The table above is size only and
+  unchanged.
 - Crowd count does not change per-enemy size. 1K and 100K screenshots are in
   `Logs/Readability/crowd-*.png` (regenerate with the test).
 

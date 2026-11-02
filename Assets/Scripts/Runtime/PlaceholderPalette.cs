@@ -8,7 +8,7 @@ namespace TowerDefense.Runtime
     {
         public static readonly Color Background = Grey(0.16f);
         public static readonly Color Ground = Grey(0.30f);
-        public static readonly Color Road = Grey(0.40f);
+        public static readonly Color Road = Grey(0.22f);
         public static readonly Color Enemy = Grey(0.55f);
         public static readonly Color Tower = Grey(0.72f);
         public static readonly Color Accent = Grey(0.92f);
