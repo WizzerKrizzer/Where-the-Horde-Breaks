@@ -9,8 +9,11 @@ or decided in Phase 4.2-4.4.
 - Top-down, controlled by `TopDownCameraController`; field of view and min/max zoom
   height come from each level (`LevelDefinition`).
 - Enemy body scale is about 0.34-0.45 m (`EnemyDefinition.visualScale`, spawn scale 0.34).
-- **TBD:** pixels per enemy at 1K and at 100K on screen at 1080p, at min and max zoom.
-  Measured in the greybox readability test (section 4).
+- Orthographic, pitch 75 degrees, field of view 55; the zoom height is the camera height
+  (Level 5: 20 m minimum drag reference, 150 m start, 360 m maximum).
+- Measured at 1080p (`GpuHordeReadabilityTests`, see section 7): an enemy covers about
+  `2400 x scale / zoom height` pixels, independent of crowd size. A scale 0.45 runner is
+  53 px at 20 m, 18 px at 60 m, 7 px at 150 m and 3 px at 360 m.
 
 ## 2. Roles that must read at a glance
 
@@ -58,3 +61,35 @@ decisions (see the vision document). The first production era is prehistoric.
    (prehistoric), compared at 1K and 100K.
 3. Decision and style guide written back into this file and the vision document.
 4. Production for the first era only after step 3.
+
+## 7. Readability measurement (greybox, 2026-11-02)
+
+Rendered through the real GPU draw path, one shared mesh, enemy base brightness 0.55 on a
+0.40 road. Pixel diameter of an isolated enemy:
+
+| zoom height | swarm 0.30 | runner 0.45 | brute 0.70 | heavy 1.00 |
+|---|---|---|---|---|
+| 20 m | 36 px | 53 px | 83 px | 118 px |
+| 60 m | 12 px | 18 px | 28 px | 39 px |
+| 150 m | 5 px | 7 px | 10 px | 16 px |
+| 360 m | 2 px | 3 px | 5 px | 6 px |
+
+Findings:
+- Up to 60 m every class is clear. At the 150 m start height the classes still separate by
+  size (ratios 1.4 to 1.6), but the swarm is at the edge at 5 px.
+- At the 360 m maximum zoom only the heavy class (6 px) is recognisable; swarm and runner are
+  2 to 3 px and merge into texture.
+- Brightness is a weak channel with the current values: the enemy base reads at 1.13:1
+  against the road, and four brightness steps span only 1.13:1 to 1.48:1.
+- Crowd count does not change per-enemy size. 1K and 100K screenshots are in
+  `Logs/Readability/crowd-*.png` (regenerate with the test).
+
+Minimum rules for any style:
+1. A class needs at least 6 px to be recognised: scale >= 0.0025 x zoom height
+   (0.37 at 150 m, 0.9 at 360 m). Smaller classes are only readable when zoomed in.
+2. Neighbouring classes need a size ratio of at least 1.4.
+3. Enemy and road need a luminance contrast of at least 1.5:1; value steps used as a signal
+   (slowed, hit) need at least 1.2:1 between steps.
+4. Because the horde is one mesh and one draw call, class differences must come from scale,
+   brightness and per-instance data. Per-class silhouettes need extra draw calls or an
+   atlas, which the art style decision has to budget for.
