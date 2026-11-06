@@ -3,7 +3,8 @@
   "rootNamespace": "TowerDefense.Tests",
   "references": [
     "TowerDefense.Runtime",
-    "UnityEngine.ParticleSystemModule"
+    "UnityEngine.ParticleSystemModule",
+    "UnityEngine.AnimationModule"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

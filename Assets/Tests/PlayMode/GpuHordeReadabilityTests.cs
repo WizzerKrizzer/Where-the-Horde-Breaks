@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using NUnit.Framework;
@@ -49,6 +50,18 @@ namespace TowerDefense.Tests
                 {
                     other.enabled = false;
                     otherMainCameras.Add(other);
+                }
+            }
+
+            // The game bootstrap builds a level map in every test scene; hide it so only
+            // the ground and units drawn here are visible.
+            var hiddenRenderers = new List<Renderer>();
+            foreach (var renderer in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (renderer.enabled)
+                {
+                    renderer.enabled = false;
+                    hiddenRenderers.Add(renderer);
                 }
             }
 
@@ -185,6 +198,11 @@ namespace TowerDefense.Tests
             renderTarget.Release();
             Object.DestroyImmediate(renderTarget);
             Object.DestroyImmediate(cameraObject);
+            foreach (var renderer in hiddenRenderers)
+            {
+                if (renderer != null) renderer.enabled = true;
+            }
+
             foreach (var other in otherMainCameras)
             {
                 if (other != null) other.enabled = true;
