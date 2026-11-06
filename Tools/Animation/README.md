@@ -1,7 +1,7 @@
 # Character animation tools
 
 These scripts build the slinger's sling throw outside Unity, with Python and Blender. The approved
-result is `Assets/Tests/PlayMode/StyleAssets/Resources/stonehide.fbx`. It is the Meshy "Stonehide
+result is `Assets/Tests/PlayMode/StyleAssets/Resources/Mixamo/stonehide.fbx`. It is the Meshy "Stonehide
 Warrior" with a `Throw` clip and a sling: cords and a pouch on extra bones, plus a `SlingStone`
 bone that is hidden after the release.
 
@@ -25,10 +25,17 @@ to `Logs/StyleDefenders/meshy-warrior`.
 ## Source files
 
 - `stonehide-warrior.glb` (in git): the Meshy model with its rig, textured, with Walking and
-  Running clips. Meshy output belongs to its creator.
+  Running clips. Model created with Meshy.
 
-The Mixamo clips below are ignored because the repository is public and Adobe's terms do not
-allow redistributing raw Mixamo files. Download them again from Mixamo or keep a copy elsewhere.
+## Mixamo files (not in git)
+
+The repository is public, and Adobe's terms do not allow redistributing Mixamo animations as
+files. Anything made with them goes in a folder named `Mixamo`, which the root `.gitignore`
+skips. That includes the built slinger, `Resources/Mixamo/stonehide.fbx`, because its body plays
+the Mixamo "Throw". Keep a copy elsewhere, or download the clips again and rebuild. Without the
+FBX, the `RenderMeshyWarrior` test is skipped.
+
+The clips go in `source/Mixamo/`:
 
 - `mixamo-throw.fbx`: the Mixamo "Throw" clip, without skin, at 30 fps, with no keyframe
   reduction. The slinger's body comes from this clip.

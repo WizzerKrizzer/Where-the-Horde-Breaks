@@ -29,3 +29,8 @@ unity-*.log
 # Scenes the Unity test runner generates
 Assets/InitTestScene*.unity
 Assets/InitTestScene*.unity.meta
+
+# Anything made with Mixamo animations goes in a folder named Mixamo. Adobe's terms do not allow
+# redistributing those files, and this repository is public.
+**/Mixamo/
+**/Mixamo.meta

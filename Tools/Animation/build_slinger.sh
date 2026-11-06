@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Rebuilds the approved slinger (Meshy "Stonehide Warrior" + Mixamo "Throw" body + overhead whirl,
-# variant B spin-down) into Assets/Tests/PlayMode/StyleAssets/Resources/stonehide.fbx.
+# variant B spin-down) into Assets/Tests/PlayMode/StyleAssets/Resources/Mixamo/stonehide.fbx.
 #
 #   Tools/Animation/build_slinger.sh            # build and install
 #   NO_INSTALL=1 Tools/Animation/build_slinger.sh   # build into Tools/Animation/work only
 #
 # Needs Blender 5.2 and a Python with numpy, scipy and Pillow (the TRELLIS venv has them).
-# The source files in Tools/Animation/source are not in git (see README.md).
+# The Mixamo files in Tools/Animation/source/Mixamo are not in git (see README.md).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -17,11 +17,14 @@ WORK=$(cd "$HERE/work" && pwd -W)
 SRC=$(cd "$HERE/source" && pwd -W)
 
 "$BLENDER" -b --factory-startup -P "$HERE/meshy/dump_rest.py" -- "$SRC/stonehide-warrior.glb" "$WORK/rest.json"
-"$BLENDER" -b --factory-startup -P "$HERE/meshy/mix_dump.py" -- "$SRC/mixamo-throw.fbx" "$WORK/mixamo-throw.json"
+"$BLENDER" -b --factory-startup -P "$HERE/meshy/mix_dump.py" -- "$SRC/Mixamo/mixamo-throw.fbx" "$WORK/mixamo-throw.json"
 SPIN_DOWN=0.55 "$PY" "$HERE/meshy/combo.py" "$WORK/rest.json" "$WORK/mixamo-throw.json" "$WORK/throw.json"
 "$BLENDER" -b --factory-startup -P "$HERE/meshy/build_throw.py" -- "$SRC/stonehide-warrior.glb" "$WORK/throw.json" "$WORK/stonehide.fbx" "$WORK/stonehide.png"
 
 if [ -z "${NO_INSTALL:-}" ]; then
-    cp "$HERE/work/stonehide.fbx" "$HERE/work/stonehide.png" "$ROOT/Assets/Tests/PlayMode/StyleAssets/Resources/"
+    RES="$ROOT/Assets/Tests/PlayMode/StyleAssets/Resources"
+    mkdir -p "$RES/Mixamo"
+    cp "$HERE/work/stonehide.fbx" "$RES/Mixamo/"
+    cp "$HERE/work/stonehide.png" "$RES/"
     echo "Installed stonehide.fbx and stonehide.png"
 fi

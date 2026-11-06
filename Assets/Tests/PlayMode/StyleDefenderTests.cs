@@ -535,10 +535,11 @@ namespace TowerDefense.Tests
             var groundShader = Shader.Find("TowerDefense/StyleGround");
             var skinnedShader = Shader.Find("TowerDefense/StyleSkinned");
             Assert.That(skinnedShader, Is.Not.Null);
-            var prefab = Resources.Load<GameObject>("stonehide");
-            Assert.That(prefab, Is.Not.Null);
+            // Its body motion comes from Mixamo, so the FBX is not in git (see Tools/Animation).
+            var prefab = Resources.Load<GameObject>("Mixamo/stonehide");
+            if (prefab == null) Assert.Ignore("Mixamo/stonehide.fbx is missing. Build it with Tools/Animation/build_slinger.sh.");
             var clips = new List<AnimationClip>();
-            foreach (var item in Resources.LoadAll<AnimationClip>("stonehide"))
+            foreach (var item in Resources.LoadAll<AnimationClip>("Mixamo/stonehide"))
             {
                 if (!item.name.StartsWith("__preview__")) clips.Add(item);
             }
