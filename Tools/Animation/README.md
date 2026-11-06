@@ -22,13 +22,14 @@ TRELLIS venv at `C:/AI/trellis/.venv`. Set the `BLENDER` and `PYTHON` environmen
 use others. To see the result, run the Unity PlayMode test `RenderMeshyWarrior`. Its renders go
 to `Logs/StyleDefenders/meshy-warrior`.
 
-## Source files (not in git)
+## Source files
 
-`source/` is ignored because the repository is public. The raw Mixamo and Meshy downloads should
-not be redistributed as standalone files. Keep a copy elsewhere.
+- `stonehide-warrior.glb` (in git): the Meshy model with its rig, textured, with Walking and
+  Running clips. Meshy output belongs to its creator.
 
-- `stonehide-warrior.glb`: the Meshy model with its rig, textured, with Walking and Running
-  clips.
+The Mixamo clips below are ignored because the repository is public and Adobe's terms do not
+allow redistributing raw Mixamo files. Download them again from Mixamo or keep a copy elsewhere.
+
 - `mixamo-throw.fbx`: the Mixamo "Throw" clip, without skin, at 30 fps, with no keyframe
   reduction. The slinger's body comes from this clip.
 - `mixamo-throw-object.fbx`, `mixamo-shooting-arrow.fbx`, `mixamo-goalie-throw.fbx`,
