@@ -28,6 +28,14 @@ namespace TowerDefense.Data
         public ProjectilePattern projectilePattern = ProjectilePattern.Direct;
         public float splashRadius;
         public float knockbackDistance;
+        // The shot flies on along its line past the target, through everything in its way
+        // (Ballista, Spear Throwers); how many it can hit is pierce + 1.
+        public bool flyThroughShot;
+        // Charge towers (TowerBehavior.Charge): how far along the road the beast runs, how fast,
+        // and how wide it hits. damage is what one charge deals to each enemy it runs over.
+        public float chargeDistance = 14f;
+        public float chargeSpeed = 9f;
+        public float chargeRadius = 1.7f;
         public float arcFlightTimeMultiplier = 1f;
         [Range(0f, 0.95f)]
         public float slowPercent;

@@ -1412,6 +1412,8 @@ namespace TowerDefense.UI
                     return $"Health: {tower.health:0}   Thorns: {tower.thornsDamage:0.0}\nPhysical blocker";
                 case TowerBehavior.Barracks:
                     return $"Unit: {tower.barracksUnitType}   Capacity: {tower.barracksCapacity}\nUnit dmg: {tower.alliedUnitDamage:0.0}   Block: {tower.alliedUnitBlockCapacity:0.0}";
+                case TowerBehavior.Charge:
+                    return $"Trample: {tower.damage:0.0}   Range: {tower.range:0.0}\nCharge every {tower.fireInterval:0.0}s, {tower.chargeDistance:0} m";
                 default:
                     return $"Damage: {tower.damage:0.0}   Range: {tower.range:0.0}\nFire rate: {1f / Mathf.Max(0.01f, tower.fireInterval):0.0}/sec";
             }
@@ -2636,6 +2638,13 @@ namespace TowerDefense.UI
                     text.AppendLine($"Unit range: {tower.alliedUnitRange:0.0}");
                     text.AppendLine($"Move speed: {tower.alliedUnitMoveSpeed:0.0}");
                     text.Append($"Block capacity: {tower.alliedUnitBlockCapacity:0.0} mass");
+                    break;
+                case TowerBehavior.Charge:
+                    text.AppendLine($"Trample damage: {tower.damage:0.0} per enemy per charge");
+                    text.AppendLine($"Range: {tower.range:0.0}");
+                    text.AppendLine($"Charge: every {tower.fireInterval:0.0}s, {tower.chargeDistance:0} m at {tower.chargeSpeed:0} m/s");
+                    text.AppendLine($"Width: {tower.chargeRadius * 2f:0.0} m");
+                    text.Append($"Knockback: {tower.knockbackDistance:0.0}");
                     break;
                 default:
                     var projectileLine = tower.projectilePattern == ProjectilePattern.ArcSplash

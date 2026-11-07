@@ -23,6 +23,8 @@ namespace TowerDefense.Runtime
         private TowerTargetingMode targetingMode = TowerTargetingMode.First;
 
         public TowerDefinition Definition => definition;
+        public float DamageMultiplier => damageMultiplier;
+        public float FireRateMultiplier => fireRateMultiplier;
         public float DamageDealt { get; private set; }
         public Vector3 Position => transform.position;
         public bool IsAlive => gameObject.activeSelf && (definition == null || definition.behavior != TowerBehavior.Barrier || health > 0f);
@@ -87,6 +89,11 @@ namespace TowerDefense.Runtime
             {
                 FillBarracksImmediately();
             }
+            else if (towerDefinition.behavior == TowerBehavior.Charge)
+            {
+                var charge = GetComponent<BeastCharge>() ?? gameObject.AddComponent<BeastCharge>();
+                charge.Initialize(this, towerDefinition, enemies);
+            }
 
             UpdateAuraVisual();
         }
@@ -119,6 +126,7 @@ namespace TowerDefense.Runtime
             switch (definition.behavior)
             {
                 case TowerBehavior.Barrier:
+                case TowerBehavior.Charge:
                     return;
                 case TowerBehavior.Barracks:
                     UpdateBarracks();
@@ -203,7 +211,7 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
-            if (definition.id == "ballista")
+            if (definition.flyThroughShot)
             {
                 SpawnHordePiercingShot(targetIndex, targetPosition, targetVelocity, damage);
                 return true;

@@ -35,7 +35,9 @@ namespace TowerDefense.Data
         Projectile,
         SlowAura,
         Barrier,
-        Barracks
+        Barracks,
+        // A beast that leaves its pen and charges along the road, knocking enemies aside.
+        Charge
     }
 
     public enum AlliedUnitType

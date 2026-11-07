@@ -506,6 +506,8 @@ namespace TowerDefense.Runtime
             hordePrototype?.SetCombatTargets(combatTargets);
         }
 
+        public PathRoute Route => path;
+
         public Vector3 GetNearestPathPosition(Vector3 position)
         {
             if (path == null || path.TotalLength <= 0f)

@@ -1997,6 +1997,8 @@ namespace TowerDefense.Runtime
                 TowerBehavior.SlowAura => definition.slowPercent * definition.slowCapacity * 10f,
                 TowerBehavior.Barracks => definition.barracksCapacity * definition.alliedUnitDamage / Mathf.Max(0.05f, definition.alliedUnitAttackInterval),
                 TowerBehavior.Barrier => definition.health * 0.05f + definition.thornsDamage,
+                // A charge hits every enemy it runs over, roughly a dozen in a dense wave.
+                TowerBehavior.Charge => definition.damage / Mathf.Max(0.05f, definition.fireInterval) * 12f,
                 _ => 1f
             };
         }
@@ -2634,6 +2636,9 @@ namespace TowerDefense.Runtime
                         break;
                     case TowerBehavior.SlowAura:
                         dps += Mathf.Max(0f, definition.slowPercent) * 0.025f;
+                        break;
+                    case TowerBehavior.Charge:
+                        dps += definition.damage / Mathf.Max(0.05f, definition.fireInterval) * 12f * 0.22f;
                         break;
                 }
             }

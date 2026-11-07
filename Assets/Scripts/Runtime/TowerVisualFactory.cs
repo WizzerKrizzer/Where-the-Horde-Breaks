@@ -33,6 +33,13 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (definition.behavior == TowerBehavior.Charge)
+            {
+                // A low pen; the beast itself is a separate object (BeastCharge).
+                target.localScale = new Vector3(2.2f, 0.3f, 2.2f);
+                return;
+            }
+
             switch (definition.role)
             {
                 case TowerRole.ArcherLine:
@@ -63,7 +70,7 @@ namespace TowerDefense.Runtime
                 return PrimitiveType.Cylinder;
             }
 
-            if (definition.projectilePattern == ProjectilePattern.ArcSplash)
+            if (definition.projectilePattern == ProjectilePattern.ArcSplash || definition.behavior == TowerBehavior.Charge)
             {
                 return PrimitiveType.Cube;
             }

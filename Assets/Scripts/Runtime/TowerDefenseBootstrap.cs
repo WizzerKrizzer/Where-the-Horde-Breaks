@@ -354,6 +354,27 @@ namespace TowerDefense.Runtime
                 "Weak against fast swarms, overkill on tiny enemies, and enemies that slip past between shots.",
                 (int)EraId.Medieval, 1, 11f, 16f, 1f / 0.7f, 14f, PlaceholderPalette.Tower);
             ballista.canHitFlying = true;
+            ballista.flyThroughShot = true;
+            // Prehistoric era (user, 2026-11-07): Slingers (to come) evolve into the Archer Tower,
+            // Spear Throwers into the Ballista and the Tamed Mammoth into a war elephant.
+            var spearThrower = CreateTower("spear_thrower", "Spear Throwers", TowerRole.ArtilleryLine,
+                "Hunters hurl long spears with atlatls. Long range and heavy hits; each spear flies on along its line past the target.",
+                "Weak against fast swarms: the throws are slow, and goblins slip past between spears.",
+                (int)EraId.Prehistoric, 1, 9.5f, 12f, 1.6f, 12f, PlaceholderPalette.Tower);
+            spearThrower.canHitFlying = true;
+            spearThrower.flyThroughShot = true;
+            spearThrower.nextEvolution = ballista;
+            var mammoth = CreateTower("mammoth", "Tamed Mammoth", TowerRole.ControlLine,
+                "A mammoth waits in its pen beside the road. When goblins come near, it charges along the road into them, trampling and scattering the horde, then walks back to rest.",
+                "Weak against steady streams: between charges the road is open, and it never chases enemies off the road.",
+                (int)EraId.Prehistoric, 1, 8f, 9f, 7f, 0f, PlaceholderPalette.Tower);
+            mammoth.behavior = TowerBehavior.Charge;
+            mammoth.knockbackDistance = 1.6f;
+            mammoth.chargeDistance = 14f;
+            mammoth.chargeSpeed = 9f;
+            // Wide enough to reach the whole road: the horde hugs the inside of bends, and the beast
+            // runs down the middle.
+            mammoth.chargeRadius = 2.6f;
             var bell = CreateTower("bell", "Bell Tower", TowerRole.ControlLine,
                 "A lookout and alarm tower. Once tuned, its ringing slows a capped amount of enemies in its radius.",
                 "Weak against very dense hordes until its slow capacity is upgraded.",
@@ -1470,6 +1491,76 @@ namespace TowerDefense.Runtime
                     prerequisiteNodeIds = new[] { "paladin_chapter_damage_01" },
                     costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
                     effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "paladin_barracks", value = 4f } }
+                },
+                // Prehistoric towers. Their place in the tree is provisional until the era trees exist.
+                new SkillNodeDefinition
+                {
+                    id = "spear_thrower_unlock",
+                    displayName = "Spear Throwers",
+                    description = "Unlock the Spear Throwers, a slow long-range tower whose spears fly on through the goblins behind.",
+                    radialPosition = new Vector2(-440f, 380f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "spear_thrower", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "spear_thrower_damage_01",
+                    displayName = "Flint Points",
+                    description = "Spear Throwers damage.",
+                    radialPosition = new Vector2(-600f, 460f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "spear_thrower_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "spear_thrower", value = 4f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "spear_thrower_pierce_01",
+                    displayName = "Long Shafts",
+                    description = "Spear Throwers pierce.",
+                    radialPosition = new Vector2(-480f, 580f),
+                    maxRanks = 4,
+                    prerequisiteNodeIds = new[] { "spear_thrower_damage_01" },
+                    costGrowthMultiplier = 2.4f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "spear_thrower", value = 1f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "mammoth_unlock",
+                    displayName = "Tamed Mammoth",
+                    description = "Unlock the Tamed Mammoth, which charges along the road and scatters the horde.",
+                    radialPosition = new Vector2(-600f, -300f),
+                    maxRanks = 1,
+                    prerequisiteNodeIds = new[] { "volley_core" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "mammoth", value = 1f } },
+                    isMajorUnlock = true
+                },
+                new SkillNodeDefinition
+                {
+                    id = "mammoth_speed_01",
+                    displayName = "Restless Herd",
+                    description = "Tamed Mammoth charges more often.",
+                    radialPosition = new Vector2(-720f, -180f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "mammoth_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "mammoth", value = 5f } }
+                },
+                new SkillNodeDefinition
+                {
+                    id = "mammoth_damage_01",
+                    displayName = "Heavy Tread",
+                    description = "Tamed Mammoth damage.",
+                    radialPosition = new Vector2(-560f, -460f),
+                    maxRanks = 8,
+                    prerequisiteNodeIds = new[] { "mammoth_unlock" },
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "mammoth", value = 5f } }
                 }
             };
 
@@ -1478,7 +1569,7 @@ namespace TowerDefense.Runtime
                 Level = level,
                 Levels = new[] { level, levelTwo, levelTwoPointOne, levelThree, levelFour, levelFive, levelSix, levelSeven },
                 SkillTree = tree,
-                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks }
+                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks, spearThrower, mammoth }
             };
         }
 
