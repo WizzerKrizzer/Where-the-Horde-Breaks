@@ -674,7 +674,8 @@ namespace TowerDefense.Runtime
             float knockbackDistance,
             int maxTargets,
             out int hitCount,
-            float knockbackPropagationRadius = 0f)
+            float knockbackPropagationRadius = 0f,
+            float launch = 0f)
         {
             return DamageAndKnockbackInRadiusInternal(
                 center,
@@ -688,7 +689,8 @@ namespace TowerDefense.Runtime
                 0f,
                 0f,
                 0,
-                knockbackPropagationRadius);
+                knockbackPropagationRadius,
+                launch);
         }
 
         private float DamageAndKnockbackInRadiusInternal(
@@ -703,7 +705,8 @@ namespace TowerDefense.Runtime
             float burnTicksPerSecond,
             float burnDuration,
             int maxBurnStacks,
-            float knockbackPropagationRadius)
+            float knockbackPropagationRadius,
+            float launch = 0f)
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
@@ -718,7 +721,8 @@ namespace TowerDefense.Runtime
                     burnTicksPerSecond,
                     burnDuration,
                     maxBurnStacks,
-                    knockbackPropagationRadius);
+                    knockbackPropagationRadius,
+                    launch);
             }
 
             var radiusSq = radius * radius;

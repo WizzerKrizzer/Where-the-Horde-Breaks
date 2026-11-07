@@ -68,6 +68,9 @@ Shader "TowerDefense/HordeIndirect"
                 float2 stepStartPosition;
                 float locomotionSpeed;
                 float presentationTime;
+                float airHeight;
+                float airSpeed;
+                float landingTimer;
             };
 
             StructuredBuffer<AgentState> _AgentStates;
@@ -116,6 +119,8 @@ Shader "TowerDefense/HordeIndirect"
                 float2 renderedPosition = lerp(state.stepStartPosition, state.position, _PresentationAlpha);
                 float3 world = localVertex * (state.scale * _VisualScaleMultiplier) +
                     float3(renderedPosition.x, 0.0, renderedPosition.y);
+                // Thrown by a blast: lifted along its arc.
+                world.y += state.airHeight;
                 world.y += (1.0 - active) * -100000.0;
 
                 output.position = UnityWorldToClipPos(world);

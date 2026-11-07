@@ -32,6 +32,7 @@ namespace TowerDefense.Runtime
         private const float WalkSpeedFraction = 0.55f;
         private const float TurnDegreesPerSecond = 360f;
         private const int MaxTrampledPerStep = 40;
+        private const int MaxThrownPerStep = 200;
         // The body: enemies closer than this to the beast's centre are shoved out hard.
         private const float BodyRadius = 1.6f;
         private const float BodyKnockback = 2.4f;
@@ -221,8 +222,10 @@ namespace TowerDefense.Runtime
             var dealt = enemies.DamageAndKnockbackInRadius(position, definition.chargeRadius, damage, 0f, MaxTrampledPerStep, out _);
             tower.RecordDamage(dealt);
             // Across the whole road: the horde hugs the inside of bends, and the beast runs down
-            // the middle.
-            enemies.DamageAndKnockbackInRadius(position, definition.chargeRadius, 0f, definition.knockbackDistance, 0, out _);
+            // the middle. Goblins are thrown out from the beast, up to MaxThrownPerStep per step;
+            // the throw speed falls from 8x to 2.5x the knockback from the beast to the edge.
+            enemies.DamageAndKnockbackInRadius(position, definition.chargeRadius, 0f, definition.knockbackDistance, MaxThrownPerStep, out _,
+                launch: definition.knockbackLaunch);
         }
 
         private void ShoveAwayFromBody()

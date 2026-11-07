@@ -28,6 +28,9 @@ namespace TowerDefense.Data
         public ProjectilePattern projectilePattern = ProjectilePattern.Direct;
         public float splashRadius;
         public float knockbackDistance;
+        // How high knocked enemies are thrown: upward speed per unit of knockback speed. 0 keeps
+        // them on the ground; thrown enemies fly over the crowd (HordeSimulation.compute).
+        public float knockbackLaunch;
         // The shot flies on along its line past the target, through everything in its way
         // (Ballista, Spear Throwers); how many it can hit is pierce + 1.
         public bool flyThroughShot;

@@ -369,7 +369,10 @@ namespace TowerDefense.Runtime
                 "Weak against steady streams: between charges the road is open, and it never chases enemies off the road.",
                 (int)EraId.Prehistoric, 1, 8f, 9f, 7f, 0f, PlaceholderPalette.Tower);
             mammoth.behavior = TowerBehavior.Charge;
-            mammoth.knockbackDistance = 1.6f;
+            // The trample throws goblins into the air: in a jammed road they fly over the crowd
+            // instead of having nowhere to go (user, 2026-11-07).
+            mammoth.knockbackDistance = 1.0f;
+            mammoth.knockbackLaunch = 0.8f;
             mammoth.chargeDistance = 14f;
             mammoth.chargeSpeed = 9f;
             // Wide enough to reach the whole road: the horde hugs the inside of bends, and the beast

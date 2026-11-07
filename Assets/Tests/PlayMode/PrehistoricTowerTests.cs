@@ -25,6 +25,7 @@ namespace TowerDefense.Tests
         public IEnumerator TearDown()
         {
             Time.captureFramerate = 0;
+            Time.timeScale = 1f;
             foreach (var item in cleanup)
             {
                 if (item != null)
@@ -73,6 +74,8 @@ namespace TowerDefense.Tests
 
             // The fastest goblin while the mammoth runs: knocked goblins fly much faster than they walk.
             var fastest = 0f;
+            // The most goblins in the air at once: the trample throws them over the crowd.
+            var thrown = 0;
             var onRoad = true;
             // Frames out of the pen, and those with a goblin inside the beast's body.
             var outFrames = 0;
@@ -88,6 +91,7 @@ namespace TowerDefense.Tests
                 if (charge.IsCharging)
                 {
                     fastest = Mathf.Max(fastest, FastestAgent(world));
+                    thrown = Mathf.Max(thrown, AirborneCount(world));
                     onRoad &= world.Route.IsInsideCorridor(charge.BeastPosition, 0.5f);
                 }
 
@@ -113,6 +117,7 @@ namespace TowerDefense.Tests
             }
 
             Assert.That(fastest, Is.GreaterThan(walking * 1.5f), "The charge did not knock goblins aside.");
+            Assert.That(thrown, Is.GreaterThan(0), "The charge threw no goblin into the air.");
             Debug.Log($"Mammoth: {overlapFrames} of {outFrames} frames out of the pen had a goblin inside its body.");
             Assert.That(overlapFrames, Is.LessThanOrEqualTo(outFrames / 10), "Goblins walk through the mammoth.");
         }
@@ -194,14 +199,8 @@ namespace TowerDefense.Tests
             }
 
             Directory.CreateDirectory(folder);
-            Time.captureFramerate = 30;
             world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
-            for (var frame = 0; frame < 900; frame++)
-            {
-                // The horde draws itself in LateUpdate, after this coroutine; draw it for this capture.
-                DrawHorde(world);
-                yield return StyleLowPolyTests.Capture(camera, target, texture, $"{folder}/frame_{frame:D4}.png");
-            }
+            yield return RecordFrames(world, camera, target, texture, folder, 900);
 
             var report = new System.Text.StringBuilder();
             report.AppendLine($"horde x{hordeFactor}: {wave.totalEnemyCount} goblins, {world.Enemies.TotalSpawned} spawned in 30 s; mammoth charges every {world.Mammoth.fireInterval:F1} s");
@@ -215,7 +214,7 @@ namespace TowerDefense.Tests
             File.WriteAllText($"{Output}/{name}/report.txt", report.ToString());
         }
 
-        private sealed class World
+        internal sealed class World
         {
             public LevelDefinition Level;
             public PathRoute Route;
@@ -224,9 +223,17 @@ namespace TowerDefense.Tests
             public TowerManager Towers;
             public TowerDefinition Spear;
             public TowerDefinition Mammoth;
+            public TowerDefinition Barrier;
         }
 
         private World CreateWorld()
+        {
+            return CreateWorld(cleanup);
+        }
+
+        // The Level 1 road with the GPU horde and a tower manager offering the Spear Throwers, the
+        // Tamed Mammoth and the Timber Barrier. Everything created is added to cleanup.
+        internal static World CreateWorld(List<Object> cleanup)
         {
             var content = SampleContent.Create();
             var world = new World { Level = content.Level };
@@ -239,6 +246,10 @@ namespace TowerDefense.Tests
                 else if (definition.id == "mammoth")
                 {
                     world.Mammoth = definition;
+                }
+                else if (definition.id == "barrier")
+                {
+                    world.Barrier = definition;
                 }
             }
 
@@ -269,18 +280,44 @@ namespace TowerDefense.Tests
             var towersObject = new GameObject("Test Towers");
             cleanup.Add(towersObject);
             world.Towers = towersObject.AddComponent<TowerManager>();
-            world.Towers.Initialize(world.Enemies, world.Route, new[] { world.Spear, world.Mammoth });
+            world.Towers.Initialize(world.Enemies, world.Route, new[] { world.Spear, world.Mammoth, world.Barrier });
             return world;
         }
 
-        private static GpuHordeSimulation Simulation(World world)
+        // Captures frames 1/30 s of game time apart. The GPU horde runs on real time scaled by
+        // Time.timeScale (not on Time.captureFramerate), so the game is slowed down to leave time for
+        // each capture and everything moves at its true speed in the video.
+        internal static IEnumerator RecordFrames(World world, Camera camera, RenderTexture target, Texture2D texture, string folder,
+            int frames, System.Action<int> beforeFrame = null)
+        {
+            const float frameSeconds = 1f / 30f;
+            Time.timeScale = 0.2f;
+            var next = Time.time;
+            for (var frame = 0; frame < frames; frame++)
+            {
+                while (Time.time < next)
+                {
+                    yield return null;
+                }
+
+                next += frameSeconds;
+                beforeFrame?.Invoke(frame);
+                // The horde draws itself in LateUpdate, after this coroutine; draw it for this capture.
+                DrawHorde(world);
+                yield return StyleLowPolyTests.Capture(camera, target, texture, $"{folder}/frame_{frame:D4}.png");
+            }
+
+            Time.timeScale = 1f;
+        }
+
+        internal static GpuHordeSimulation Simulation(World world)
         {
             return (GpuHordeSimulation)typeof(HordeEnemyManager)
                 .GetField("gpuSimulation", BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(world.Horde);
         }
 
-        private static void DrawHorde(World world)
+        internal static void DrawHorde(World world)
         {
             var simulation = Simulation(world);
             var mesh = (Mesh)typeof(HordeEnemyManager)
@@ -295,7 +332,7 @@ namespace TowerDefense.Tests
             simulation.Draw(mesh, world.Horde.gameObject.layer);
         }
 
-        private static int AgentsWithin(World world, Vector3 center, float radius)
+        internal static int AgentsWithin(World world, Vector3 center, float radius)
         {
             var simulation = Simulation(world);
             var count = world.Enemies.TotalSpawned;
@@ -318,7 +355,30 @@ namespace TowerDefense.Tests
             return inside;
         }
 
-        private static float FastestAgent(World world)
+        internal static int AirborneCount(World world)
+        {
+            var simulation = Simulation(world);
+            var count = world.Enemies.TotalSpawned;
+            if (simulation == null || count <= 0)
+            {
+                return 0;
+            }
+
+            var states = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(states, count);
+            var inAir = 0;
+            foreach (var state in states)
+            {
+                if (state.Status == 1u && (state.AirHeight > 0f || state.AirSpeed > 0f))
+                {
+                    inAir++;
+                }
+            }
+
+            return inAir;
+        }
+
+        internal static float FastestAgent(World world)
         {
             var simulation = Simulation(world);
             var count = world.Enemies.TotalSpawned;
@@ -338,7 +398,7 @@ namespace TowerDefense.Tests
             return fastest;
         }
 
-        private static void RequireComputeShaders()
+        internal static void RequireComputeShaders()
         {
             if (!SystemInfo.supportsComputeShaders)
             {

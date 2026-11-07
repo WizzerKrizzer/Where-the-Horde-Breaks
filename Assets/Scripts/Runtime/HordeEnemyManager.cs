@@ -1254,7 +1254,8 @@ namespace TowerDefense.Runtime
             float burnTicksPerSecond = 0f,
             float burnDuration = 0f,
             int maxBurnStacks = 0,
-            float knockbackPropagationRadius = 0f)
+            float knockbackPropagationRadius = 0f,
+            float launch = 0f)
         {
             hitCount = 0;
             if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
@@ -1272,7 +1273,8 @@ namespace TowerDefense.Runtime
                     burnDamagePerSecond,
                     burnDuration,
                     maxBurnStacks,
-                    knockbackPropagationRadius: knockbackPropagationRadius))
+                    knockbackPropagationRadius: knockbackPropagationRadius,
+                    launch: launch))
             {
                 hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
                 return damage * hitCount;

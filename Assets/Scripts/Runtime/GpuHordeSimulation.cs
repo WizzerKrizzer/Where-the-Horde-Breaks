@@ -73,6 +73,10 @@ namespace TowerDefense.Runtime
             public Vector2 StepStartPosition;
             public float LocomotionSpeed;
             public float PresentationTime;
+            // Thrown by a blast (HordeSimulation.compute LaunchIntoAir).
+            public float AirHeight;
+            public float AirSpeed;
+            public float LandingTimer;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -204,6 +208,7 @@ namespace TowerDefense.Runtime
             public float SlowDuration;
             public float SlowCapacity;
             public float InnerRadius;
+            public float Launch;
         }
 
         private struct PendingShockwave
@@ -1735,7 +1740,8 @@ namespace TowerDefense.Runtime
             float slowMultiplier = 1f,
             float slowDuration = 0f,
             float slowCapacity = 0f,
-            float knockbackPropagationRadius = 0f)
+            float knockbackPropagationRadius = 0f,
+            float launch = 0f)
         {
             if (disposed || radius <= 0f || queuedAreaEffects.Count >= MaxAreaCommands)
             {
@@ -1756,7 +1762,8 @@ namespace TowerDefense.Runtime
                 SlowMultiplier = Mathf.Clamp(slowMultiplier, 0.05f, 1f),
                 SlowDuration = Mathf.Max(0f, slowDuration),
                 SlowCapacity = Mathf.Max(0f, slowCapacity),
-                InnerRadius = 0f
+                InnerRadius = 0f,
+                Launch = Mathf.Max(0f, launch)
             };
             if (propagationRadius > 0f && knockback > 0f && maxTargets == 0)
             {

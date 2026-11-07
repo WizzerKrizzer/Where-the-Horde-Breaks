@@ -74,6 +74,11 @@ struct AgentState
     float2 stepStartPosition;
     float locomotionSpeed;
     float presentationTime;
+    // Thrown by a blast: height above the road, upward speed, and the time left until
+    // contacts with the crowd are fully back after landing.
+    float airHeight;
+    float airSpeed;
+    float landingTimer;
 };
 
 struct XpbdPair
@@ -196,6 +201,9 @@ struct AreaEffectCommand
     float slowDuration;
     float slowCapacity;
     float innerRadius;
+    // How strongly the blast throws bodies upwards: upward speed per unit of knockback speed.
+    // 0 keeps them on the ground.
+    float launch;
 };
 
 struct ProjectileCommand
@@ -215,6 +223,51 @@ struct ProjectileCommand
     uint resetHitCount;
     float2 padding;
 };
+
+// Bodies thrown by a blast fly in an arc. In the air they pass over the crowd without
+// contacts, so a blast in a jammed road still has somewhere to send them. After landing,
+// their contacts come back gradually over LANDING_SECONDS, so a body landing on others is
+// eased apart instead of popping its neighbours.
+#define AIR_GRAVITY 15.7
+#define AIR_LAUNCH_MIN_SPEED 2.0
+#define AIR_MAX_LAUNCH_SPEED 8.0
+#define AIR_MAX_HORIZONTAL_SPEED 4.5
+#define AIR_DRAG 0.6
+#define LANDING_SECONDS 0.45
+
+bool IsAirborne(AgentState state)
+{
+    return state.airHeight > 0.0 || state.airSpeed > 0.0;
+}
+
+// 0 in the air, rising from 0.1 to 1 while landing, 1 on the ground.
+float ContactStrength(AgentState state)
+{
+    if (IsAirborne(state)) return 0.0;
+    return state.landingTimer > 0.0
+        ? lerp(0.1, 1.0, saturate(1.0 - state.landingTimer / LANDING_SECONDS))
+        : 1.0;
+}
+
+void LaunchIntoAir(inout AgentState state, float2 addedVelocity, float launch)
+{
+    if (launch <= 0.0) return;
+    // Already in the air: another hit does not throw it higher (a beast running over thrown
+    // bodies would otherwise juggle them), but its speed stays capped.
+    if (!IsAirborne(state))
+    {
+        float speed = length(addedVelocity);
+        if (speed < AIR_LAUNCH_MIN_SPEED) return;
+        state.airSpeed = min(AIR_MAX_LAUNCH_SPEED, speed * launch);
+        state.airHeight = 0.001;
+        state.landingTimer = 0.0;
+    }
+    float horizontal = length(state.knockbackVelocity);
+    if (horizontal > AIR_MAX_HORIZONTAL_SPEED)
+    {
+        state.knockbackVelocity *= AIR_MAX_HORIZONTAL_SPEED / horizontal;
+    }
+}
 
 RWStructuredBuffer<AgentState> _StatesRead;
 StructuredBuffer<AgentState> _StatesInput;
@@ -984,8 +1037,9 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                             sincos(angle, direction.y, direction.x);
                         }
                         float falloff = 1.0 - saturate(distance / command.radius);
-                        state.knockbackVelocity += direction * command.knockback *
-                            lerp(2.5, 8.0, falloff);
+                        float2 addedVelocity = direction * command.knockback * lerp(2.5, 8.0, falloff);
+                        state.knockbackVelocity += addedVelocity;
+                        LaunchIntoAir(state, addedVelocity, command.launch);
                         state.padding = max(state.padding, clamp(command.knockback / 32.0, 0.55, 2.5));
                     }
 
@@ -1129,7 +1183,12 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             if (applyKnockback)
             {
                 float inverseMass = rcp(max(1.0, state.mass));
-                state.knockbackVelocity += direction * command.knockback * gameplayFalloff * inverseMass;
+                float2 addedVelocity = direction * command.knockback * gameplayFalloff * inverseMass;
+                state.knockbackVelocity += addedVelocity;
+                if (!isPhysicsShockwave)
+                {
+                    LaunchIntoAir(state, addedVelocity, command.launch);
+                }
                 state.padding = max(state.padding, clamp(command.knockback / 22.0, 1.5, 4.5));
             }
         }
@@ -1792,7 +1851,26 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     state.knockbackVelocity += float2(_Aux[1u + index * 2u], _Aux[2u + index * 2u]) * 0.000001;
     _Aux[1u + index * 2u] = 0;
     _Aux[2u + index * 2u] = 0;
-    state.knockbackVelocity *= exp(-simulationDelta * (_KnockbackDamping > 0.0 ? _KnockbackDamping : 1.8));
+    bool airborne = IsAirborne(state);
+    if (airborne)
+    {
+        state.airSpeed -= AIR_GRAVITY * simulationDelta;
+        state.airHeight += state.airSpeed * simulationDelta;
+        if (state.airHeight <= 0.0)
+        {
+            state.airHeight = 0.0;
+            state.airSpeed = 0.0;
+            state.landingTimer = LANDING_SECONDS;
+        }
+    }
+    else
+    {
+        state.landingTimer = max(0.0, state.landingTimer - simulationDelta);
+    }
+    // Little drag in the air; on landing the body skids to a stop quickly.
+    float knockbackDamping = _KnockbackDamping > 0.0 ? _KnockbackDamping : 1.8;
+    knockbackDamping = airborne ? AIR_DRAG : knockbackDamping * (state.landingTimer > 0.0 ? 3.0 : 1.0);
+    state.knockbackVelocity *= exp(-simulationDelta * knockbackDamping);
     if (shockwaveRiding)
     {
         float2 shockwaveOffset = state.position - state.shockwaveCenter;
@@ -1810,8 +1888,10 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
             (rideSpeed - combinedOutwardSpeed);
         state.padding = max(state.padding, 0.25);
     }
-    float2 motion = (state.velocity + state.knockbackVelocity) * simulationDelta;
+    // A body in the air does not walk, and may travel faster than the crowd's per-tick cap.
+    float2 motion = ((airborne ? 0.0 : state.velocity) + state.knockbackVelocity) * simulationDelta;
     float maxTravel = max(0.005, _XpbdMaximumTravel);
+    if (airborne) maxTravel = max(maxTravel, AIR_MAX_HORIZONTAL_SPEED * 1.05 * simulationDelta);
     float motionLength = length(motion);
     if (motionLength > maxTravel) motion *= maxTravel / motionLength;
     state.position += motion;
@@ -2083,6 +2163,7 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     float inverseFirst = rcp(max(0.1, first.mass));
     float inverseSecond = 0.0;
     float deepContactWeight = 1.0;
+    float contactStrength = 1.0;
     if (isBlocker)
     {
         uint targetIndex = pair.second & 0x7FFFFFFFu;
@@ -2110,6 +2191,8 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     {
         AgentState second = _StatesRead[pair.second];
         if (second.status != 1u) return;
+        contactStrength = min(ContactStrength(first), ContactStrength(second));
+        if (contactStrength <= 0.0) return;
         float2 delta = second.position - first.position;
         float distanceSq = dot(delta, delta);
         float distanceToSecond = sqrt(max(distanceSq, 0.00000001));
@@ -2176,6 +2259,7 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         pair.lambda = nextLambda;
     }
     _XpbdPairs[pairIndex] = pair;
+    appliedLambda *= contactStrength;
     float2 firstCorrection = firstGradient * appliedLambda * inverseFirst;
     float2 secondCorrection = secondGradient * appliedLambda * inverseSecond;
     const float fixedPointScale = 1000000.0;
@@ -2436,6 +2520,7 @@ void MeasureXpbdPairDiagnostics(uint3 id : SV_DispatchThreadID)
     {
         AgentState second = _StatesRead[pair.second];
         if (second.status != 1u) return;
+        if (ContactStrength(first) < 1.0 || ContactStrength(second) < 1.0) return;
         diameter = XpbdPairDiameter(first, second);
         distanceToOther = distance(first.position, second.position);
     }
