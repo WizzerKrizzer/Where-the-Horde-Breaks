@@ -74,6 +74,9 @@ namespace TowerDefense.Tests
             // The fastest goblin while the mammoth runs: knocked goblins fly much faster than they walk.
             var fastest = 0f;
             var onRoad = true;
+            // Frames out of the pen, and those with a goblin inside the beast's body.
+            var outFrames = 0;
+            var overlapFrames = 0;
             var deadline = Time.realtimeSinceStartup + 30f;
             while (charge.ChargeCount == 0 || charge.IsOut)
             {
@@ -86,6 +89,15 @@ namespace TowerDefense.Tests
                 {
                     fastest = Mathf.Max(fastest, FastestAgent(world));
                     onRoad &= world.Route.IsInsideCorridor(charge.BeastPosition, 0.5f);
+                }
+
+                if (charge.IsOut)
+                {
+                    outFrames++;
+                    if (AgentsWithin(world, charge.BeastPosition, 0.7f) > 0)
+                    {
+                        overlapFrames++;
+                    }
                 }
 
                 yield return null;
@@ -101,6 +113,8 @@ namespace TowerDefense.Tests
             }
 
             Assert.That(fastest, Is.GreaterThan(walking * 1.5f), "The charge did not knock goblins aside.");
+            Debug.Log($"Mammoth: {overlapFrames} of {outFrames} frames out of the pen had a goblin inside its body.");
+            Assert.That(overlapFrames, Is.LessThanOrEqualTo(outFrames / 10), "Goblins walk through the mammoth.");
         }
 
         [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/PrehistoricTowers/normal.")]
@@ -279,6 +293,29 @@ namespace TowerDefense.Tests
 
             simulation.RefreshVisibilityForRendering();
             simulation.Draw(mesh, world.Horde.gameObject.layer);
+        }
+
+        private static int AgentsWithin(World world, Vector3 center, float radius)
+        {
+            var simulation = Simulation(world);
+            var count = world.Enemies.TotalSpawned;
+            if (simulation == null || count <= 0)
+            {
+                return 0;
+            }
+
+            var states = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(states, count);
+            var inside = 0;
+            foreach (var state in states)
+            {
+                if (state.Health > 0f && Vector2.Distance(state.Position, new Vector2(center.x, center.z)) < radius)
+                {
+                    inside++;
+                }
+            }
+
+            return inside;
         }
 
         private static float FastestAgent(World world)
