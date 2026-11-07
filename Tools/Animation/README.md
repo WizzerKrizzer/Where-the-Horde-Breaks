@@ -77,6 +77,10 @@ These scripts render without Unity, using a small painter's-algorithm renderer i
 - `meshy/check_body.py` reports whether the sling passes behind or through the body after the
   release.
 - `meshy/check_arm.py` reports whether the cords pass through the right forearm.
+- `meshy/footing.py` finds where slingers can stand on a tower so that their feet stay on the
+  planks through the whole throw, whichever way they turn: not over an edge, not on a tusk. It
+  reads the foot track that `RenderMeshyWarrior` writes to `feet-track.txt`. The eight seats on
+  the tipi were picked with it.
 
 ## Older pipelines
 

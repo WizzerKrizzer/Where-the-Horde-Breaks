@@ -603,6 +603,36 @@ namespace TowerDefense.Tests
             File.WriteAllText(output + "/report.txt",
                 $"meshy warrior: {skins.Length} skinned meshes, height {maxY - minY:F3} -> scale {fit:F3}, stone at release {launch:F3}, clips: {string.Join(", ", clips.ConvertAll(item => $"{item.name} {item.length:F2} s"))}\n");
 
+            // The feet through one throw, for checking that they stay on the planks (feet-track.txt):
+            // per frame, the heel and toe tip of each foot in metres, sole at 0, facing +Z.
+            {
+                var footBones = new List<Transform>();
+                foreach (var boneName in new[] { "LeftFoot", "LeftToe_end", "RightFoot", "RightToe_end" })
+                {
+                    foreach (var bone in rig.GetComponentsInChildren<Transform>())
+                    {
+                        if (bone.name == boneName) footBones.Add(bone);
+                    }
+                }
+
+                Assert.That(footBones.Count, Is.EqualTo(4));
+                var track = new StringBuilder();
+                for (var frame = 0; frame < 78; frame++)
+                {
+                    hurl.SampleAnimation(rig, ClipTime(hurl, frame * Period / 78f));
+                    var row = new List<string>();
+                    foreach (var bone in footBones)
+                    {
+                        var point = (bone.position - new Vector3(0f, minY, 0f)) * fit;
+                        row.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:F4} {1:F4} {2:F4}", point.x, point.y, point.z));
+                    }
+
+                    track.AppendLine(string.Join(" ", row));
+                }
+
+                File.WriteAllText(output + "/feet-track.txt", track.ToString());
+            }
+
             Material body = null, rope = null, bodyDeck = null, ropeDeck = null;
 
             void Draw(AnimationClip clip, float time, Vector3 position, float yaw, bool deck)
@@ -613,6 +643,9 @@ namespace TowerDefense.Tests
                     Graphics.DrawMesh(mesh, place, sling ? (deck ? ropeDeck : rope) : (deck ? bodyDeck : body), 0);
                 }
             }
+
+            // LAYOUTS_ONLY=1 renders only the tipi with eight slingers.
+            var layoutsOnly = System.Environment.GetEnvironmentVariable("LAYOUTS_ONLY") == "1";
 
             foreach (var other in Camera.allCameras)
             {
@@ -682,6 +715,7 @@ namespace TowerDefense.Tests
             File.AppendAllText(output + "/report.txt", $"goblin mesh {goblin.bounds.size.y:F3} m tall at scale 1, was {goblin.bounds.size.y * meanScale:F2} m, now {goblin.bounds.size.y * meanScale * goblinFit:F2} m (x{goblinFit:F2}), footprint {goblin.bounds.size.x * meanScale * goblinFit:F2} x {goblin.bounds.size.z * meanScale * goblinFit:F2} m; slinger {slingerHeight:F2} m\n");
 
             // Key moments of the throw, turned two ways.
+            if (!layoutsOnly)
             {
                 StyleLowPolyTests.PlaceCamera(camera, 7f, new Vector3(0f, 0f, 0.2f));
                 Graphics.DrawMesh(groundMesh, Matrix4x4.identity, groundMaterial, 0);
@@ -697,6 +731,7 @@ namespace TowerDefense.Tests
             }
 
             // Two throw cycles close up, front-side and side; the walk next to them for reference.
+            if (!layoutsOnly)
             {
                 var folder = output + "/clip-close";
                 Directory.CreateDirectory(folder);
@@ -722,6 +757,7 @@ namespace TowerDefense.Tests
                 (14f, 180, towerPositions[0] + new Vector3(0f, 0f, -5f)),
             })
             {
+                if (layoutsOnly) break;
                 var folder = $"{output}/clip-tipi-{height:F0}m";
                 Directory.CreateDirectory(folder);
                 StyleLowPolyTests.PlaceCamera(camera, height, lookAt);
@@ -735,6 +771,43 @@ namespace TowerDefense.Tests
                     }
 
                     DrawSlingers(null, pebble, null, staticMaterial, posts, crowd, targets, time, launch / DefenderScale, throwRelease,
+                        (position, yaw, local) => Draw(hurl, local, position, yaw, true));
+                    Graphics.DrawMesh(groundMesh, Matrix4x4.identity, groundMaterial, 0);
+                    Graphics.DrawMesh(terrain, Matrix4x4.identity, staticMaterial, 0);
+                    StyleLowPolyTests.DrawCrowd(goblin, unitMaterial, crowd, time);
+                    yield return StyleLowPolyTests.Capture(camera, target, texture, $"{folder}/frame_{frame:D3}.png");
+                    used = 0;
+                }
+            }
+
+            // The tipi with eight slingers, the most an upgrade will give, all on the one deck in an arc
+            // (user's choice, 2026-11-07, over a two-storey tipi). Angles are in the tower's frame,
+            // where 270 degrees is the ladder, facing the road. Each seat was picked with
+            // Tools/Animation/meshy/footing.py so that the feet stay on the planks through the whole
+            // throw, whichever way the slinger turns: not over the edge, not on a tusk. Heights are the
+            // planks under each seat.
+            var eightSeats = new (float angle, float radius, float height)[]
+            {
+                (165f, 2.4f, 2.54f), (190f, 2.05f, 2.52f), (222.5f, 2.15f, 2.54f), (250f, 2.05f, 2.53f),
+                (297.5f, 2.05f, 2.54f), (325f, 2.2f, 2.54f), (352.5f, 2.05f, 2.53f), (17.5f, 2.3f, 2.53f),
+            };
+            var eightPosts = Posts(towerPositions, eightSeats);
+            var eightTargets = new Dictionary<long, int>();
+            foreach (var (height, lookAt) in new[] { (9f, towerPositions[0] + new Vector3(0f, 0f, -2.2f)), (13f, towerPositions[0] + new Vector3(0f, 0f, -4.5f)) })
+            {
+                var folder = $"{output}/eight-slingers-{height:F0}m";
+                Directory.CreateDirectory(folder);
+                StyleLowPolyTests.PlaceCamera(camera, height, lookAt);
+                for (var frame = 0; frame < 156; frame++)
+                {
+                    var time = frame / 30f;
+                    Shader.SetGlobalFloat("_StyleTime", time);
+                    foreach (var position in towerPositions)
+                    {
+                        Graphics.DrawMesh(tower, Matrix4x4.TRS(position, Quaternion.Euler(0f, Facing(position), 0f), Vector3.one), staticMaterial, 0);
+                    }
+
+                    DrawSlingers(null, pebble, null, staticMaterial, eightPosts, crowd, eightTargets, time, launch / DefenderScale, throwRelease,
                         (position, yaw, local) => Draw(hurl, local, position, yaw, true));
                     Graphics.DrawMesh(groundMesh, Matrix4x4.identity, groundMaterial, 0);
                     Graphics.DrawMesh(terrain, Matrix4x4.identity, staticMaterial, 0);
@@ -766,6 +839,30 @@ namespace TowerDefense.Tests
             public Vector3 Position;
             public float Outward;
             public float Offset;
+        }
+
+        // Posts at given places on each tower: angle in the tower's frame, distance from its axis, height.
+        private static List<Post> Posts(List<Vector3> towers, (float angle, float radius, float height)[] seats)
+        {
+            var posts = new List<Post>();
+            for (var i = 0; i < towers.Count; i++)
+            {
+                var place = Matrix4x4.TRS(towers[i], Quaternion.Euler(0f, Facing(towers[i]), 0f), Vector3.one);
+                for (var slot = 0; slot < seats.Length; slot++)
+                {
+                    var angle = seats[slot].angle * Mathf.Deg2Rad;
+                    var outward = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                    var direction = place.MultiplyVector(outward);
+                    posts.Add(new Post
+                    {
+                        Position = place.MultiplyPoint3x4(outward * seats[slot].radius + Vector3.up * seats[slot].height),
+                        Outward = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg,
+                        Offset = Mathf.Repeat(slot * 0.29f + i * 0.37f, 1f) * 0.999f,
+                    });
+                }
+            }
+
+            return posts;
         }
 
         private static List<Post> Posts(List<Vector3> towers)
