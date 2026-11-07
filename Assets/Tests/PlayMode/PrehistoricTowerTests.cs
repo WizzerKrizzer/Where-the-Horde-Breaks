@@ -103,11 +103,43 @@ namespace TowerDefense.Tests
             Assert.That(fastest, Is.GreaterThan(walking * 1.5f), "The charge did not knock goblins aside.");
         }
 
-        [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/PrehistoricTowers.")]
+        [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/PrehistoricTowers/normal.")]
         public IEnumerator RecordPrehistoricTowers()
+        {
+            return Record("normal", 1, 1f);
+        }
+
+        // Ten times the Level 1 horde, and the mammoth charging twice as often (user, 2026-11-07).
+        [UnityTest, Explicit("Records the prehistoric towers against a ten times larger horde to Logs/PrehistoricTowers/dense.")]
+        public IEnumerator RecordPrehistoricTowersDenseHorde()
+        {
+            return Record("dense", 10, 2f);
+        }
+
+        private IEnumerator Record(string name, int hordeFactor, float chargeRateFactor)
         {
             RequireComputeShaders();
             var world = CreateWorld();
+            world.Mammoth.fireInterval /= chargeRateFactor;
+            var wave = Object.Instantiate(world.Level.wave);
+            cleanup.Add(wave);
+            wave.totalEnemyCount *= hordeFactor;
+            wave.randomSpawnBurstMin *= hordeFactor;
+            wave.randomSpawnBurstMax *= hordeFactor;
+            if (wave.spawnBurstPattern != null)
+            {
+                for (var i = 0; i < wave.spawnBurstPattern.Length; i++)
+                {
+                    wave.spawnBurstPattern[i] *= hordeFactor;
+                }
+            }
+
+            wave.entries = (WaveEntry[])wave.entries.Clone();
+            for (var i = 0; i < wave.entries.Length; i++)
+            {
+                wave.entries[i].count *= hordeFactor;
+            }
+
             Assert.That(world.Towers.TryPlace(world.Spear, new Vector3(-25f, 0f, 4.6f)), Is.True);
             Assert.That(world.Towers.TryPlace(world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
 
@@ -141,7 +173,7 @@ namespace TowerDefense.Tests
             var texture = new Texture2D(StyleLowPolyTests.Width, StyleLowPolyTests.Height, TextureFormat.RGB24, false);
             cleanup.Add(texture);
 
-            var folder = Output + "/frames";
+            var folder = $"{Output}/{name}/frames";
             if (Directory.Exists(folder))
             {
                 Directory.Delete(folder, true);
@@ -149,7 +181,7 @@ namespace TowerDefense.Tests
 
             Directory.CreateDirectory(folder);
             Time.captureFramerate = 30;
-            world.Enemies.BeginWave(world.Level.wave, world.Route, useDataHordePrototype: true);
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
             for (var frame = 0; frame < 900; frame++)
             {
                 // The horde draws itself in LateUpdate, after this coroutine; draw it for this capture.
@@ -158,6 +190,7 @@ namespace TowerDefense.Tests
             }
 
             var report = new System.Text.StringBuilder();
+            report.AppendLine($"horde x{hordeFactor}: {wave.totalEnemyCount} goblins, {world.Enemies.TotalSpawned} spawned in 30 s; mammoth charges every {world.Mammoth.fireInterval:F1} s");
             foreach (var tower in world.Towers.Towers)
             {
                 var charge = tower.GetComponent<BeastCharge>();
@@ -165,7 +198,7 @@ namespace TowerDefense.Tests
                                   (charge != null ? $", charges {charge.ChargeCount}" : string.Empty));
             }
 
-            File.WriteAllText(Output + "/report.txt", report.ToString());
+            File.WriteAllText($"{Output}/{name}/report.txt", report.ToString());
         }
 
         private sealed class World
