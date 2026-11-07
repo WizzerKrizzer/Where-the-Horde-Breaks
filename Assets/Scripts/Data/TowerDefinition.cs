@@ -31,6 +31,12 @@ namespace TowerDefense.Data
         // How high knocked enemies are thrown: upward speed per unit of knockback speed. 0 keeps
         // them on the ground; thrown enemies fly over the crowd (HordeSimulation.compute).
         public float knockbackLaunch;
+        // Charge towers (Tamed Mammoth): every unit of enemy mass the charge runs into takes this
+        // much off its speed (m/s); once it has slowed to a walk it stops and fights where it
+        // stands, with this much health and room for this much enemy mass to fight it at once.
+        public float chargeSpeedLossPerMass = 0.015f;
+        public float beastHealth = 200f;
+        public float beastBlockCapacity = 8f;
         // The shot flies on along its line past the target, through everything in its way
         // (Ballista, Spear Throwers); how many it can hit is pierce + 1.
         public bool flyThroughShot;

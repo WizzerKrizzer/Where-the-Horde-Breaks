@@ -365,15 +365,16 @@ namespace TowerDefense.Runtime
             spearThrower.flyThroughShot = true;
             spearThrower.nextEvolution = ballista;
             var mammoth = CreateTower("mammoth", "Tamed Mammoth", TowerRole.ControlLine,
-                "A mammoth waits in its pen beside the road. When goblins come near, it charges along the road into them, trampling and scattering the horde, then walks back to rest.",
-                "Weak against steady streams: between charges the road is open, and it never chases enemies off the road.",
+                "A mammoth waits in its pen beside the road. When goblins come near, it charges along the road into them, trampling and throwing the horde aside until the crowd slows it to a halt. Then it fights where it stands until it falls, and a new mammoth takes its place.",
+                "Weak against thick hordes: they stop the charge early, and the road is open until the next mammoth is ready.",
                 (int)EraId.Prehistoric, 1, 8f, 9f, 7f, 0f, PlaceholderPalette.Tower);
             mammoth.behavior = TowerBehavior.Charge;
             // The trample throws goblins into the air: in a jammed road they fly over the crowd
             // instead of having nowhere to go (user, 2026-11-07).
             mammoth.knockbackDistance = 1.0f;
             mammoth.knockbackLaunch = 0.8f;
-            mammoth.chargeDistance = 14f;
+            // The longest charge, on an empty road; a crowd stops it much sooner (user, 2026-11-07).
+            mammoth.chargeDistance = 24f;
             mammoth.chargeSpeed = 9f;
             // Wide enough to reach the whole road: the horde hugs the inside of bends, and the beast
             // runs down the middle.

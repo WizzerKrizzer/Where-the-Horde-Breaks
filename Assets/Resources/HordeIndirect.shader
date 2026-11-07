@@ -117,9 +117,11 @@ Shader "TowerDefense/HordeIndirect"
 
                 localVertex.xz *= _PackingScale;
                 float2 renderedPosition = lerp(state.stepStartPosition, state.position, _PresentationAlpha);
-                float3 world = localVertex * (state.scale * _VisualScaleMultiplier) +
+                // Thrown into the air: lifted along its arc and drawn a little larger, as if nearer
+                // the camera above (12% per metre); its shadow stays true to size.
+                float airScale = 1.0 + 0.12 * state.airHeight;
+                float3 world = localVertex * (state.scale * _VisualScaleMultiplier * airScale) +
                     float3(renderedPosition.x, 0.0, renderedPosition.y);
-                // Thrown by a blast: lifted along its arc.
                 world.y += state.airHeight;
                 world.y += (1.0 - active) * -100000.0;
 
@@ -150,7 +152,8 @@ Shader "TowerDefense/HordeIndirect"
                     else enemyColor = _SpeedColor3;
                 }
                 enemyColor = lerp(enemyColor, _RareColor, input.rare);
-                return enemyColor * light;
+                // Light changes the brightness only; multiplying the alpha too made bodies see-through.
+                return float4(enemyColor.rgb * light, enemyColor.a);
             }
             ENDCG
         }

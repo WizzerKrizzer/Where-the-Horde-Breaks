@@ -204,6 +204,9 @@ struct AreaEffectCommand
     // How strongly the blast throws bodies upwards: upward speed per unit of knockback speed.
     // 0 keeps them on the ground.
     float launch;
+    // When not 0, the kernel reports the mass of grounded bodies it hit as event 7 with this
+    // id, so a caller can feel how much it ran into (the mammoth slows down in a crowd).
+    uint reportId;
 };
 
 struct ProjectileCommand
@@ -981,6 +984,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
         int cellRadius = max(1, (int)ceil(command.radius / _CellSize));
         float radiusSq = command.radius * command.radius;
         uint hitCount = 0u;
+        float hitMass = 0.0;
         float usedSlowCapacity = 0.0;
         bool commandComplete = false;
         [loop]
@@ -1021,6 +1025,11 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                     if (!applySlow && !hasOtherEffect)
                     {
                         continue;
+                    }
+
+                    if (!IsAirborne(state))
+                    {
+                        hitMass += max(0.1, state.mass);
                     }
 
                     if (!unlimitedCommand && command.knockback > 0.0)
@@ -1083,6 +1092,11 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                     }
                 }
             }
+        }
+
+        if (command.reportId != 0u)
+        {
+            EmitEvent(command.reportId, 7u, hitMass);
         }
     }
 }

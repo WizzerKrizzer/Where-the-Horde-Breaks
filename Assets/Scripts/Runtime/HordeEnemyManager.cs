@@ -64,6 +64,8 @@ namespace TowerDefense.Runtime
         [NonSerialized] private GpuHordeSimulation.AgentState[] gpuSpawnStates;
         [NonSerialized] private GpuHordeSimulation gpuSimulation;
         [NonSerialized] private IReadOnlyList<ICombatTarget> combatTargets;
+        // Mass hit by area effects that asked for a report, by report id, until taken.
+        [NonSerialized] private readonly Dictionary<int, float> areaReports = new();
         [NonSerialized] private WaveDefinition wave;
         [NonSerialized] private CrowdSolverProfile activeCrowdSolverProfile;
         [NonSerialized] private PathRoute path;
@@ -120,6 +122,17 @@ namespace TowerDefense.Runtime
         public int ActiveCount => activeCount;
         public int TotalResolved => totalResolved;
         public bool IsRunning => running;
+
+        public float TakeAreaReport(int reportId)
+        {
+            if (!areaReports.TryGetValue(reportId, out var mass))
+            {
+                return 0f;
+            }
+
+            areaReports.Remove(reportId);
+            return mass;
+        }
         public bool IsComplete => running && totalSpawned >= spawnSequence.Count && activeCount == 0;
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyDefinition> EnemyKilled;
@@ -1255,7 +1268,8 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 0,
             float knockbackPropagationRadius = 0f,
-            float launch = 0f)
+            float launch = 0f,
+            int reportId = 0)
         {
             hitCount = 0;
             if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
@@ -1274,7 +1288,8 @@ namespace TowerDefense.Runtime
                     burnDuration,
                     maxBurnStacks,
                     knockbackPropagationRadius: knockbackPropagationRadius,
-                    launch: launch))
+                    launch: launch,
+                    reportId: reportId))
             {
                 hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
                 return damage * hitCount;
@@ -1512,6 +1527,14 @@ namespace TowerDefense.Runtime
                 out var generation,
                 out var sourceIndex))
             {
+                if (eventType == 7u)
+                {
+                    // An area effect's report: the mass of grounded bodies it hit.
+                    areaReports.TryGetValue(eventIndex, out var reported);
+                    areaReports[eventIndex] = reported + eventValue;
+                    continue;
+                }
+
                 if (eventType == 1u || eventType == 2u)
                 {
                     ResolveGpuAgent(eventIndex, eventType == 1u);

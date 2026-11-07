@@ -209,6 +209,7 @@ namespace TowerDefense.Runtime
             public float SlowCapacity;
             public float InnerRadius;
             public float Launch;
+            public uint ReportId;
         }
 
         private struct PendingShockwave
@@ -405,6 +406,8 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer auxiliary;
         private readonly GraphicsBuffer corpseArgs;
         private readonly Material corpseMaterial;
+        // Shadows of goblins thrown into the air (HordeAirShadow.shader).
+        private readonly Material airShadowMaterial;
         private readonly Mesh corpseMesh;
         private readonly uint[] corpseDrawArgs = new uint[5];
         private readonly GraphicsBuffer xpbdCorrectionX;
@@ -582,6 +585,12 @@ namespace TowerDefense.Runtime
 
             compute = UnityEngine.Object.Instantiate(sourceCompute);
             material = new Material(shader) { enableInstancing = true };
+            var airShadowShader = Resources.Load<Shader>("HordeAirShadow");
+            if (airShadowShader != null)
+            {
+                airShadowMaterial = new Material(airShadowShader) { enableInstancing = true };
+            }
+
             lowDetailMesh = EnemyManager.GetLowEnemyMesh();
             stableRenderMesh = lowDetailMesh;
             // Greybox placeholders: the horde reads as one neutral value; slow,
@@ -1741,7 +1750,8 @@ namespace TowerDefense.Runtime
             float slowDuration = 0f,
             float slowCapacity = 0f,
             float knockbackPropagationRadius = 0f,
-            float launch = 0f)
+            float launch = 0f,
+            int reportId = 0)
         {
             if (disposed || radius <= 0f || queuedAreaEffects.Count >= MaxAreaCommands)
             {
@@ -1763,7 +1773,8 @@ namespace TowerDefense.Runtime
                 SlowDuration = Mathf.Max(0f, slowDuration),
                 SlowCapacity = Mathf.Max(0f, slowCapacity),
                 InnerRadius = 0f,
-                Launch = Mathf.Max(0f, launch)
+                Launch = Mathf.Max(0f, launch),
+                ReportId = (uint)Mathf.Max(0, reportId)
             };
             if (propagationRadius > 0f && knockback > 0f && maxTargets == 0)
             {
@@ -1847,6 +1858,10 @@ namespace TowerDefense.Runtime
 
             material.SetFloat("_PresentationAlpha", presentationAlpha);
             material.SetFloat("_PresentationLag", (1f - presentationAlpha) * lastSimulationDelta);
+            if (airShadowMaterial != null)
+            {
+                airShadowMaterial.SetFloat("_PresentationAlpha", presentationAlpha);
+            }
             properties.SetBuffer("_AgentStates", readStates);
             properties.SetBuffer("_VisibleIndices", visibleIndices);
             lodProperties.SetBuffer("_AgentStates", readStates);
@@ -1891,6 +1906,13 @@ namespace TowerDefense.Runtime
                 ShadowCastingMode.Off,
                 false,
                 layer);
+            if (airShadowMaterial != null)
+            {
+                Graphics.DrawMeshInstancedIndirect(stableRenderMesh, 0, airShadowMaterial, drawBounds, indirectArgs, 0, properties,
+                    ShadowCastingMode.Off, false, layer);
+                Graphics.DrawMeshInstancedIndirect(lowDetailMesh, 0, airShadowMaterial, drawBounds, lodIndirectArgs, 0, lodProperties,
+                    ShadowCastingMode.Off, false, layer);
+            }
         }
 
         public void SetVisualScaleMultiplier(float multiplier)
@@ -2000,6 +2022,7 @@ namespace TowerDefense.Runtime
             auxiliary?.Dispose();
             corpseArgs?.Dispose();
             if (corpseMaterial != null) UnityEngine.Object.Destroy(corpseMaterial);
+            if (airShadowMaterial != null) UnityEngine.Object.Destroy(airShadowMaterial);
             xpbdCorrectionX?.Dispose();
             xpbdCorrectionY?.Dispose();
             xpbdCorrectionCounts?.Dispose();

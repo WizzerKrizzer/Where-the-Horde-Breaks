@@ -80,7 +80,9 @@ namespace TowerDefense.Tests
             // Frames out of the pen, and those with a goblin inside the beast's body.
             var outFrames = 0;
             var overlapFrames = 0;
-            var deadline = Time.realtimeSinceStartup + 30f;
+            // One whole turn: the charge, the fight and the fall.
+            var deadline = Time.realtimeSinceStartup + 60f;
+            var fought = false;
             while (charge.ChargeCount == 0 || charge.IsOut)
             {
                 if (Time.realtimeSinceStartup > deadline)
@@ -95,6 +97,7 @@ namespace TowerDefense.Tests
                     onRoad &= world.Route.IsInsideCorridor(charge.BeastPosition, 0.5f);
                 }
 
+                fought |= charge.IsFighting;
                 if (charge.IsOut)
                 {
                     outFrames++;
@@ -108,6 +111,9 @@ namespace TowerDefense.Tests
             }
 
             Assert.That(charge.ChargeCount, Is.GreaterThan(0), "The mammoth never charged.");
+            Debug.Log($"Mammoth: ran {charge.LastRunDistance:F1} m before it stopped to fight; fell {charge.FallCount} times.");
+            Assert.That(fought, Is.True, "The mammoth never stopped to fight.");
+            Assert.That(charge.FallCount, Is.GreaterThan(0), "The mammoth never fell.");
             Assert.That(onRoad, Is.True, "The mammoth left the road while charging.");
             Assert.That(tower.DamageDealt, Is.GreaterThan(0f), "The mammoth's charge hurt no goblin.");
             var walking = 0f;
@@ -116,7 +122,8 @@ namespace TowerDefense.Tests
                 walking = Mathf.Max(walking, entry.enemy.speed);
             }
 
-            Assert.That(fastest, Is.GreaterThan(walking * 1.5f), "The charge did not knock goblins aside.");
+            // The throw tops out at about 8 m/s (1.5x walking), so the check leaves some room below it.
+            Assert.That(fastest, Is.GreaterThan(walking * 1.3f), "The charge did not knock goblins aside.");
             Assert.That(thrown, Is.GreaterThan(0), "The charge threw no goblin into the air.");
             Debug.Log($"Mammoth: {overlapFrames} of {outFrames} frames out of the pen had a goblin inside its body.");
             Assert.That(overlapFrames, Is.LessThanOrEqualTo(outFrames / 10), "Goblins walk through the mammoth.");
@@ -200,7 +207,19 @@ namespace TowerDefense.Tests
 
             Directory.CreateDirectory(folder);
             world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
-            yield return RecordFrames(world, camera, target, texture, folder, 900);
+            // How far each charge ran before the crowd stopped it.
+            var beast = world.Towers.Towers[1].GetComponent<BeastCharge>();
+            var runs = new List<string>();
+            var wasFighting = false;
+            yield return RecordFrames(world, camera, target, texture, folder, 900, frame =>
+            {
+                if (beast.IsFighting && !wasFighting)
+                {
+                    runs.Add($"{beast.LastRunDistance:F1} m at {frame / 30f:F1} s");
+                }
+
+                wasFighting = beast.IsFighting;
+            });
 
             var report = new System.Text.StringBuilder();
             report.AppendLine($"horde x{hordeFactor}: {wave.totalEnemyCount} goblins, {world.Enemies.TotalSpawned} spawned in 30 s; mammoth charges every {world.Mammoth.fireInterval:F1} s");
@@ -208,8 +227,10 @@ namespace TowerDefense.Tests
             {
                 var charge = tower.GetComponent<BeastCharge>();
                 report.AppendLine($"{tower.Definition.displayName} at {tower.Position}: damage {tower.DamageDealt:F0}" +
-                                  (charge != null ? $", charges {charge.ChargeCount}" : string.Empty));
+                                  (charge != null ? $", charges {charge.ChargeCount}, falls {charge.FallCount}" : string.Empty));
             }
+
+            report.AppendLine("mammoth runs: " + string.Join(", ", runs));
 
             File.WriteAllText($"{Output}/{name}/report.txt", report.ToString());
         }

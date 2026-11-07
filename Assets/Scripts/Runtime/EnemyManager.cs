@@ -675,7 +675,8 @@ namespace TowerDefense.Runtime
             int maxTargets,
             out int hitCount,
             float knockbackPropagationRadius = 0f,
-            float launch = 0f)
+            float launch = 0f,
+            int reportId = 0)
         {
             return DamageAndKnockbackInRadiusInternal(
                 center,
@@ -690,7 +691,35 @@ namespace TowerDefense.Runtime
                 0f,
                 0,
                 knockbackPropagationRadius,
-                launch);
+                launch,
+                reportId);
+        }
+
+        private int lastAreaReportId;
+        private readonly Dictionary<int, float> cpuAreaReports = new();
+
+        /// <summary>
+        /// A new id for DamageAndKnockbackInRadius's reportId: the mass of enemies on the ground that
+        /// those effects hit adds up under it, and TakeAreaReport returns and clears it. The GPU
+        /// horde reports a few frames late.
+        /// </summary>
+        public int CreateAreaReport() => ++lastAreaReportId;
+
+        public float TakeAreaReport(int reportId)
+        {
+            var mass = 0f;
+            if (cpuAreaReports.TryGetValue(reportId, out var cpuMass))
+            {
+                mass += cpuMass;
+                cpuAreaReports.Remove(reportId);
+            }
+
+            if (hordePrototype != null)
+            {
+                mass += hordePrototype.TakeAreaReport(reportId);
+            }
+
+            return mass;
         }
 
         private float DamageAndKnockbackInRadiusInternal(
@@ -706,7 +735,8 @@ namespace TowerDefense.Runtime
             float burnDuration,
             int maxBurnStacks,
             float knockbackPropagationRadius,
-            float launch = 0f)
+            float launch = 0f,
+            int reportId = 0)
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
@@ -722,7 +752,17 @@ namespace TowerDefense.Runtime
                     burnDuration,
                     maxBurnStacks,
                     knockbackPropagationRadius,
-                    launch);
+                    launch,
+                    reportId);
+            }
+
+            if (reportId != 0)
+            {
+                var applied = DamageAndKnockbackInRadiusInternal(center, radius, damage, knockbackDistance, maxTargets, out hitCount,
+                    burnSource, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks, knockbackPropagationRadius, launch);
+                cpuAreaReports.TryGetValue(reportId, out var reported);
+                cpuAreaReports[reportId] = reported + hitCount;
+                return applied;
             }
 
             var radiusSq = radius * radius;
