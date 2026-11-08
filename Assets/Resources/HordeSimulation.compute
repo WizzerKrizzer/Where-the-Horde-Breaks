@@ -207,6 +207,12 @@ struct AreaEffectCommand
     // When not 0, the kernel reports the mass of grounded bodies it hit as event 7 with this
     // id, so a caller can feel how much it ran into (the mammoth slows down in a crowd).
     uint reportId;
+    // Bodies heavier than this are hit but not pushed or thrown; 0 pushes every weight.
+    float maxPushMass;
+    // Health given back to each living body in the area, up to its maximum (the Shaman), with
+    // event 9; skipAgent - 1 is left out (the healer itself), 0 leaves no one out.
+    float heal;
+    uint skipAgent;
 };
 
 struct ProjectileCommand
@@ -965,6 +971,24 @@ void ApplyStatusCommands(uint3 id : SV_DispatchThreadID)
     _StatesRead[command.index] = state;
 }
 
+// combatFlags bit 4: nothing pushes this body (the boss). maxPushMass > 0 also spares bodies
+// heavier than it (the mammoth does not push Orc Brutes until upgraded).
+// combatFlags bit 8: blockers (cavemen, the fighting mammoth) do not stop this body (the boss);
+// each one it touches slows it by this share, down to the slowest, while it strikes them.
+// TEMPORARY values until balancing.
+#define PASS_BLOCKER_SLOW 0.15
+#define PASS_BLOCKER_SLOWEST 0.25
+
+bool PassesBlockers(AgentState state)
+{
+    return (state.combatFlags & 8u) != 0u;
+}
+
+bool CanBePushed(AgentState state, float maxPushMass)
+{
+    return (state.combatFlags & 4u) == 0u && (maxPushMass <= 0.0 || state.mass <= maxPushMass);
+}
+
 [numthreads(1, 1, 1)]
 void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
 {
@@ -1032,7 +1056,14 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                         hitMass += max(0.1, state.mass);
                     }
 
-                    if (!unlimitedCommand && command.knockback > 0.0)
+                    // A body it cannot push reports itself (event 8): the mammoth stops at it.
+                    if (!unlimitedCommand && command.knockback > 0.0 && command.reportId != 0u &&
+                        !IsAirborne(state) && !CanBePushed(state, command.maxPushMass))
+                    {
+                        EmitEvent(command.reportId, 8u, max(0.1, state.mass));
+                    }
+
+                    if (!unlimitedCommand && command.knockback > 0.0 && CanBePushed(state, command.maxPushMass))
                     {
                         float distance = sqrt(max(distanceSq, 0.000001));
                         float2 direction;
@@ -1126,7 +1157,20 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             continue;
         }
 
-        float2 offset = state.position - command.center;
+        // A heal follows its Shaman (skipAgent - 1): the CPU does not know where it walks now.
+        float2 effectCenter = command.center;
+        if (command.heal > 0.0 && command.skipAgent != 0u)
+        {
+            AgentState healer = _StatesRead[command.skipAgent - 1u];
+            if (healer.status != 1u)
+            {
+                continue;
+            }
+
+            effectCenter = healer.position;
+        }
+
+        float2 offset = state.position - effectCenter;
         float distanceSq = dot(offset, offset);
         float radiusSq = command.radius * command.radius;
         float effectiveInnerRadius = max(0.0, command.innerRadius);
@@ -1136,7 +1180,22 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             continue;
         }
 
-        if (command.knockback > 0.0)
+        if (command.heal > 0.0 && agentIndex + 1u != command.skipAgent && state.health < state.maxHealth)
+        {
+            float healed = min(command.heal, state.maxHealth - state.health);
+            state.health += healed;
+            EmitEvent(agentIndex, 9u, healed);
+        }
+
+        // A body this effect cannot push reports itself as event 8, so a caller can feel what it
+        // ran into (the mammoth stops at an Orc Brute it cannot push, and at the boss).
+        if (command.knockback > 0.0 && command.reportId != 0u && !IsAirborne(state) &&
+            !CanBePushed(state, command.maxPushMass))
+        {
+            EmitEvent(command.reportId, 8u, max(0.1, state.mass));
+        }
+
+        if (command.knockback > 0.0 && CanBePushed(state, command.maxPushMass))
         {
             bool applyKnockback = true;
             float distance = sqrt(max(distanceSq, 0.000001));
@@ -1256,6 +1315,9 @@ float DistancePointToSegmentSq(float2 samplePosition, float2 a, float2 b)
     return dot(samplePosition - nearest, samplePosition - nearest);
 }
 
+// Orc Brutes (mass 3) and the boss count as heavy; Goblin Runners and Shamans do not.
+#define HEAVY_TARGET_MASS 2.5
+
 [numthreads(1, 1, 1)]
 void ApplyProjectile(uint3 id : SV_DispatchThreadID)
 {
@@ -1315,9 +1377,15 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                         continue;
                     }
 
-                    float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
+                    // padding.x: each goblin the shot passes through takes this share of what the one
+                    // before took (the spear's pierce falloff); padding.y: the multiplier on heavy
+                    // goblins (the big-game hunters). Zero means unused.
+                    float hitKeep = command.padding.x > 0.0 ? command.padding.x : 1.0;
+                    float heavyBonus = command.padding.y > 0.0 && state.mass >= HEAVY_TARGET_MASS ? command.padding.y : 1.0;
+                    float hitDamage = command.damage * pow(hitKeep, (float)hitCount) * heavyBonus;
+                    float appliedDamage = max(0.0, hitDamage - state.armor) * (1.0 - saturate(state.physicalResistance));
                     state.health = max(0.0, state.health - appliedDamage);
-                    if (command.knockback > 0.0)
+                    if (command.knockback > 0.0 && CanBePushed(state, 0.0))
                     {
                         float2 offset = state.position - command.end;
                         float offsetLength = length(offset);
@@ -1726,6 +1794,7 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     float closestBlockerDistanceSq = 1e30;
     float2 closestBlockerOffset = 0.0;
     float closestBlockerContact = 0.0;
+    uint blockersInReach = 0u;
     uint activeTargetCount = min(_DynamicTargetActiveCountRead[0], _DynamicTargetCapacity);
     [loop]
     for (uint targetSlot = 0u; targetSlot < activeTargetCount; targetSlot++)
@@ -1749,6 +1818,11 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
         // reach once it is within a few centimetres of touching it. A wider
         // reach would also engage bodies that are only passing beside it.
         float attackRange = physicalContactDistance + 0.04;
+        if (distanceSq <= attackRange * attackRange)
+        {
+            blockersInReach++;
+        }
+
         if (distanceSq <= attackRange * attackRange && distanceSq < closestBlockerDistanceSq)
         {
             blockerIndex = (int)targetIndex;
@@ -1758,7 +1832,28 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
         }
     }
 
-    if (blockerIndex >= 0)
+    if (blockerIndex >= 0 && PassesBlockers(state))
+    {
+        // The boss walks on through blockers, slowed by each one it touches, and strikes the
+        // nearest one on its way without taking any of its blocking room.
+        uint targetIndex = (uint)blockerIndex;
+        DynamicTargetState target = _DynamicTargetsRead[targetIndex];
+        desiredVelocity *= max(PASS_BLOCKER_SLOWEST, 1.0 - PASS_BLOCKER_SLOW * (float)blockersInReach);
+        state.attackTimer -= simulationDelta;
+        if (state.attackTimer <= 0.0 && state.attackDamage > 0.0)
+        {
+            float targetMultiplier = target.kind == 0u
+                ? state.wallDamageMultiplier
+                : state.alliedDamageMultiplier;
+            uint damageUnits = max(1u, (uint)round(
+                state.attackDamage * max(0.0, targetMultiplier) * 1024.0));
+            InterlockedAdd(_DynamicTargetDamage[targetIndex], damageUnits);
+            uint previousAttacker;
+            InterlockedExchange(_DynamicTargetLastAttacker[targetIndex], index + 1u, previousAttacker);
+            state.attackTimer = max(0.15, state.attackInterval);
+        }
+    }
+    else if (blockerIndex >= 0)
     {
         uint targetIndex = (uint)blockerIndex;
         DynamicTargetState target = _DynamicTargetsRead[targetIndex];
@@ -2100,7 +2195,8 @@ void BuildXpbdPairs(uint3 id : SV_DispatchThreadID)
     // Dynamic blockers use the same constraint list as disk contacts. The
     // compact active list has no per-cell cap, unlike the legacy target grid,
     // so a tight group of towers or barricades cannot make a blocker vanish.
-    uint activeTargetCount = min(_DynamicTargetActiveCount[0], _DynamicTargetCapacity);
+    // The boss walks through them (PassesBlockers), so it gets no blocker contacts.
+    uint activeTargetCount = PassesBlockers(state) ? 0u : min(_DynamicTargetActiveCount[0], _DynamicTargetCapacity);
     [loop]
     for (uint targetSlot = 0u; targetSlot < activeTargetCount; targetSlot++)
     {

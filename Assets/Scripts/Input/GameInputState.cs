@@ -8,6 +8,9 @@ namespace TowerDefense.Input
         public Vector2 MousePanDelta;
         public float Zoom;
         public bool FireActive;
+        // The left button is held / was let go this frame (the rock: press, drag, release).
+        public bool FireHeld;
+        public bool FireReleased;
         public bool PlaceTower;
         public bool RemoveTower;
         public bool RemoveAllTowers;

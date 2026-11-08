@@ -1643,7 +1643,14 @@ namespace TowerDefense.Runtime
                    type == UpgradeEffectType.TowerFireDamagePerTickFlat ||
                    type == UpgradeEffectType.TowerFireTicksPerSecondFlat ||
                    type == UpgradeEffectType.TowerFireMaxStacksFlat ||
-                   type == UpgradeEffectType.TowerFireDurationFlat;
+                   type == UpgradeEffectType.TowerFireDurationFlat ||
+                   type == UpgradeEffectType.TowerStunChancePercent ||
+                   type == UpgradeEffectType.TowerStunSecondsFlat ||
+                   type == UpgradeEffectType.TowerRicochetBouncesFlat ||
+                   type == UpgradeEffectType.TowerRicochetDamagePercent ||
+                   type == UpgradeEffectType.TowerShrapnelTargetsFlat ||
+                   type == UpgradeEffectType.TowerShrapnelDamagePercent ||
+                   (type >= UpgradeEffectType.TowerPierceFalloffPercent && type <= UpgradeEffectType.TowerTorchBurnSecondsFlat);
         }
 
         private static bool IsActiveWeaponUpgradeEffect(UpgradeEffectType type)
@@ -1652,7 +1659,15 @@ namespace TowerDefense.Runtime
                    type == UpgradeEffectType.ActiveWeaponCooldownPercent ||
                    type == UpgradeEffectType.ActiveWeaponRadiusFlat ||
                    type == UpgradeEffectType.ActiveWeaponPierceFlat ||
-                   type == UpgradeEffectType.ActiveWeaponAutoFireUnlock;
+                   type == UpgradeEffectType.ActiveWeaponAutoFireUnlock ||
+                   type == UpgradeEffectType.ActiveWeaponRollDistanceFlat ||
+                   type == UpgradeEffectType.ActiveWeaponFireTrailUnlock ||
+                   type == UpgradeEffectType.ActiveWeaponFireDamagePercent ||
+                   type == UpgradeEffectType.ActiveWeaponFireTicksPerSecondFlat ||
+                   type == UpgradeEffectType.ActiveWeaponShatterShardsFlat ||
+                   type == UpgradeEffectType.ActiveWeaponShatterDamagePercent ||
+                   type == UpgradeEffectType.ActiveWeaponQuakeRadiusFlat ||
+                   type == UpgradeEffectType.ActiveWeaponQuakeSecondsFlat;
         }
 
         private string FormatBestBotUpgradeEffects(SkillNodeDefinition node)
@@ -1716,6 +1731,12 @@ namespace TowerDefense.Runtime
                     return $"-{effect.value:0.#}% {target} respawn time";
                 case UpgradeEffectType.EnableTowerFire:
                     return $"Enables {target} fire damage";
+                case UpgradeEffectType.TowerPushesHeavy:
+                    return $"{target} also throws heavy enemies";
+                case UpgradeEffectType.ActiveWeaponRollDistanceFlat:
+                    return $"+{effect.value:0.#} m rock roll";
+                case UpgradeEffectType.ActiveWeaponFireTrailUnlock:
+                    return "The rock leaves a burning trail";
                 case UpgradeEffectType.TowerFireDamagePerTickFlat:
                     return $"+{effect.value:0.#} {target} fire damage per tick";
                 case UpgradeEffectType.TowerFireTicksPerSecondFlat:
@@ -2757,6 +2778,31 @@ namespace TowerDefense.Runtime
                     towers.SetPerTypeFireRateMultiplier(towerDefinition.id, 1f);
                     towerDefinition.pierce = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerPierceFlat, towerDefinition.id));
                     towerDefinition.doubleShotChance = progression.GetEffectTotal(UpgradeEffectType.TowerDoubleShotChancePercent, towerDefinition.id) / 100f;
+                    towerDefinition.stunChance = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.TowerStunChancePercent, towerDefinition.id) / 100f);
+                    towerDefinition.stunSeconds = progression.GetEffectTotal(UpgradeEffectType.TowerStunSecondsFlat, towerDefinition.id);
+                    towerDefinition.ricochetBounces = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerRicochetBouncesFlat, towerDefinition.id));
+                    towerDefinition.ricochetDamageFraction = progression.GetEffectTotal(UpgradeEffectType.TowerRicochetDamagePercent, towerDefinition.id) / 100f;
+                    towerDefinition.shrapnelTargets = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerShrapnelTargetsFlat, towerDefinition.id));
+                    towerDefinition.shrapnelDamageFraction = progression.GetEffectTotal(UpgradeEffectType.TowerShrapnelDamagePercent, towerDefinition.id) / 100f;
+                    towerDefinition.pierceDamageKeep = 1f - Mathf.Clamp(progression.GetEffectTotal(UpgradeEffectType.TowerPierceFalloffPercent, towerDefinition.id), 0f, 90f) / 100f;
+                    towerDefinition.heavyDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerHeavyDamagePercent, towerDefinition.id) / 100f;
+                    towerDefinition.poisonDamagePerSecond = progression.GetEffectTotal(UpgradeEffectType.TowerPoisonDamagePerSecondFlat, towerDefinition.id);
+                    towerDefinition.poisonSeconds = progression.GetEffectTotal(UpgradeEffectType.TowerPoisonSecondsFlat, towerDefinition.id);
+                    towerDefinition.beastArmor = progression.GetEffectTotal(UpgradeEffectType.TowerBeastArmorFlat, towerDefinition.id);
+                    towerDefinition.beastExtraHealth = towerDefinition.behavior == TowerBehavior.Charge
+                        ? progression.GetEffectTotal(UpgradeEffectType.TowerHealthFlat, towerDefinition.id)
+                        : 0f;
+                    towerDefinition.beastCrowdResistance = Mathf.Clamp(progression.GetEffectTotal(UpgradeEffectType.TowerBeastCrowdPercent, towerDefinition.id), 0f, 90f) / 100f;
+                    towerDefinition.riderCount = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerBeastRidersFlat, towerDefinition.id));
+                    towerDefinition.riderDamage = progression.GetEffectTotal(UpgradeEffectType.TowerBeastRiderDamageFlat, towerDefinition.id);
+                    towerDefinition.rageBonus = progression.GetEffectTotal(UpgradeEffectType.TowerBeastRagePercent, towerDefinition.id) / 100f;
+                    towerDefinition.rageThreshold = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.TowerBeastRageThresholdPercent, towerDefinition.id) / 100f);
+                    towerDefinition.alliedUnitDamageReduction = Mathf.Clamp(progression.GetEffectTotal(UpgradeEffectType.TowerUnitDamageReductionPercent, towerDefinition.id), 0f, 90f) / 100f;
+                    towerDefinition.alliedUnitBonusArmor = progression.GetEffectTotal(UpgradeEffectType.TowerUnitArmorFlat, towerDefinition.id);
+                    towerDefinition.chiefAuraBonus = progression.GetEffectTotal(UpgradeEffectType.TowerChiefAuraPercent, towerDefinition.id) / 100f;
+                    towerDefinition.chiefHealthBonus = progression.GetEffectTotal(UpgradeEffectType.TowerChiefHealthPercent, towerDefinition.id) / 100f;
+                    towerDefinition.torchBurnDamagePerSecond = progression.GetEffectTotal(UpgradeEffectType.TowerTorchBurnDamagePerSecondFlat, towerDefinition.id);
+                    towerDefinition.torchBurnSeconds = progression.GetEffectTotal(UpgradeEffectType.TowerTorchBurnSecondsFlat, towerDefinition.id);
                     towerDefinition.slowPercent = progression.GetEffectTotal(UpgradeEffectType.TowerSlowPercentFlat, towerDefinition.id) / 100f;
                     towerDefinition.slowCapacity = progression.GetEffectTotal(UpgradeEffectType.TowerSlowCapacityFlat, towerDefinition.id);
                     towerDefinition.range += progression.GetEffectTotal(UpgradeEffectType.TowerRangeFlat, towerDefinition.id);
@@ -2767,6 +2813,7 @@ namespace TowerDefense.Runtime
                     towerDefinition.alliedUnitHealth *= 1f + progression.GetEffectTotal(UpgradeEffectType.BarracksUnitHealthPercent, towerDefinition.id) / 100f;
                     towerDefinition.barracksRespawnSeconds *= Mathf.Max(0.1f, 1f - progression.GetEffectTotal(UpgradeEffectType.BarracksRespawnCooldownPercent, towerDefinition.id) / 100f);
                     towerDefinition.appliesFire = progression.GetEffectTotal(UpgradeEffectType.EnableTowerFire, towerDefinition.id) > 0f;
+                    towerDefinition.pushesHeavy = progression.GetEffectTotal(UpgradeEffectType.TowerPushesHeavy, towerDefinition.id) > 0f;
                     towerDefinition.fireDamagePerTick = progression.GetEffectTotal(UpgradeEffectType.TowerFireDamagePerTickFlat, towerDefinition.id);
                     towerDefinition.fireTicksPerSecond = progression.GetEffectTotal(UpgradeEffectType.TowerFireTicksPerSecondFlat, towerDefinition.id);
                     towerDefinition.fireMaxStacks = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerFireMaxStacksFlat, towerDefinition.id));
@@ -2783,9 +2830,26 @@ namespace TowerDefense.Runtime
             activeWeapon.KnockbackPropagationRadius = 0f;
             activeWeapon.ShockwaveArenaCenter = Vector3.zero;
             activeWeapon.ShockwaveArenaRadius = 0f;
-            activeWeapon.DisplayName = "Volley of Arrows";
+            // The rock replaces the Volley of Arrows (user, 2026-11-08). TEMPORARY numbers until
+            // balancing; the upgrades scale them like they scaled the volley.
+            activeWeapon.Rock = true;
+            activeWeapon.DisplayName = "Rolling Rock";
+            activeWeapon.Damage = 30f * activeDamageMultiplier;
+            activeWeapon.CooldownSeconds = 6f * activeCooldownMultiplier;
+            activeWeapon.Radius = 2.5f + activeRadiusBonus;
+            activeWeapon.MaxTargets = 40 + activePierceBonus;
+            activeWeapon.KnockbackDistance = 2f;
+            activeWeapon.RockRollDistance = 8f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponRollDistanceFlat);
+            activeWeapon.RockFireTrail = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponFireTrailUnlock) > 0f;
+            activeWeapon.RockFireDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponFireDamagePercent) / 100f;
+            activeWeapon.RockFireTicksPerSecond = 2f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponFireTicksPerSecondFlat);
+            activeWeapon.RockShatterShards = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponShatterShardsFlat));
+            activeWeapon.RockShatterDamageFraction = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponShatterDamagePercent) / 100f;
+            activeWeapon.RockQuakeRadius = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat);
+            activeWeapon.RockQuakeSeconds = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat);
             if (level != null && (level.id == "level_02" || level.id == "level_02_1"))
             {
+                activeWeapon.Rock = false;
                 // Level 2 and 2.1 are the crowd-physics laboratory. The charge causes no
                 // damage so repeated tests preserve the full 10k horde; only its
                 // radial impulse and contact propagation are under observation.
@@ -2799,6 +2863,7 @@ namespace TowerDefense.Runtime
             }
             else if (level != null && level.id == "level_07")
             {
+                activeWeapon.Rock = false;
                 activeWeapon.Damage = 100f;
                 activeWeapon.CooldownSeconds = 0.1f * activeCooldownMultiplier;
                 activeWeapon.Radius = 10f + activeRadiusBonus;
@@ -2894,6 +2959,29 @@ namespace TowerDefense.Runtime
                 tower.barracksCapacity = barracksCapacity;
                 tower.pierce = 0;
                 tower.doubleShotChance = 0f;
+                tower.stunChance = 0f;
+                tower.stunSeconds = 0f;
+                tower.ricochetBounces = 0;
+                tower.ricochetDamageFraction = 0f;
+                tower.shrapnelTargets = 0;
+                tower.shrapnelDamageFraction = 0f;
+                tower.pierceDamageKeep = 1f;
+                tower.heavyDamageMultiplier = 1f;
+                tower.poisonDamagePerSecond = 0f;
+                tower.poisonSeconds = 0f;
+                tower.beastArmor = 0f;
+                tower.beastExtraHealth = 0f;
+                tower.beastCrowdResistance = 0f;
+                tower.riderCount = 0;
+                tower.riderDamage = 0f;
+                tower.rageBonus = 0f;
+                tower.rageThreshold = 0f;
+                tower.alliedUnitDamageReduction = 0f;
+                tower.alliedUnitBonusArmor = 0f;
+                tower.chiefAuraBonus = 0f;
+                tower.chiefHealthBonus = 0f;
+                tower.torchBurnDamagePerSecond = 0f;
+                tower.torchBurnSeconds = 0f;
                 tower.slowPercent = 0f;
                 tower.slowCapacity = 0f;
                 tower.thornsDamage = 0f;

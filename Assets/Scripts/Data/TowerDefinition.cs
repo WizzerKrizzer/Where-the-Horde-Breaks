@@ -25,6 +25,42 @@ namespace TowerDefense.Data
         public int pierce;
         [Range(0f, 1f)]
         public float doubleShotChance;
+        // Slinger specials, set from the skill tree each run (0 = not bought). TEMPORARY numbers.
+        // Stun: chance per hit (0-1) and seconds.
+        public float stunChance;
+        public float stunSeconds;
+        // Ricochet: goblins the stone bounces on to after the hit, each for this share of it.
+        public int ricochetBounces;
+        public float ricochetDamageFraction;
+        // Shrapnel: goblins the pebbles hit in a cone past the target, each for this share of it.
+        public int shrapnelTargets;
+        public float shrapnelDamageFraction;
+        // Spear Thrower specials, set from the skill tree each run. TEMPORARY numbers.
+        // Each goblin a spear passes through takes this share of what the one before took.
+        public float pierceDamageKeep = 1f;
+        // Damage times this against heavy enemies (Orc Brutes, the boss).
+        public float heavyDamageMultiplier = 1f;
+        public float poisonDamagePerSecond;
+        public float poisonSeconds;
+        // Mammoth specials. Armour and bought health add to beastHealth; the armour is lost first.
+        public float beastArmor;
+        public float beastExtraHealth;
+        // Share (0-0.9) of the slowdown a crowd causes that the charge ignores.
+        public float beastCrowdResistance;
+        public int riderCount;
+        public float riderDamage;
+        // Rage: stomps this much faster and harder (0.3 = 30%) below this share of its health.
+        public float rageBonus;
+        public float rageThreshold;
+        // Cave specials. Share (0-0.9) of each blow the cavemen's shields stop, and flat armour.
+        public float alliedUnitDamageReduction;
+        public float alliedUnitBonusArmor;
+        // The chief: the cavemen near him deal this much more (0.25 = 25%); he has this much more
+        // health. Both 0 = no chief.
+        public float chiefAuraBonus;
+        public float chiefHealthBonus;
+        public float torchBurnDamagePerSecond;
+        public float torchBurnSeconds;
         public ProjectilePattern projectilePattern = ProjectilePattern.Direct;
         public float splashRadius;
         public float knockbackDistance;
@@ -37,6 +73,10 @@ namespace TowerDefense.Data
         public float chargeSpeedLossPerMass = 0.015f;
         public float beastHealth = 200f;
         public float beastBlockCapacity = 8f;
+        // The charge pushes and throws only enemies this heavy or lighter (Goblin Runners, not Orc
+        // Brutes) until pushesHeavy is unlocked by an upgrade; 0 pushes every weight. TEMPORARY.
+        public float chargeMaxPushMass = 2.5f;
+        public bool pushesHeavy;
         // The shot flies on along its line past the target, through everything in its way
         // (Ballista, Spear Throwers); how many it can hit is pierce + 1.
         public bool flyThroughShot;

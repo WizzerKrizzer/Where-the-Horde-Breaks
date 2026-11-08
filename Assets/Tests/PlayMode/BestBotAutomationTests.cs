@@ -47,16 +47,9 @@ namespace TowerDefense.Tests
             session.AddCurrency(CurrencyType.KillEssence, 100);
             var purchaseMethod = typeof(GameSession).GetMethod("TryBuyBestBotUpgrades", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(purchaseMethod, Is.Not.Null);
+            // The skill tree holds only the rock for now (cleared 2026-11-08), so there is nothing
+            // to buy yet; the bot must still run its purchase step without failing.
             purchaseMethod.Invoke(session, null);
-            Assert.That(session.GetUpgradeRank("steady_tithe_01"), Is.EqualTo(session.GetUpgradeMaxRank("steady_tithe_01")));
-            Assert.That(session.GetUpgradeRank("base_health_01"), Is.Zero);
-            Assert.That(session.GetUpgradeRank("archer_unlock"), Is.EqualTo(1));
-            Assert.That(session.GetUpgradeEffectTotal(UpgradeEffectType.ActiveWeaponDamagePercent), Is.GreaterThan(0f));
-            Assert.That(
-                session.GetUpgradeEffectTotal(UpgradeEffectType.PerTypeTowerLimitFlat, "archer") +
-                session.GetUpgradeEffectTotal(UpgradeEffectType.TowerDamagePercent, "archer") +
-                session.GetUpgradeEffectTotal(UpgradeEffectType.TowerFireRatePercent, "archer"),
-                Is.GreaterThan(0f));
             var entitlementMethod = typeof(GameSession).GetMethod("ApplyDevBestBotClearEntitlements", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(entitlementMethod, Is.Not.Null);
             entitlementMethod.Invoke(session, null);
@@ -65,14 +58,14 @@ namespace TowerDefense.Tests
 
             yield return new WaitForSecondsRealtime(0.35f);
 
-            Assert.That(session.DevBestBotAttemptCount, Is.GreaterThanOrEqualTo(1));
+            // Level 1 has no enemies for now, so its first attempt wins at once and the campaign
+            // moves on to the next level, which starts its own attempt count from zero.
+            Assert.That(session.DevBestBotAttemptCount >= 1 || session.Level.id != "level_01", Is.True,
+                "The bot neither started an attempt nor won level 1.");
             session.StopDevBestBot();
 
             Assert.That(session.DevBestBotRunning, Is.False);
             Assert.That(session.DevBestBotReportAvailable, Is.True);
-            Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("Steady Tithe"));
-            Assert.That(session.DevBestBotPurchaseHistory, Does.Contain("+3 Kill Essence after each run"));
-            Assert.That(session.DevBestBotPurchaseHistory, Does.Not.Contain("Reinforced Gate"));
             Assert.That(session.DevBestBotReport, Does.Contain("Upgrade spend: towers"));
             Assert.That(session.Profile, Is.SameAs(originalProfile));
             Assert.That(session.Level, Is.SameAs(originalLevel));

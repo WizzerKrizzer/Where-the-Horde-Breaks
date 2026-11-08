@@ -210,6 +210,9 @@ namespace TowerDefense.Runtime
             public float InnerRadius;
             public float Launch;
             public uint ReportId;
+            public float MaxPushMass;
+            public float Heal;
+            public uint SkipAgent;
         }
 
         private struct PendingShockwave
@@ -1080,7 +1083,9 @@ namespace TowerDefense.Runtime
                 AttackInterval = Mathf.Max(0.15f, definition != null ? definition.attackInterval : 1f),
                 WallDamageMultiplier = Mathf.Max(0f, definition != null ? definition.wallDamageMultiplier : 1f),
                 AlliedDamageMultiplier = Mathf.Max(0f, definition != null ? definition.alliedDamageMultiplier : 1f),
-                CombatFlags = definition != null && definition.drainsAllies ? 2u : 0u,
+                CombatFlags = (definition != null && definition.drainsAllies ? 2u : 0u) |
+                              (definition != null && definition.cannotBePushed ? 4u : 0u) |
+                              (definition != null && definition.passesBlockers ? 8u : 0u),
                 DefinitionIndex = (uint)index
             };
         }
@@ -1505,7 +1510,9 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 1,
             uint projectileId = 0u,
-            bool resetHitCount = true)
+            bool resetHitCount = true,
+            float hitDamageKeep = 1f,
+            float heavyDamageMultiplier = 1f)
         {
             if (disposed || queuedProjectiles.Count >= MaxProjectileCommands || damage <= 0f)
             {
@@ -1532,7 +1539,9 @@ namespace TowerDefense.Runtime
                 BurnDuration = Mathf.Max(0f, burnDuration),
                 MaxBurnStacks = (uint)Mathf.Max(1, maxBurnStacks),
                 ProjectileId = projectileId,
-                ResetHitCount = resetHitCount ? 1u : 0u
+                ResetHitCount = resetHitCount ? 1u : 0u,
+                // x: share of the damage each next goblin takes; y: multiplier on heavy goblins.
+                Padding = new Vector2(Mathf.Clamp(hitDamageKeep, 0.01f, 1f), Mathf.Max(1f, heavyDamageMultiplier))
             });
             return true;
         }
@@ -1751,7 +1760,10 @@ namespace TowerDefense.Runtime
             float slowCapacity = 0f,
             float knockbackPropagationRadius = 0f,
             float launch = 0f,
-            int reportId = 0)
+            int reportId = 0,
+            float maxPushMass = 0f,
+            float heal = 0f,
+            int skipAgent = -1)
         {
             if (disposed || radius <= 0f || queuedAreaEffects.Count >= MaxAreaCommands)
             {
@@ -1774,7 +1786,10 @@ namespace TowerDefense.Runtime
                 SlowCapacity = Mathf.Max(0f, slowCapacity),
                 InnerRadius = 0f,
                 Launch = Mathf.Max(0f, launch),
-                ReportId = (uint)Mathf.Max(0, reportId)
+                ReportId = (uint)Mathf.Max(0, reportId),
+                MaxPushMass = Mathf.Max(0f, maxPushMass),
+                Heal = Mathf.Max(0f, heal),
+                SkipAgent = skipAgent >= 0 ? (uint)skipAgent + 1u : 0u
             };
             if (propagationRadius > 0f && knockback > 0f && maxTargets == 0)
             {

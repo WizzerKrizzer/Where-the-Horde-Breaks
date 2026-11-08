@@ -166,17 +166,43 @@ namespace TowerDefense.Progression
             foreach (var nodeId in profile.purchasedUpgradeIds)
             {
                 var node = FindNode(nodeId);
-                if (node?.effects == null)
+                if (node == null || node.startsUnlocked)
                 {
                     continue;
                 }
 
-                foreach (var effect in node.effects)
+                total += SumEffect(node, type, targetId, 1);
+            }
+
+            // A node that starts unlocked is owned at every rank without being bought (the Slingers
+            // and the rock at the start of the game).
+            if (tree.nodes != null)
+            {
+                foreach (var node in tree.nodes)
                 {
-                    if (effect.type == type && (string.IsNullOrEmpty(effect.targetId) || effect.targetId == targetId))
+                    if (node != null && node.startsUnlocked)
                     {
-                        total += effect.value;
+                        total += SumEffect(node, type, targetId, GetMaxRank(node));
                     }
+                }
+            }
+
+            return total;
+        }
+
+        private static float SumEffect(SkillNodeDefinition node, UpgradeEffectType type, string targetId, int ranks)
+        {
+            var total = 0f;
+            if (node.effects == null)
+            {
+                return total;
+            }
+
+            foreach (var effect in node.effects)
+            {
+                if (effect.type == type && (string.IsNullOrEmpty(effect.targetId) || effect.targetId == targetId))
+                {
+                    total += effect.value * ranks;
                 }
             }
 

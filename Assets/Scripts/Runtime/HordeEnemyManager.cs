@@ -66,6 +66,11 @@ namespace TowerDefense.Runtime
         [NonSerialized] private IReadOnlyList<ICombatTarget> combatTargets;
         // Mass hit by area effects that asked for a report, by report id, until taken.
         [NonSerialized] private readonly Dictionary<int, float> areaReports = new();
+        // Living Shamans (agent indices) and the time to each one's next heal.
+        [NonSerialized] private readonly List<int> healers = new();
+        [NonSerialized] private readonly List<float> healerTimers = new();
+        // Mass of the bodies such effects could not push, by report id, until taken.
+        [NonSerialized] private readonly Dictionary<int, float> blockedReports = new();
         [NonSerialized] private WaveDefinition wave;
         [NonSerialized] private CrowdSolverProfile activeCrowdSolverProfile;
         [NonSerialized] private PathRoute path;
@@ -133,6 +138,17 @@ namespace TowerDefense.Runtime
             areaReports.Remove(reportId);
             return mass;
         }
+
+        public float TakeBlockedReport(int reportId)
+        {
+            if (!blockedReports.TryGetValue(reportId, out var mass))
+            {
+                return 0f;
+            }
+
+            blockedReports.Remove(reportId);
+            return mass;
+        }
         public bool IsComplete => running && totalSpawned >= spawnSequence.Count && activeCount == 0;
         public event Action<EnemyDefinition> EnemySpawned;
         public event Action<EnemyDefinition> EnemyKilled;
@@ -197,6 +213,9 @@ namespace TowerDefense.Runtime
             }
 
             var count = spawnSequence.Count;
+            healers.Clear();
+            healerTimers.Clear();
+            TotalHealed = 0f;
             positions = new Vector3[count];
             previousPositions = new Vector3[count];
             pathDistances = new float[count];
@@ -445,6 +464,41 @@ namespace TowerDefense.Runtime
             spawnElapsed = 0f;
         }
 
+        /// <summary>Health the Shamans gave back to the horde in this wave.</summary>
+        public float TotalHealed { get; private set; }
+
+        // Every living Shaman heals the goblins around it, but not itself, every healInterval
+        // seconds (docs/Handoff.md: it only heals).
+        private void UpdateHealers(float step)
+        {
+            if (gpuSimulation == null)
+            {
+                return;
+            }
+
+            for (var i = healers.Count - 1; i >= 0; i--)
+            {
+                var index = healers[i];
+                if (index < 0 || index >= totalSpawned || !alive[index])
+                {
+                    healers.RemoveAt(i);
+                    healerTimers.RemoveAt(i);
+                    continue;
+                }
+
+                healerTimers[i] -= step;
+                if (healerTimers[i] > 0f)
+                {
+                    continue;
+                }
+
+                var definition = definitions[index];
+                healerTimers[i] += Mathf.Max(0.25f, definition.healInterval);
+                gpuSimulation.QueueAreaEffect(positions[index], definition.healRadius, 0f, 0f, 0, 0f, 0f, 1,
+                    heal: definition.healAmount, skipAgent: index);
+            }
+        }
+
         private void Update()
         {
             SimulationTicksLastFrame = 0;
@@ -480,6 +534,7 @@ namespace TowerDefense.Runtime
                 spawnElapsed += simulationStep;
                 var sectionStart = Stopwatch.GetTimestamp();
                 SpawnDueEnemies();
+                UpdateHealers(simulationStep);
                 spawnTicks += Stopwatch.GetTimestamp() - sectionStart;
                 sectionStart = Stopwatch.GetTimestamp();
                 Simulate(simulationStep, step == stepCount - 1);
@@ -638,6 +693,11 @@ namespace TowerDefense.Runtime
 
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
+                if (definition != null && definition.healsEnemies && definition.healAmount > 0f)
+                {
+                    healers.Add(totalSpawned);
+                    healerTimers.Add(Mathf.Max(0.25f, definition.healInterval));
+                }
                 crowdSpeedFactors[totalSpawned] = personalSpeedFactor;
                 pathDistances[totalSpawned] = 0f;
                 speeds[totalSpawned] = individualSpeed;
@@ -1135,7 +1195,9 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 1,
             uint projectileId = 0u,
-            bool resetHitCount = true)
+            bool resetHitCount = true,
+            float hitDamageKeep = 1f,
+            float heavyDamageMultiplier = 1f)
         {
             return gpuSimulation != null && gpuSimulation.QueueProjectile(
                 start,
@@ -1150,7 +1212,9 @@ namespace TowerDefense.Runtime
                 burnDuration,
                 maxBurnStacks,
                 projectileId,
-                resetHitCount);
+                resetHitCount,
+                hitDamageKeep,
+                heavyDamageMultiplier);
         }
 
         public uint CreateProjectileId()
@@ -1158,7 +1222,7 @@ namespace TowerDefense.Runtime
             return gpuSimulation != null ? gpuSimulation.CreateProjectileId() : 0u;
         }
 
-        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipIndex = -1)
         {
             hitCount = 0;
             if (damage <= 0f || radius <= 0f || activeCount <= 0)
@@ -1166,7 +1230,7 @@ namespace TowerDefense.Runtime
                 return 0f;
             }
 
-            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(center, radius, damage, 0f, maxTargets, 0f, 0f, 0))
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(center, radius, damage, 0f, maxTargets, 0f, 0f, 0, skipAgent: skipIndex))
             {
                 hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
                 return damage * hitCount;
@@ -1179,7 +1243,7 @@ namespace TowerDefense.Runtime
             for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
             {
                 var i = nearbyIndices[candidate];
-                if (!alive[i])
+                if (!alive[i] || i == skipIndex)
                 {
                     continue;
                 }
@@ -1256,6 +1320,49 @@ namespace TowerDefense.Runtime
             }
         }
 
+        // A stun is a near-total slow for its duration (the GPU clamps slows at 5% speed).
+        private const float StunSpeedMultiplier = 0.05f;
+
+        /// <summary>Stuns every goblin within radius of center for seconds (the rock's quake).</summary>
+        public void StunInRadius(Vector3 center, float radius, float seconds)
+        {
+            if (radius <= 0f || seconds <= 0f || activeCount <= 0)
+            {
+                return;
+            }
+
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(
+                    center, radius, 0f, 0f, 0, 0f, 0f, 0, StunSpeedMultiplier, seconds, float.MaxValue))
+            {
+                return;
+            }
+
+            var radiusSq = radius * radius;
+            CollectNearbyIndices(center, radius, nearbyIndices, 0);
+            for (var candidate = 0; candidate < nearbyIndices.Count; candidate++)
+            {
+                var i = nearbyIndices[candidate];
+                var offset = positions[i] - center;
+                if (alive[i] && offset.x * offset.x + offset.z * offset.z <= radiusSq)
+                {
+                    StunTarget(i, seconds);
+                }
+            }
+        }
+
+        /// <summary>Stuns one goblin for seconds (the slingers' stunning stone).</summary>
+        public void StunTarget(int index, float seconds)
+        {
+            if (index < 0 || index >= totalSpawned || !alive[index] || seconds <= 0f)
+            {
+                return;
+            }
+
+            slowMultipliers[index] = Mathf.Min(slowMultipliers[index], StunSpeedMultiplier);
+            slowTimers[index] = Mathf.Max(slowTimers[index], seconds);
+            gpuSimulation?.QueueStatus(index, StunSpeedMultiplier, seconds, 0f, 0f, 0);
+        }
+
         public float DamageAndKnockbackInRadius(
             Vector3 center,
             float radius,
@@ -1269,10 +1376,13 @@ namespace TowerDefense.Runtime
             int maxBurnStacks = 0,
             float knockbackPropagationRadius = 0f,
             float launch = 0f,
-            int reportId = 0)
+            int reportId = 0,
+            float maxPushMass = 0f)
         {
             hitCount = 0;
-            if ((damage <= 0f && knockbackDistance <= 0f) || radius <= 0f || activeCount <= 0)
+            // A burn on its own counts too (the fire rock's trail).
+            if ((damage <= 0f && knockbackDistance <= 0f && (burnDamagePerTick <= 0f || burnDuration <= 0f)) ||
+                radius <= 0f || activeCount <= 0)
             {
                 return 0f;
             }
@@ -1289,7 +1399,8 @@ namespace TowerDefense.Runtime
                     maxBurnStacks,
                     knockbackPropagationRadius: knockbackPropagationRadius,
                     launch: launch,
-                    reportId: reportId))
+                    reportId: reportId,
+                    maxPushMass: maxPushMass))
             {
                 hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
                 return damage * hitCount;
@@ -1535,6 +1646,14 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
+                if (eventType == 8u)
+                {
+                    // A body an area effect with a report could not push.
+                    blockedReports.TryGetValue(eventIndex, out var blocked);
+                    blockedReports[eventIndex] = blocked + eventValue;
+                    continue;
+                }
+
                 if (eventType == 1u || eventType == 2u)
                 {
                     ResolveGpuAgent(eventIndex, eventType == 1u);
@@ -1544,6 +1663,15 @@ namespace TowerDefense.Runtime
                 if (eventType == 5u && eventIndex >= 0 && eventIndex < totalSpawned && alive[eventIndex])
                 {
                     health[eventIndex] = Mathf.Max(0f, health[eventIndex] - Mathf.Max(0f, eventValue));
+                    continue;
+                }
+
+                if (eventType == 9u && eventIndex >= 0 && eventIndex < totalSpawned && alive[eventIndex])
+                {
+                    // A Shaman healed it.
+                    var maximum = Mathf.Max(1f, definitions[eventIndex] != null ? definitions[eventIndex].maxHealth : 1f);
+                    health[eventIndex] = Mathf.Min(maximum, health[eventIndex] + Mathf.Max(0f, eventValue));
+                    TotalHealed += Mathf.Max(0f, eventValue);
                     continue;
                 }
 

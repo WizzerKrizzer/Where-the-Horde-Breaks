@@ -221,7 +221,7 @@ namespace TowerDefense.Runtime
             {
                 var duration = GetHordeShotDuration(targetPosition);
                 var impactPosition = PredictHordeImpactPosition(targetPosition, targetVelocity, duration);
-                StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration));
+                StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration, impactPosition));
                 SpawnHordeShotVisual(impactPosition, duration);
                 return true;
             }
@@ -273,12 +273,12 @@ namespace TowerDefense.Runtime
             }
             var duration = GetHordeShotDuration(targetPosition);
             var impactPosition = PredictHordeImpactPosition(targetPosition, targetVelocity, duration);
-            StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration));
+            StartCoroutine(ApplyDelayedHordeDirectHit(targetIndex, damage, duration, impactPosition));
             SpawnHordeShotVisual(impactPosition, duration);
             return true;
         }
 
-        private IEnumerator ApplyDelayedHordeDirectHit(int targetIndex, float damage, float delay)
+        private IEnumerator ApplyDelayedHordeDirectHit(int targetIndex, float damage, float delay, Vector3 impactPosition)
         {
             yield return new WaitForSeconds(delay);
             if (enemies == null)
@@ -287,6 +287,76 @@ namespace TowerDefense.Runtime
             }
 
             RecordDamage(enemies.ResolveReservedHordeDamage(targetIndex, damage));
+            ApplyStoneSpecials(targetIndex, damage, impactPosition);
+        }
+
+        // Slinger specials (user, 2026-11-08). TEMPORARY sizes until balancing.
+        // Shrapnel: the pebbles fly on past the target and hit inside a circle this far beyond it.
+        private const float ShrapnelReach = 1.5f;
+        private const float ShrapnelRadius = 1.2f;
+        private const float ShrapnelSpreadDegrees = 30f;
+        // Ricochet: each bounce hops this far on along the shot and hits one goblin near there.
+        private const float RicochetHop = 1.6f;
+        private const float RicochetRadius = 0.9f;
+        private const float RicochetSeconds = 0.12f;
+
+        private void ApplyStoneSpecials(int targetIndex, float damage, Vector3 impactPosition)
+        {
+            if (enemies == null || definition == null)
+            {
+                return;
+            }
+
+            if (definition.stunChance > 0f && definition.stunSeconds > 0f && Random.value < definition.stunChance)
+            {
+                enemies.StunHordeTarget(targetIndex, definition.stunSeconds);
+            }
+
+            var direction = impactPosition - transform.position;
+            direction.y = 0f;
+            direction = direction.sqrMagnitude > 0.001f ? direction.normalized : transform.forward;
+            var stoneColor = PlaceholderPalette.Grey(.841f);
+            var from = impactPosition + Vector3.up * 0.45f;
+
+            if (definition.shrapnelTargets > 0 && definition.shrapnelDamageFraction > 0f)
+            {
+                RecordDamage(enemies.DamageInRadius(impactPosition + direction * ShrapnelReach, ShrapnelRadius,
+                    damage * definition.shrapnelDamageFraction, definition.shrapnelTargets, out _, targetIndex));
+                var pebbles = Mathf.Clamp(definition.shrapnelTargets, 2, 6);
+                for (var i = 0; i < pebbles; i++)
+                {
+                    var angle = Mathf.Lerp(-ShrapnelSpreadDegrees, ShrapnelSpreadDegrees, pebbles > 1 ? i / (pebbles - 1f) : 0.5f);
+                    var to = impactPosition + Quaternion.Euler(0f, angle, 0f) * direction * (ShrapnelReach + ShrapnelRadius) + Vector3.up * 0.2f;
+                    HordeProjectileVisual.Spawn(from, to, stoneColor, false, 0.14f, 0.06f);
+                }
+            }
+
+            if (definition.ricochetBounces > 0 && definition.ricochetDamageFraction > 0f)
+            {
+                StartCoroutine(Ricochet(impactPosition, direction, damage * definition.ricochetDamageFraction,
+                    definition.ricochetBounces, targetIndex));
+            }
+        }
+
+        private IEnumerator Ricochet(Vector3 from, Vector3 direction, float damage, int bounces, int skipIndex)
+        {
+            var stoneColor = PlaceholderPalette.Grey(.841f);
+            for (var bounce = 0; bounce < bounces; bounce++)
+            {
+                // Each bounce veers a little to one side, so a chain zigzags through the crowd.
+                var veer = (bounce % 2 == 0 ? 1f : -1f) * Random.Range(10f, 25f);
+                direction = Quaternion.Euler(0f, veer, 0f) * direction;
+                var to = from + direction * RicochetHop;
+                HordeProjectileVisual.Spawn(from + Vector3.up * 0.45f, to + Vector3.up * 0.45f, stoneColor, false, RicochetSeconds, 0.1f);
+                yield return new WaitForSeconds(RicochetSeconds);
+                if (enemies == null)
+                {
+                    yield break;
+                }
+
+                RecordDamage(enemies.DamageInRadius(to, RicochetRadius, damage, 1, out _, skipIndex));
+                from = to;
+            }
         }
 
         private void SpawnHordePiercingShot(int reservedTargetIndex, Vector3 targetPosition, Vector3 targetVelocity, float damage)
@@ -327,8 +397,14 @@ namespace TowerDefense.Runtime
                         Mathf.Max(1, definition.pierce + 1),
                         definition.canHitFlying,
                         splash: false,
+                        // Poisoned tips poison like a burn (greybox: it looks like fire).
+                        burnDamagePerSecond: definition.poisonDamagePerSecond,
+                        burnDuration: definition.poisonDamagePerSecond > 0f ? definition.poisonSeconds : 0f,
+                        maxBurnStacks: 3,
                         projectileId: projectileId,
-                        resetHitCount: firstSegment);
+                        resetHitCount: firstSegment,
+                        hitDamageKeep: definition.pierceDamageKeep,
+                        heavyDamageMultiplier: definition.heavyDamageMultiplier);
                     firstSegment = false;
                 },
                 projectileId);
@@ -447,6 +523,21 @@ namespace TowerDefense.Runtime
             var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.9f;
             var unit = go.AddComponent<AlliedUnitActor>();
             unit.Initialize(this, definition, enemies, transform.position + offset, index);
+            // With the Chief bought, the first caveman out while no chief lives leads the others.
+            if (definition.chiefAuraBonus > 0f || definition.chiefHealthBonus > 0f)
+            {
+                var hasChief = false;
+                foreach (var other in alliedUnits)
+                {
+                    hasChief |= other != null && other.IsAlive && other.IsChief;
+                }
+
+                if (!hasChief)
+                {
+                    unit.MakeChief();
+                }
+            }
+
             alliedUnits.Add(unit);
         }
 

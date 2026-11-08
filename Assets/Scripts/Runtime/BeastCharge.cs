@@ -60,6 +60,10 @@ namespace TowerDefense.Runtime
         private const float FallDepth = 2.6f;
         // Enemies count as on the stretch when one is this close to a point along it.
         private const float StretchProbeRadius = 3f;
+        // Slingers on its back (a special): a volley every so often at the goblins ahead.
+        private const float RiderSeconds = 0.7f;
+        private const float RiderReach = 2.5f;
+        private const float RiderRadius = 3f;
         private static readonly float[] StretchProbeDistances = { 1.5f, 5f, 8.5f };
 
         private TowerActor tower;
@@ -68,6 +72,8 @@ namespace TowerDefense.Runtime
         private Transform beast;
         private Transform healthBar;
         private Transform healthFill;
+        private Transform armorFill;
+        private float riderTimer;
         private State state;
         private float cooldown;
         private float hitTimer;
@@ -96,6 +102,10 @@ namespace TowerDefense.Runtime
         public bool IsOut => state != State.Resting;
         public int ChargeCount { get; private set; }
         public int FallCount { get; private set; }
+        public int RiderVolleys { get; private set; }
+        // Rage (a special): wounded below the threshold, it stomps faster and harder.
+        public bool IsRaging => state == State.Fighting && definition != null && definition.rageBonus > 0f &&
+                                RemainingHealth <= MaximumHealth * definition.rageThreshold;
         // How far along the road the last charge ran before it stopped.
         public float LastRunDistance { get; private set; }
         public Vector3 BeastPosition => beast != null ? beast.position : transform.position;
@@ -120,7 +130,11 @@ namespace TowerDefense.Runtime
         }
 
         public float CurrentHealth => RemainingHealth;
-        public float MaximumHealth => definition != null ? Mathf.Max(1f, definition.beastHealth) : 1f;
+        // Its own health plus the armour (a special), which is lost first.
+        public float MaximumHealth => definition != null
+            ? Mathf.Max(1f, definition.beastHealth + definition.beastExtraHealth + definition.beastArmor)
+            : 1f;
+        private float OwnHealth => Mathf.Max(1f, MaximumHealth - definition.beastArmor);
         public float Armor => 0f;
         public float PhysicalResistance => 0f;
         public float FireResistance => 0f;
@@ -201,6 +215,7 @@ namespace TowerDefense.Runtime
                         runSpeed = definition.chargeSpeed;
                         hitTimer = 0f;
                         enemies.TakeAreaReport(reportId);
+                        enemies.TakeBlockedReport(reportId);
                     }
 
                     break;
@@ -218,6 +233,11 @@ namespace TowerDefense.Runtime
             if (state == State.ToRoad || state == State.Charging)
             {
                 ShoveAwayFromBody();
+            }
+
+            if (state == State.Charging || state == State.Fighting)
+            {
+                UpdateRiders();
             }
 
             UpdateHealthBar();
@@ -273,8 +293,16 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            // Every enemy it ran into since the last frame slows it down.
-            runSpeed -= enemies.TakeAreaReport(reportId) * definition.chargeSpeedLossPerMass;
+            // Every enemy it ran into since the last frame slows it down, and one it cannot push
+            // (an Orc Brute before the upgrade, the boss) stops it where it stands.
+            runSpeed -= enemies.TakeAreaReport(reportId) * definition.chargeSpeedLossPerMass *
+                        (1f - Mathf.Clamp(definition.beastCrowdResistance, 0f, 0.9f));
+            if (enemies.TakeBlockedReport(reportId) > 0f)
+            {
+                BeginFight();
+                return;
+            }
+
             var remaining = chargeDistance - chargeEnd;
             var speed = Mathf.Min(runSpeed,
                 definition.chargeSpeed * Mathf.Lerp(SlowestChargeFraction, 1f, Mathf.Clamp01(remaining / SlowDownDistance)));
@@ -313,7 +341,7 @@ namespace TowerDefense.Runtime
             // slowing beast throws less hard. The goblins it hits on the ground slow it down.
             var force = Mathf.Lerp(0.4f, 1f, Mathf.InverseLerp(StopSpeed, definition.chargeSpeed, speed));
             enemies.DamageAndKnockbackInRadius(position, definition.chargeRadius, 0f, definition.knockbackDistance * force, MaxThrownPerStep, out _,
-                launch: definition.knockbackLaunch, reportId: reportId);
+                launch: definition.knockbackLaunch, reportId: reportId, maxPushMass: PushLimit);
         }
 
         private void BeginFight()
@@ -340,11 +368,42 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            stompTimer += StompSeconds;
+            var rage = IsRaging ? 1f + definition.rageBonus : 1f;
+            stompTimer += StompSeconds / rage;
             // Pushes the goblins around it back along the ground, without throwing them.
-            var damage = definition.damage * tower.DamageMultiplier * StompDamageFraction;
-            var dealt = enemies.DamageAndKnockbackInRadius(beast.position, StompRadius, damage, StompKnockback, MaxStompedPerStep, out _);
+            var damage = definition.damage * tower.DamageMultiplier * StompDamageFraction * rage;
+            var dealt = enemies.DamageAndKnockbackInRadius(beast.position, StompRadius, damage, StompKnockback, MaxStompedPerStep, out _,
+                maxPushMass: PushLimit);
             tower.RecordDamage(dealt);
+        }
+
+        // The slingers on its back throw at the goblins ahead of it while it charges and fights.
+        private void UpdateRiders()
+        {
+            if (definition.riderCount <= 0 || definition.riderDamage <= 0f)
+            {
+                return;
+            }
+
+            riderTimer -= Time.deltaTime;
+            if (riderTimer > 0f)
+            {
+                return;
+            }
+
+            riderTimer += RiderSeconds;
+            RiderVolleys++;
+            var center = beast.position + beast.forward * RiderReach;
+            center.y = 0f;
+            var dealt = enemies.DamageInRadius(center, RiderRadius, definition.riderDamage * tower.DamageMultiplier,
+                definition.riderCount, out _);
+            tower.RecordDamage(dealt);
+            for (var i = 0; i < definition.riderCount; i++)
+            {
+                var spot = UnityEngine.Random.insideUnitCircle * RiderRadius * 0.7f;
+                HordeProjectileVisual.Spawn(beast.position + Vector3.up * 2.6f, center + new Vector3(spot.x, 0.3f, spot.y),
+                    PlaceholderPalette.Grey(.841f), false, 0.18f, 0.1f);
+            }
         }
 
         private void BeginFall()
@@ -440,8 +499,12 @@ namespace TowerDefense.Runtime
             }
 
             shoveTimer += ShoveStepSeconds;
-            enemies.DamageAndKnockbackInRadius(beast.position, BodyRadius, 0f, BodyKnockback, 0, out _);
+            enemies.DamageAndKnockbackInRadius(beast.position, BodyRadius, 0f, BodyKnockback, 0, out _,
+                reportId: state == State.Charging ? reportId : 0, maxPushMass: PushLimit);
         }
+
+        // The heaviest enemy it can push: Goblin Runners but not Orc Brutes, until the upgrade.
+        private float PushLimit => definition.pushesHeavy ? 0f : definition.chargeMaxPushMass;
 
         private bool MoveTowards(Vector3 destination, float speed)
         {
@@ -487,6 +550,12 @@ namespace TowerDefense.Runtime
             fill.transform.SetParent(healthBar, false);
             fill.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(0.735f, 1f));
             healthFill = fill.transform;
+            // The armour (a special) shows as a lighter stretch after its own health.
+            var armor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            armor.name = "Armor";
+            armor.transform.SetParent(healthBar, false);
+            armor.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(0.95f, 1f));
+            armorFill = armor.transform;
             root.SetActive(false);
         }
 
@@ -509,9 +578,13 @@ namespace TowerDefense.Runtime
             }
 
             healthBar.position = beast.position + new Vector3(0f, 2.9f, 0f);
-            var normalized = Mathf.Clamp01(RemainingHealth / MaximumHealth);
+            var normalized = Mathf.Clamp01(Mathf.Min(RemainingHealth, OwnHealth) / MaximumHealth);
             healthFill.localScale = new Vector3(2f * normalized, 0.09f, 0.24f);
             healthFill.localPosition = new Vector3(-1f + normalized, 0.01f, 0f);
+            var armorShare = Mathf.Clamp01(Mathf.Max(0f, RemainingHealth - OwnHealth) / MaximumHealth);
+            armorFill.gameObject.SetActive(armorShare > 0f);
+            armorFill.localScale = new Vector3(2f * armorShare, 0.095f, 0.25f);
+            armorFill.localPosition = new Vector3(-1f + 2f * normalized + armorShare, 0.012f, 0f);
         }
 
         // Greybox mammoth, about 2.6 m long and 2.2 m tall, facing +Z.

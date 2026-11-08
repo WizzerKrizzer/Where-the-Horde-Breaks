@@ -48,7 +48,7 @@ namespace TowerDefense.Tests
             var tower = world.Towers.Towers[0];
             var kills = 0;
             world.Enemies.EnemyKilled += _ => kills++;
-            world.Enemies.BeginWave(world.Level.wave, world.Route, useDataHordePrototype: true);
+            world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
 
             var deadline = Time.realtimeSinceStartup + 25f;
             while (kills < 3 && Time.realtimeSinceStartup < deadline)
@@ -70,7 +70,7 @@ namespace TowerDefense.Tests
             var tower = world.Towers.Towers[0];
             var charge = tower.GetComponent<BeastCharge>();
             Assert.That(charge, Is.Not.Null, "The mammoth tower has no beast.");
-            world.Enemies.BeginWave(world.Level.wave, world.Route, useDataHordePrototype: true);
+            world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
 
             // The fastest goblin while the mammoth runs: knocked goblins fly much faster than they walk.
             var fastest = 0f;
@@ -117,7 +117,7 @@ namespace TowerDefense.Tests
             Assert.That(onRoad, Is.True, "The mammoth left the road while charging.");
             Assert.That(tower.DamageDealt, Is.GreaterThan(0f), "The mammoth's charge hurt no goblin.");
             var walking = 0f;
-            foreach (var entry in world.Level.wave.entries)
+            foreach (var entry in world.Wave.entries)
             {
                 walking = Mathf.Max(walking, entry.enemy.speed);
             }
@@ -147,7 +147,7 @@ namespace TowerDefense.Tests
             RequireComputeShaders();
             var world = CreateWorld();
             world.Mammoth.fireInterval /= chargeRateFactor;
-            var wave = Object.Instantiate(world.Level.wave);
+            var wave = Object.Instantiate(world.Wave);
             cleanup.Add(wave);
             wave.totalEnemyCount *= hordeFactor;
             wave.randomSpawnBurstMin *= hordeFactor;
@@ -238,6 +238,8 @@ namespace TowerDefense.Tests
         internal sealed class World
         {
             public LevelDefinition Level;
+            // The former Level 1 wave: 170 Goblin Runners and 45 Orc Brutes.
+            public WaveDefinition Wave;
             public PathRoute Route;
             public EnemyManager Enemies;
             public HordeEnemyManager Horde;
@@ -257,7 +259,7 @@ namespace TowerDefense.Tests
         internal static World CreateWorld(List<Object> cleanup)
         {
             var content = SampleContent.Create();
-            var world = new World { Level = content.Level };
+            var world = new World { Level = content.Level, Wave = content.LevelOneTestWave };
             foreach (var definition in content.Towers)
             {
                 if (definition.id == "spear_thrower")
@@ -297,6 +299,8 @@ namespace TowerDefense.Tests
             cleanup.Add(enemiesObject);
             world.Enemies = enemiesObject.AddComponent<EnemyManager>();
             world.Enemies.SetHordePrototype(world.Horde);
+            // As in the game, the road is known before the wave (cavemen walk out to it).
+            world.Enemies.SetLevelRoute(world.Route);
 
             var towersObject = new GameObject("Test Towers");
             cleanup.Add(towersObject);

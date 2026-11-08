@@ -166,7 +166,7 @@ namespace TowerDefense.Tests
             var world = CreateWorld(cleanup);
             world.Barrier.health = 1000000f;
             Assert.That(world.Towers.TryPlace(world.Barrier, BarrierPosition), Is.True, "The barrier could not be placed on the road.");
-            var wave = Object.Instantiate(world.Level.wave);
+            var wave = Object.Instantiate(world.Wave);
             cleanup.Add(wave);
             wave.totalEnemyCount *= 10;
             wave.randomSpawnBurstMin *= 10;

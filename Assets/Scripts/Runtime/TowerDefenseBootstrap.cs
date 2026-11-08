@@ -297,6 +297,11 @@ namespace TowerDefense.Runtime
     internal sealed class SampleContent
     {
         public LevelDefinition Level { get; private set; }
+        // The former Level 1 wave (170 Goblin Runners and 45 Orc Brutes), for tests on the Level 1
+        // road now that the level itself has no enemies.
+        public WaveDefinition LevelOneTestWave { get; private set; }
+        // Not in any level yet: the fourth prehistoric map is still being designed.
+        public EnemyDefinition PrehistoricBoss { get; private set; }
         public IReadOnlyList<LevelDefinition> Levels { get; private set; }
         public SkillTreeDefinition SkillTree { get; private set; }
         public IReadOnlyList<TowerDefinition> Towers { get; private set; }
@@ -311,8 +316,8 @@ namespace TowerDefense.Runtime
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
                 72f, 2.28f, 2, 4, PlaceholderPalette.Enemy, 0.39f);
-            var shaman = CreateEnemy("shaman", "Witch Shaman", EnemyRole.Support,
-                "Mid-speed support caster. For now it is a tougher priority target; later it will empower nearby hordes.",
+            var shaman = CreateEnemy("shaman", "Shaman", EnemyRole.Support,
+                "Walks with the horde and heals the goblins around it.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
                 32f, 3.35f, 1, 2, PlaceholderPalette.Enemy, 0.5f);
             var vampire = CreateEnemy("vampire", "Vampire", EnemyRole.Saboteur,
@@ -327,8 +332,27 @@ namespace TowerDefense.Runtime
                 "Slow undead. The first time it falls, it rises once more at half health.",
                 "Weak to sustained damage after its revival has been spent.",
                 34f, 2.05f, 1, 2, PlaceholderPalette.Enemy, 0.5f);
-            runner.alliedDamageMultiplier = 1.7f;
+            // The prehistoric boss, on the era's last map (docs/Handoff.md): big, heavy, slow, with a
+            // lot of health and no special skills. Nothing pushes it; cavemen and the mammoth only
+            // slow it. Its look and race are not decided yet. TEMPORARY numbers until balancing.
+            var prehistoricBoss = CreateEnemy("prehistoric_boss", "Prehistoric Boss", EnemyRole.Boss,
+                "A huge, slow brute leading the horde. Nothing can push it, and the cavemen only slow it down.",
+                "Weak to heavy single hits: Spear Throwers are the main damage against it.",
+                1500f, 1.5f, 10, 50, PlaceholderPalette.Enemy, 1.1f);
+            prehistoricBoss.mass = 20f;
+            prehistoricBoss.cannotBePushed = true;
+            prehistoricBoss.passesBlockers = true;
+            prehistoricBoss.attackDamage = 8f;
+            prehistoricBoss.attackInterval = 1.2f;
+            // The prehistoric era has only the Runner, the Brute and the Shaman; these three come in
+            // the medieval era (docs/Handoff.md, 2026-11-08).
+            vampire.eraIndex = (int)EraId.Medieval;
+            harpy.eraIndex = (int)EraId.Medieval;
+            zombie.eraIndex = (int)EraId.Medieval;
             runner.mass = 1f;
+            // The Brute hits a little harder than the Runner; its strength is that it lasts
+            // (docs/Handoff.md). TEMPORARY value until balancing.
+            brute.alliedDamageMultiplier = 1.3f;
             brute.wallDamageMultiplier = 1.8f;
             brute.mass = 3f;
             shaman.healsEnemies = true;
@@ -364,6 +388,30 @@ namespace TowerDefense.Runtime
             spearThrower.canHitFlying = true;
             spearThrower.flyThroughShot = true;
             spearThrower.nextEvolution = ballista;
+            // Fast, regular throws with small damage: they finish off the goblins that slipped past
+            // the mammoth (docs/Handoff.md). TEMPORARY numbers until balancing.
+            var slingers = CreateTower("slingers", "Slingers", TowerRole.ArcherLine,
+                "Hunters whirl slings and pelt the road with stones. Fast, steady throws with small hits; they finish off goblins that slip past.",
+                "Weak against tough enemies: each stone hits lightly.",
+                (int)EraId.Prehistoric, 1, 6.5f, 3f, 0.4f, 16f, PlaceholderPalette.Tower);
+            slingers.nextEvolution = archer;
+            // Cavemen with clubs come out of a cave beside the road and hold the goblins back; they
+            // hit lightly, holding is their job. One at first, up to five with upgrades; one shared
+            // timer brings the next one only while fewer than the maximum are out (docs/Handoff.md,
+            // user 2026-11-08). TEMPORARY numbers until balancing.
+            var cave = CreateTower("cave", "Cave", TowerRole.BarracksLine,
+                "A cave beside the road. Cavemen with clubs come out and hold the goblins back on the road.",
+                "Weak against thick hordes and heavy enemies: the cavemen hold, but hit lightly.",
+                (int)EraId.Prehistoric, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
+            cave.behavior = TowerBehavior.Barracks;
+            cave.barracksUnitType = AlliedUnitType.Caveman;
+            cave.barracksCapacity = 1;
+            cave.barracksRespawnSeconds = 8f;
+            cave.alliedUnitHealth = 26f;
+            cave.alliedUnitDamage = 2f;
+            cave.alliedUnitBlockCapacity = 3f;
+            cave.alliedUnitMoveSpeed = 3f;
+            cave.alliedUnitAggroRange = 6f;
             var mammoth = CreateTower("mammoth", "Tamed Mammoth", TowerRole.ControlLine,
                 "A mammoth waits in its pen beside the road. When goblins come near, it charges along the road into them, trampling and throwing the horde aside until the crowd slows it to a halt. Then it fights where it stands until it falls, and a new mammoth takes its place.",
                 "Weak against thick hordes: they stop the charge early, and the road is open until the next mammoth is ready.",
@@ -443,11 +491,19 @@ namespace TowerDefense.Runtime
             wave.enforceSpawnClearance = true;
             wave.entries = BuildLevelOneWaveEntries(runner, brute);
 
+            // Level 1 has no enemies until it is redesigned (user, 2026-11-08): starting it wins at
+            // once. The old wave above stays for the tests on the Level 1 road (LevelOneTestWave).
+            var levelOneWave = ScriptableObject.CreateInstance<WaveDefinition>();
+            levelOneWave.id = "wave_01_empty";
+            levelOneWave.totalEnemyCount = 0;
+            levelOneWave.spawnInterval = wave.spawnInterval;
+            levelOneWave.entries = System.Array.Empty<WaveEntry>();
+
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
             level.id = "level_01";
             level.displayName = "Broken Green Pass";
             level.startingLives = 10;
-            level.wave = wave;
+            level.wave = levelOneWave;
             level.pathWaypoints = CreateLevelOnePath();
             level.groundCenter = new Vector3(0f, -0.08f, 1.5f);
             level.groundSize = new Vector3(82f, 0.1f, 50f);
@@ -465,7 +521,7 @@ namespace TowerDefense.Runtime
             level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 8);
             level.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             level.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
-            level.recommendedTactics = "Use early Archer Towers to thin Goblin Runners, then place them around bends so their range covers the road for longer. Save Volley of Arrows for dense mixed packs or Brutes that are about to leak through.";
+            level.recommendedTactics = "No enemies yet: this level is being redesigned.";
 
             var levelTwoWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelTwoWave.id = "wave_02_placeholder";
@@ -788,15 +844,26 @@ namespace TowerDefense.Runtime
             levelSeven.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
             levelSeven.recommendedTactics = "Explosion lab: the same 10,000 light runners and crowd envelope as Level 2 converge from the edge of a sealed circular arena. Use the Shockwave Bomb to inspect radial knockback, impulse transfer, wall pressure, and crowd recovery.";
 
+            // The prehistoric tree (user, 2026-11-08). The rock sits at the centre with its own
+            // stats and specials just above and below it; the four towers branch out two to a
+            // side (Slingers and Cave left, Spear Throwers and Mammoth right). Every tower has three
+            // Kill Essence stats and three specials bought with Challenge Sigils (2, 3 and 4: about
+            // 3 on average), each with two Kill Essence upgrades of its own. Each node shows a pixel
+            // icon (SkillTreePixelIcons) instead of a name. The positions come from a layout script
+            // (seed 948) that grows each branch outward with some randomness and rejects any square
+            // sitting on a line or lines crossing. ALL PRICES AND VALUES ARE TEMPORARY.
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             tree.id = "core_tree";
             tree.nodes = new[]
             {
                 new SkillNodeDefinition
                 {
+                    // The rock replaced the Volley of Arrows (user, 2026-11-08); the volley ids stay so
+                    // saved progress keeps its ranks.
                     id = "volley_core",
-                    displayName = "Volley of Arrows",
-                    description = "Your starting active weapon. This is the center of the first tree.",
+                    displayName = "Rolling Rock",
+                    description = "Your starting active weapon: drop a rock on the road, then let it roll the way you drag. This is the center of the first tree.",
+                    iconKey = "rock",
                     radialPosition = Vector2.zero,
                     maxRanks = 1,
                     startsUnlocked = true,
@@ -804,776 +871,153 @@ namespace TowerDefense.Runtime
                 },
                 new SkillNodeDefinition
                 {
-                    id = "volley_damage_01",
-                    displayName = "Sharper Arrows",
-                    description = "Active weapon damage.",
-                    radialPosition = new Vector2(150f, 18f),
-                    maxRanks = 10,
+                    id = "slingers_unlock",
+                    displayName = "Slingers",
+                    description = "Hunters with slings: fast, light hits that finish off goblins. Yours from the start.",
+                    iconKey = "slingers",
+                    radialPosition = new Vector2(-499f, 126f),
+                    maxRanks = 1,
+                    startsUnlocked = true,
+                    isMajorUnlock = true,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "volley_pierce_01",
-                    displayName = "Arrow Rain",
-                    description = "Active weapon targets.",
-                    radialPosition = new Vector2(156f, -84f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponPierceFlat, value = 2f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "volley_cooldown_01",
-                    displayName = "Quick Draw",
-                    description = "Active weapon cooldown.",
-                    radialPosition = new Vector2(285f, 68f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "volley_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponCooldownPercent, value = 2f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "volley_auto_fire_unlock",
-                    displayName = "Loose Command",
-                    description = "Unlock active weapon auto-fire toggle.",
-                    radialPosition = new Vector2(424f, 104f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_cooldown_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 15) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponAutoFireUnlock, value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "volley_radius_01",
-                    displayName = "Wider Volley",
-                    description = "Active weapon radius.",
-                    radialPosition = new Vector2(292f, -28f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "volley_pierce_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponRadiusFlat, value = 0.15f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "base_health_01",
-                    displayName = "Reinforced Gate",
-                    description = "Base lives.",
-                    radialPosition = new Vector2(118f, 314f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "steady_tithe_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 9) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BaseLivesFlat, value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "steady_tithe_01",
-                    displayName = "Steady Tithe",
-                    description = "Level completion essence.",
-                    radialPosition = new Vector2(20f, 170f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costGrowthMultiplier = 2f,
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.LevelEndKillEssenceFlat, value = 3f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_unlock",
-                    displayName = "Archer Tower",
-                    description = "Unlock the Archer Tower for future runs.",
-                    radialPosition = new Vector2(-150f, 52f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_projectile_speed_01",
-                    displayName = "Swift Shafts",
-                    description = "Archer Tower projectile speed.",
-                    radialPosition = new Vector2(-150f, 188f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerProjectileSpeedPercent, targetId = "archer", value = 12f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_range_01",
-                    displayName = "High Perches",
-                    description = "Archer Tower range.",
-                    radialPosition = new Vector2(-150f, 318f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "archer_projectile_speed_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerRangeFlat, targetId = "archer", value = 0.35f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_limit_01",
-                    displayName = "Archer Barracks",
-                    description = "Archer Tower placement limit.",
-                    radialPosition = new Vector2(-330f, 8f),
-                    maxRanks = 4,
-                    prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_damage_01",
-                    displayName = "Fletching",
-                    description = "Archer Tower damage.",
-                    radialPosition = new Vector2(-280f, 130f),
-                    maxRanks = 10,
-                    prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "archer", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_double_01",
-                    displayName = "Twin Loose",
-                    description = "Archer Tower double-shot chance.",
-                    radialPosition = new Vector2(-420f, 154f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "archer_damage_01" },
-                    costGrowthMultiplier = 2f,
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDoubleShotChancePercent, targetId = "archer", value = 6f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_flat_damage_01",
-                    displayName = "Bodkin Heads",
-                    description = "Archer Tower damage.",
-                    radialPosition = new Vector2(-560f, 190f),
-                    maxRanks = 10,
-                    prerequisiteNodeIds = new[] { "archer_double_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamageFlat, targetId = "archer", value = 0.5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_speed_01",
-                    displayName = "Quick Nocks",
-                    description = "Archer Tower fire rate.",
-                    radialPosition = new Vector2(-420f, 74f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "archer_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "archer", value = 3f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_flat_speed_01",
-                    displayName = "Draw Drills",
-                    description = "Archer Tower fire rate.",
-                    radialPosition = new Vector2(-560f, 34f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "archer_speed_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRateFlat, targetId = "archer", value = 0.2f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "ballista_unlock",
-                    displayName = "Ballista",
-                    description = "Unlock a slow tower with heavy single-target damage.",
-                    radialPosition = new Vector2(-150f, -98f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "archer_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "ballista", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "ballista_limit_01",
-                    displayName = "Siege Crew",
-                    description = "Ballista placement limit.",
-                    radialPosition = new Vector2(-306f, -112f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "ballista", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "ballista_damage_01",
-                    displayName = "Heavy Bolts",
-                    description = "Ballista damage.",
-                    radialPosition = new Vector2(-298f, -190f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "ballista", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "ballista_pierce_01",
-                    displayName = "Skewering Bolts",
-                    description = "Ballista pierce.",
-                    radialPosition = new Vector2(-452f, -190f),
-                    maxRanks = 4,
-                    prerequisiteNodeIds = new[] { "ballista_damage_01" },
-                    costGrowthMultiplier = 2.4f,
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "ballista", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "ballista_speed_01",
-                    displayName = "Winch Drills",
-                    description = "Ballista fire rate.",
-                    radialPosition = new Vector2(-326f, -292f),
-                    maxRanks = 10,
-                    prerequisiteNodeIds = new[] { "ballista_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "ballista", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "projectile_aim_assist_01",
-                    displayName = "Guiding Fletches",
-                    description = "Archer Tower aim assist.",
-                    radialPosition = new Vector2(-700f, 112f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "archer_flat_damage_01", "archer_flat_speed_01" },
-                    costGrowthMultiplier = 2.5f,
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerAimAssistPercent, targetId = "archer", value = 20f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "bell_unlock",
-                    displayName = "Bell Tower",
-                    description = "Unlock the Bell Tower, a fast medieval lookout turret for cleaning up leaks.",
-                    radialPosition = new Vector2(438f, -70f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_radius_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "bell", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 12f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerSlowCapacityFlat, targetId = "bell", value = 10f }
-                    },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "bell_limit_01",
-                    displayName = "Signal Crews",
-                    description = "Bell Tower placement limit.",
-                    radialPosition = new Vector2(586f, -122f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "bell_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "bell", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "bell_slow_01",
-                    displayName = "Heavy Clapper",
-                    description = "Bell Tower slow.",
-                    radialPosition = new Vector2(586f, 8f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "bell_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerSlowPercentFlat, targetId = "bell", value = 3f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "bell_capacity_01",
-                    displayName = "Wider Toll",
-                    description = "Bell Tower slow capacity.",
-                    radialPosition = new Vector2(724f, -42f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "bell_slow_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerSlowCapacityFlat, targetId = "bell", value = 3f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "bell_range_01",
-                    displayName = "High Belfry",
-                    description = "Bell Tower range.",
-                    radialPosition = new Vector2(724f, -172f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "bell_limit_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerRangeFlat, targetId = "bell", value = 0.35f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_unlock",
-                    displayName = "Catapult",
-                    description = "Unlock the Catapult, an arcing splash tower that knocks enemies away from the impact.",
-                    radialPosition = new Vector2(-150f, -306f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "ballista_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "catapult", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_limit_01",
-                    displayName = "Siege Yard",
-                    description = "Catapult placement limit.",
-                    radialPosition = new Vector2(-306f, -338f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "catapult_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "catapult", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_damage_01",
-                    displayName = "Heavier Stones",
-                    description = "Catapult damage.",
-                    radialPosition = new Vector2(-150f, -430f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "catapult_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "catapult", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_speed_01",
-                    displayName = "Trained Winches",
-                    description = "Catapult fire rate.",
-                    radialPosition = new Vector2(-306f, -446f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "catapult_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "catapult", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_fire_unlock",
-                    displayName = "Pitch-Soaked Stones",
-                    description = "Catapult boulders ignite enemies hit by the splash.",
-                    radialPosition = new Vector2(-150f, -562f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "catapult_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.EnableTowerFire, targetId = "catapult", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerFireDamagePerTickFlat, targetId = "catapult", value = 0.7f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerFireTicksPerSecondFlat, targetId = "catapult", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerFireMaxStacksFlat, targetId = "catapult", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.TowerFireDurationFlat, targetId = "catapult", value = 3f }
-                    },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_fire_damage_01",
-                    displayName = "Hotter Pitch",
-                    description = "Catapult burn damage.",
-                    radialPosition = new Vector2(-306f, -610f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireDamagePerTickFlat, targetId = "catapult", value = 0.25f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_fire_rate_01",
-                    displayName = "Hungry Flames",
-                    description = "Catapult burn rate.",
-                    radialPosition = new Vector2(6f, -610f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "catapult_fire_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireTicksPerSecondFlat, targetId = "catapult", value = 0.15f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_fire_stacks_01",
-                    displayName = "Layered Pitch",
-                    description = "Catapult burn stacks.",
-                    radialPosition = new Vector2(-458f, -684f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "catapult_fire_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireMaxStacksFlat, targetId = "catapult", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "catapult_fire_duration_01",
-                    displayName = "Clinging Tar",
-                    description = "Catapult burn duration.",
-                    radialPosition = new Vector2(158f, -684f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "catapult_fire_rate_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireDurationFlat, targetId = "catapult", value = 0.5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barrier_unlock",
-                    displayName = "Timber Barrier",
-                    description = "Unlock a destructible physical barrier that can be placed on the enemy path.",
-                    radialPosition = new Vector2(20f, -220f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.VictorySigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "barrier", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barrier_health_01",
-                    displayName = "Layered Timbers",
-                    description = "Timber Barrier health.",
-                    radialPosition = new Vector2(18f, -356f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "barrier_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerHealthFlat, targetId = "barrier", value = 15f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barrier_thorns_01",
-                    displayName = "Iron Spikes",
-                    description = "Timber Barrier thorns damage.",
-                    radialPosition = new Vector2(154f, -344f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "barrier_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerThornsDamageFlat, targetId = "barrier", value = 1.5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barrier_limit_01",
-                    displayName = "Reserve Timbers",
-                    description = "Timber Barrier placement limit.",
-                    radialPosition = new Vector2(-114f, -344f),
-                    maxRanks = 5,
-                    prerequisiteNodeIds = new[] { "barrier_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "barrier", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "knight_barracks_unlock",
-                    displayName = "Knight Barracks",
-                    description = "Unlock barracks that respawn one knight defender.",
-                    radialPosition = new Vector2(310f, 292f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "base_health_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "knight_barracks", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barracks_capacity_01",
-                    displayName = "Knight Bunks",
-                    description = "Knight Barracks troop slots.",
-                    radialPosition = new Vector2(466f, 326f),
-                    maxRanks = 4,
-                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "knight_barracks_limit_01",
-                    displayName = "Additional Barracks",
-                    description = "Knight Barracks placement limit.",
-                    radialPosition = new Vector2(310f, 178f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "knight_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barracks_damage_01",
-                    displayName = "Knight Steel",
-                    description = "Knight damage.",
-                    radialPosition = new Vector2(466f, 228f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barracks_health_01",
-                    displayName = "Knight Mail",
-                    description = "Knight health.",
-                    radialPosition = new Vector2(618f, 300f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "barracks_capacity_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "barracks_respawn_01",
-                    displayName = "Knight Muster",
-                    description = "Knight respawn time.",
-                    radialPosition = new Vector2(618f, 202f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "barracks_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "knight_quarters_02",
-                    displayName = "Veteran Quarters",
-                    description = "Knight troop slots and health.",
-                    radialPosition = new Vector2(770f, 326f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "barracks_health_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "knight_barracks", value = 1f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "knight_barracks", value = 10f }
-                    }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "knight_drills_02",
-                    displayName = "Veteran Muster",
-                    description = "Knight damage and respawn time.",
-                    radialPosition = new Vector2(770f, 202f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "barracks_respawn_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 8) },
-                    effects = new[]
-                    {
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "knight_barracks", value = 10f },
-                        new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "knight_barracks", value = 6f }
-                    }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_barracks_unlock",
-                    displayName = "Archer Post",
-                    description = "Unlock barracks that respawn anti-air archers.",
-                    radialPosition = new Vector2(330f, 438f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "archer_barracks", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_post_capacity_01",
-                    displayName = "Arrow Racks",
-                    description = "Archer Post troop slots.",
-                    radialPosition = new Vector2(510f, 520f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "archer_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_barracks_limit_01",
-                    displayName = "Additional Archer Posts",
-                    description = "Archer Post placement limit.",
-                    radialPosition = new Vector2(330f, 552f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "archer_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_post_damage_01",
-                    displayName = "War Arrows",
-                    description = "Archer troop damage.",
-                    radialPosition = new Vector2(510f, 630f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "archer_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "archer_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_post_health_01",
-                    displayName = "Leather Jacks",
-                    description = "Archer troop health.",
-                    radialPosition = new Vector2(670f, 550f),
-                    maxRanks = 6,
-                    prerequisiteNodeIds = new[] { "archer_post_capacity_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 2) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "archer_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "archer_post_respawn_01",
-                    displayName = "Ready Quivers",
-                    description = "Archer Post respawn time.",
-                    radialPosition = new Vector2(670f, 660f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "archer_post_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "archer_barracks", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_barracks_unlock",
-                    displayName = "Paladin Chapter",
-                    description = "Unlock barracks that respawn durable paladins.",
-                    radialPosition = new Vector2(430f, 438f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "knight_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.PerfectSigil, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "paladin_barracks", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_chapter_capacity_01",
-                    displayName = "Chapter Cells",
-                    description = "Paladin Chapter troop slots.",
-                    radialPosition = new Vector2(610f, 420f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitCapacityFlat, targetId = "paladin_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_barracks_limit_01",
-                    displayName = "Additional Chapters",
-                    description = "Paladin Chapter placement limit.",
-                    radialPosition = new Vector2(430f, 326f),
-                    maxRanks = 3,
-                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.ChallengeToken, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.PerTypeTowerLimitFlat, targetId = "paladin_barracks", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_chapter_damage_01",
-                    displayName = "Blessed Maces",
-                    description = "Paladin damage.",
-                    radialPosition = new Vector2(610f, 330f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "paladin_barracks_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitDamagePercent, targetId = "paladin_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_chapter_health_01",
-                    displayName = "Plate Vows",
-                    description = "Paladin health.",
-                    radialPosition = new Vector2(770f, 420f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "paladin_chapter_capacity_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksUnitHealthPercent, targetId = "paladin_barracks", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "paladin_chapter_respawn_01",
-                    displayName = "Chapter Bells",
-                    description = "Paladin Chapter respawn time.",
-                    radialPosition = new Vector2(770f, 330f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "paladin_chapter_damage_01" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 5) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.BarracksRespawnCooldownPercent, targetId = "paladin_barracks", value = 4f } }
-                },
-                // Prehistoric towers. Their place in the tree is provisional until the era trees exist.
-                new SkillNodeDefinition
-                {
-                    id = "spear_thrower_unlock",
-                    displayName = "Spear Throwers",
-                    description = "Unlock the Spear Throwers, a slow long-range tower whose spears fly on through the goblins behind.",
-                    radialPosition = new Vector2(-440f, 380f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "spear_thrower", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "spear_thrower_damage_01",
-                    displayName = "Flint Points",
-                    description = "Spear Throwers damage.",
-                    radialPosition = new Vector2(-600f, 460f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "spear_thrower_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "spear_thrower", value = 4f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "spear_thrower_pierce_01",
-                    displayName = "Long Shafts",
-                    description = "Spear Throwers pierce.",
-                    radialPosition = new Vector2(-480f, 580f),
-                    maxRanks = 4,
-                    prerequisiteNodeIds = new[] { "spear_thrower_damage_01" },
-                    costGrowthMultiplier = 2.4f,
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 12) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerPierceFlat, targetId = "spear_thrower", value = 1f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "mammoth_unlock",
-                    displayName = "Tamed Mammoth",
-                    description = "Unlock the Tamed Mammoth, which charges along the road and scatters the horde.",
-                    radialPosition = new Vector2(-600f, -300f),
-                    maxRanks = 1,
-                    prerequisiteNodeIds = new[] { "volley_core" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.UnlockTower, targetId = "mammoth", value = 1f } },
-                    isMajorUnlock = true
-                },
-                new SkillNodeDefinition
-                {
-                    id = "mammoth_speed_01",
-                    displayName = "Restless Herd",
-                    description = "Tamed Mammoth charges more often.",
-                    radialPosition = new Vector2(-720f, -180f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "mammoth_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 4) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerFireRatePercent, targetId = "mammoth", value = 5f } }
-                },
-                new SkillNodeDefinition
-                {
-                    id = "mammoth_damage_01",
-                    displayName = "Heavy Tread",
-                    description = "Tamed Mammoth damage.",
-                    radialPosition = new Vector2(-560f, -460f),
-                    maxRanks = 8,
-                    prerequisiteNodeIds = new[] { "mammoth_unlock" },
-                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 3) },
-                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.TowerDamagePercent, targetId = "mammoth", value = 5f } }
-                }
+                    effects = new[] { TreeEffect(UpgradeEffectType.UnlockTower, 1f, "slingers") }
+                },
+                TreeNode("slingers_damage", "Heavier Stones", "Slinger stones hit harder.", "damage", new Vector2(-481f, -18f), 10, CurrencyType.KillEssence, 2, 1.2f, "slingers_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "slingers")),
+                TreeNode("slingers_speed", "Quick Slings", "Slingers throw faster.", "speed", new Vector2(-667f, 48f), 8, CurrencyType.KillEssence, 3, 1.2f, "slingers_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerFireRatePercent, 6f, "slingers")),
+                TreeNode("slingers_range", "Long Cords", "Slingers reach further.", "range", new Vector2(-571f, 13f), 5, CurrencyType.KillEssence, 4, 1.25f, "slingers_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerRangeFlat, 0.4f, "slingers")),
+                TreeNode("slingers_stun", "Stunning Stones", "Special: a stone sometimes stuns the goblin it hits (15%, 0.6 s).", "stun", new Vector2(-674f, 153f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "slingers_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerStunChancePercent, 15f, "slingers"), TreeEffect(UpgradeEffectType.TowerStunSecondsFlat, 0.6f, "slingers")),
+                TreeNode("slingers_stun_chance", "Sure Stun", "Stunning Stones: +5% chance to stun.", "stun|up", new Vector2(-777f, 120f), 5, CurrencyType.KillEssence, 6, 1.25f, "slingers_stun", false,
+                    TreeEffect(UpgradeEffectType.TowerStunChancePercent, 5f, "slingers")),
+                TreeNode("slingers_stun_time", "Long Daze", "Stunning Stones: the stun lasts 0.15 s longer.", "stun|time", new Vector2(-762f, 29f), 5, CurrencyType.KillEssence, 6, 1.25f, "slingers_stun", false,
+                    TreeEffect(UpgradeEffectType.TowerStunSecondsFlat, 0.15f, "slingers")),
+                TreeNode("slingers_ricochet", "Ricochet", "Special: the stone bounces on to one more goblin for 60% of the hit.", "ricochet", new Vector2(-514f, 296f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "slingers_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerRicochetBouncesFlat, 1f, "slingers"), TreeEffect(UpgradeEffectType.TowerRicochetDamagePercent, 60f, "slingers")),
+                TreeNode("slingers_ricochet_bounces", "Skipping Stones", "Ricochet: one more bounce.", "ricochet|plus", new Vector2(-418f, 358f), 3, CurrencyType.KillEssence, 10, 1.5f, "slingers_ricochet", false,
+                    TreeEffect(UpgradeEffectType.TowerRicochetBouncesFlat, 1f, "slingers")),
+                TreeNode("slingers_ricochet_damage", "Hard Bounce", "Ricochet: each bounce deals 10% more of the hit.", "ricochet|up", new Vector2(-605f, 357f), 5, CurrencyType.KillEssence, 6, 1.25f, "slingers_ricochet", false,
+                    TreeEffect(UpgradeEffectType.TowerRicochetDamagePercent, 10f, "slingers")),
+                TreeNode("slingers_shrapnel", "Shrapnel", "Special: the stone bursts into pebbles that hit 3 goblins in a cone behind the target for 40% of the hit.", "shrapnel", new Vector2(-583f, 215f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "slingers_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerShrapnelTargetsFlat, 3f, "slingers"), TreeEffect(UpgradeEffectType.TowerShrapnelDamagePercent, 40f, "slingers")),
+                TreeNode("slingers_shrapnel_count", "More Pebbles", "Shrapnel: hits one more goblin.", "shrapnel|plus", new Vector2(-680f, 276f), 5, CurrencyType.KillEssence, 6, 1.25f, "slingers_shrapnel", false,
+                    TreeEffect(UpgradeEffectType.TowerShrapnelTargetsFlat, 1f, "slingers")),
+                TreeNode("slingers_shrapnel_damage", "Sharp Pebbles", "Shrapnel: the pebbles deal 10% more of the hit.", "shrapnel|up", new Vector2(-756f, 229f), 5, CurrencyType.KillEssence, 6, 1.25f, "slingers_shrapnel", false,
+                    TreeEffect(UpgradeEffectType.TowerShrapnelDamagePercent, 10f, "slingers")),
+                TreeNode("spear_unlock", "Spear Throwers", "Hunters hurl long spears: slow, heavy hits, the main damage against the boss. Costs a Victory Sigil.", "spear", new Vector2(469f, -107f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.UnlockTower, 1f, "spear_thrower")),
+                TreeNode("spear_damage", "Flint Heads", "Spears hit harder.", "damage", new Vector2(290f, -153f), 10, CurrencyType.KillEssence, 2, 1.2f, "spear_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "spear_thrower")),
+                TreeNode("spear_speed", "Practised Throw", "Spear Throwers throw faster.", "speed", new Vector2(562f, 0f), 8, CurrencyType.KillEssence, 3, 1.2f, "spear_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerFireRatePercent, 6f, "spear_thrower")),
+                TreeNode("spear_range", "Long Atlatls", "Spears reach further.", "range", new Vector2(406f, 34f), 5, CurrencyType.KillEssence, 4, 1.25f, "spear_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerRangeFlat, 0.5f, "spear_thrower")),
+                TreeNode("spear_poison", "Poisoned Tips", "Special: every goblin a spear hits is poisoned, 2 damage a second for 3 s.", "poison", new Vector2(596f, -187f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "spear_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerPoisonDamagePerSecondFlat, 2f, "spear_thrower"), TreeEffect(UpgradeEffectType.TowerPoisonSecondsFlat, 3f, "spear_thrower")),
+                TreeNode("spear_poison_damage", "Strong Poison", "Poisoned Tips: +1 poison damage a second.", "poison|up", new Vector2(655f, -304f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_poison", false,
+                    TreeEffect(UpgradeEffectType.TowerPoisonDamagePerSecondFlat, 1f, "spear_thrower")),
+                TreeNode("spear_poison_time", "Slow Poison", "Poisoned Tips: the poison lasts 1 s longer.", "poison|time", new Vector2(719f, -191f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_poison", false,
+                    TreeEffect(UpgradeEffectType.TowerPoisonSecondsFlat, 1f, "spear_thrower")),
+                TreeNode("spear_pierce", "Piercing Spears", "Special: a spear passes through 2 more goblins; each one after the first takes 30% less than the one before.", "pierce", new Vector2(634f, -94f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "spear_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerPierceFlat, 2f, "spear_thrower"), TreeEffect(UpgradeEffectType.TowerPierceFalloffPercent, 30f, "spear_thrower")),
+                TreeNode("spear_pierce_count", "Longer Shafts", "Piercing Spears: passes through one more goblin.", "pierce|plus", new Vector2(756f, -110f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_pierce", false,
+                    TreeEffect(UpgradeEffectType.TowerPierceFlat, 1f, "spear_thrower")),
+                TreeNode("spear_pierce_keep", "Balanced Spears", "Piercing Spears: each next goblin takes 5% less off.", "pierce|up", new Vector2(725f, 1f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_pierce", false,
+                    TreeEffect(UpgradeEffectType.TowerPierceFalloffPercent, -5f, "spear_thrower")),
+                TreeNode("spear_big_game", "Big-Game Hunters", "Special: double damage against heavy enemies: Orc Brutes and the boss.", "biggame", new Vector2(472f, -223f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "spear_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerHeavyDamagePercent, 100f, "spear_thrower")),
+                TreeNode("spear_big_game_damage", "Hunter's Eye", "Big-Game Hunters: +25% more against heavy enemies.", "biggame|up", new Vector2(361f, -273f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_big_game", false,
+                    TreeEffect(UpgradeEffectType.TowerHeavyDamagePercent, 25f, "spear_thrower")),
+                TreeNode("spear_big_game_weight", "Heavier Spears", "Big-Game Hunters: spears hit 5% harder against everything.", "spear|up", new Vector2(531f, -306f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_big_game", false,
+                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 5f, "spear_thrower")),
+                TreeNode("mammoth_unlock", "Tamed Mammoth", "A mammoth that charges into the horde, trampling and throwing goblins aside. Costs a Victory Sigil.", "mammoth", new Vector2(484f, 129f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.UnlockTower, 1f, "mammoth")),
+                TreeNode("mammoth_damage", "Heavy Tread", "The mammoth tramples and stomps harder.", "damage", new Vector2(662f, 193f), 10, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "mammoth")),
+                TreeNode("mammoth_health", "Thick Fur", "The mammoth has 20 more health.", "health", new Vector2(269f, 183f), 8, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerHealthFlat, 20f, "mammoth")),
+                TreeNode("mammoth_herd", "Bigger Herd", "The next mammoth is ready sooner.", "cooldown", new Vector2(490f, 277f), 5, CurrencyType.KillEssence, 4, 1.25f, "mammoth_unlock", false,
+                    TreeEffect(UpgradeEffectType.TowerFireRatePercent, 8f, "mammoth")),
+                TreeNode("mammoth_rage", "Rage", "Special: below 40% health the mammoth stomps 30% faster and harder.", "rage", new Vector2(640f, 78f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "mammoth_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerBeastRagePercent, 30f, "mammoth"), TreeEffect(UpgradeEffectType.TowerBeastRageThresholdPercent, 40f, "mammoth")),
+                TreeNode("mammoth_rage_power", "Blind Fury", "Rage: +10% faster and harder.", "rage|up", new Vector2(766f, 91f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_rage", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastRagePercent, 10f, "mammoth")),
+                TreeNode("mammoth_rage_early", "Short Temper", "Rage: starts 10% of its health sooner.", "rage|fast", new Vector2(762f, 181f), 4, CurrencyType.KillEssence, 6, 1.25f, "mammoth_rage", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastRageThresholdPercent, 10f, "mammoth")),
+                TreeNode("mammoth_riders", "Slingers on its Back", "Special: 2 slingers ride the mammoth and pelt the goblins ahead while it charges and fights (3 damage a stone).", "riders", new Vector2(373f, 218f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "mammoth_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerBeastRidersFlat, 2f, "mammoth"), TreeEffect(UpgradeEffectType.TowerBeastRiderDamageFlat, 3f, "mammoth")),
+                TreeNode("mammoth_riders_more", "More Riders", "Slingers on its Back: one more slinger.", "riders|plus", new Vector2(325f, 341f), 3, CurrencyType.KillEssence, 10, 1.5f, "mammoth_riders", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastRidersFlat, 1f, "mammoth")),
+                TreeNode("mammoth_riders_damage", "Riders' Stones", "Slingers on its Back: stones deal 1.5 more damage.", "riders|up", new Vector2(252f, 271f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_riders", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastRiderDamageFlat, 1.5f, "mammoth")),
+                TreeNode("mammoth_armor", "Armoured Mammoth", "Special: 100 armour that is lost before its health, 20% harder hits, and crowds slow its charge 30% less.", "armor", new Vector2(592f, 285f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "mammoth_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerBeastArmorFlat, 100f, "mammoth"), TreeEffect(UpgradeEffectType.TowerDamagePercent, 20f, "mammoth"), TreeEffect(UpgradeEffectType.TowerBeastCrowdPercent, 30f, "mammoth")),
+                TreeNode("mammoth_armor_thick", "Thicker Hide", "Armoured Mammoth: 40 more armour.", "armor|up", new Vector2(705f, 343f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_armor", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastArmorFlat, 40f, "mammoth")),
+                TreeNode("mammoth_armor_ram", "Battering Ram", "Armoured Mammoth: crowds slow its charge 10% less.", "armor|fast", new Vector2(440f, 356f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_armor", false,
+                    TreeEffect(UpgradeEffectType.TowerBeastCrowdPercent, 10f, "mammoth")),
+                TreeNode("cave_unlock", "Cave", "Cavemen with clubs come out and hold the goblins back on the road. Costs a Victory Sigil.", "cave", new Vector2(-473f, -136f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.UnlockTower, 1f, "cave")),
+                TreeNode("cave_damage", "Bigger Clubs", "Cavemen hit harder.", "damage", new Vector2(-295f, -227f), 10, CurrencyType.KillEssence, 2, 1.2f, "cave_unlock", false,
+                    TreeEffect(UpgradeEffectType.BarracksUnitDamagePercent, 10f, "cave")),
+                TreeNode("cave_health", "Tough Hides", "Cavemen have more health.", "health", new Vector2(-617f, -190f), 10, CurrencyType.KillEssence, 2, 1.2f, "cave_unlock", false,
+                    TreeEffect(UpgradeEffectType.BarracksUnitHealthPercent, 10f, "cave")),
+                TreeNode("cave_capacity", "Bigger Tribe", "One more caveman can be out at once (up to 5).", "capacity", new Vector2(-401f, 25f), 4, CurrencyType.KillEssence, 8, 1.5f, "cave_unlock", false,
+                    TreeEffect(UpgradeEffectType.BarracksUnitCapacityFlat, 1f, "cave")),
+                TreeNode("cave_shields", "Shields", "Special: the cavemen carry shields and take 25% less damage.", "shield", new Vector2(-627f, -87f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "cave_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerUnitDamageReductionPercent, 25f, "cave")),
+                TreeNode("cave_shields_strong", "Stronger Shields", "Shields: 5% less damage taken.", "shield|up", new Vector2(-767f, -75f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_shields", false,
+                    TreeEffect(UpgradeEffectType.TowerUnitDamageReductionPercent, 5f, "cave")),
+                TreeNode("cave_shields_hide", "Hide Armour", "Shields: each blow does 0.5 less damage.", "shield|plus", new Vector2(-725f, -165f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_shields", false,
+                    TreeEffect(UpgradeEffectType.TowerUnitArmorFlat, 0.5f, "cave")),
+                TreeNode("cave_chief", "Chief", "Special: one caveman is a chief: twice the health, 50% harder hits, and cavemen near him hit 25% harder.", "chief", new Vector2(-403f, -296f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "cave_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerChiefAuraPercent, 25f, "cave"), TreeEffect(UpgradeEffectType.TowerChiefHealthPercent, 100f, "cave")),
+                TreeNode("cave_chief_aura", "War Cry", "Chief: the cavemen near him hit 10% harder.", "chief|up", new Vector2(-275f, -345f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_chief", false,
+                    TreeEffect(UpgradeEffectType.TowerChiefAuraPercent, 10f, "cave")),
+                TreeNode("cave_chief_health", "Old Warrior", "Chief: 25% more health.", "chief|heart", new Vector2(-199f, -283f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_chief", false,
+                    TreeEffect(UpgradeEffectType.TowerChiefHealthPercent, 25f, "cave")),
+                TreeNode("cave_torches", "Torches", "Special: the cavemen's blows set goblins burning, 2 damage a second for 3 s.", "torch", new Vector2(-533f, -259f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "cave_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerTorchBurnDamagePerSecondFlat, 2f, "cave"), TreeEffect(UpgradeEffectType.TowerTorchBurnSecondsFlat, 3f, "cave")),
+                TreeNode("cave_torches_hot", "Hot Embers", "Torches: +1 burn damage a second.", "torch|up", new Vector2(-632f, -325f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_torches", false,
+                    TreeEffect(UpgradeEffectType.TowerTorchBurnDamagePerSecondFlat, 1f, "cave")),
+                TreeNode("cave_torches_long", "Pitch", "Torches: the burn lasts 1 s longer.", "torch|time", new Vector2(-499f, -356f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_torches", false,
+                    TreeEffect(UpgradeEffectType.TowerTorchBurnSecondsFlat, 1f, "cave")),
+                TreeNode("rock_damage", "Heavier Rock", "The rock hits harder (impact, roll, fire and shards).", "damage", new Vector2(-46f, 146f), 10, CurrencyType.KillEssence, 2, 1.2f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponDamagePercent, 10f)),
+                TreeNode("rock_cooldown", "Quick Haul", "The next rock is ready sooner.", "cooldown", new Vector2(-109f, -98f), 8, CurrencyType.KillEssence, 3, 1.2f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponCooldownPercent, 5f)),
+                TreeNode("rock_roll", "Longer Roll", "The rock rolls 2 m further.", "roll", new Vector2(115f, -118f), 5, CurrencyType.KillEssence, 4, 1.25f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponRollDistanceFlat, 2f)),
+                TreeNode("rock_quake", "Quake", "Special: where the rock lands, goblins within 3.5 m are stunned for 0.8 s.", "quake", new Vector2(-142f, 117f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 3.5f), TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.8f)),
+                TreeNode("rock_quake_radius", "Wide Quake", "Quake: reaches 0.5 m further.", "quake|plus", new Vector2(-195f, 233f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 0.5f)),
+                TreeNode("rock_quake_time", "Deep Quake", "Quake: the stun lasts 0.2 s longer.", "quake|time", new Vector2(-243f, 112f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.2f)),
+                TreeNode("rock_fire", "Fire Rock", "Special: the rock burns and leaves a burning trail where it rolls.", "fire", new Vector2(75f, 108f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTrailUnlock, 1f)),
+                TreeNode("rock_fire_damage", "Hotter Fire", "Fire Rock: each burn tick deals 20% more.", "fire|up", new Vector2(181f, 158f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireDamagePercent, 20f)),
+                TreeNode("rock_fire_rate", "Fierce Fire", "Fire Rock: burns 0.5 more times per second.", "fire|fast", new Vector2(103f, 238f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTicksPerSecondFlat, 0.5f)),
+                TreeNode("rock_shatter", "Shatter", "Special: at the end of its roll the rock bursts into 5 shards, each hitting where it lands for 40% of the rock's damage.", "shatter", new Vector2(25f, -171f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 5f), TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 40f)),
+                TreeNode("rock_shatter_shards", "More Shards", "Shatter: 2 more shards.", "shatter|plus", new Vector2(-41f, -263f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 2f)),
+                TreeNode("rock_shatter_damage", "Sharp Shards", "Shatter: each shard deals 10% more of the rock's damage.", "shatter|up", new Vector2(104f, -261f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 10f)),
             };
 
             return new SampleContent
             {
                 Level = level,
+                LevelOneTestWave = wave,
+                PrehistoricBoss = prehistoricBoss,
                 Levels = new[] { level, levelTwo, levelTwoPointOne, levelThree, levelFour, levelFive, levelSix, levelSeven },
                 SkillTree = tree,
-                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks, spearThrower, mammoth }
+                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks, slingers, spearThrower, mammoth, cave }
             };
         }
 
@@ -1881,6 +1325,31 @@ namespace TowerDefense.Runtime
                 entries.Add(new WaveEntry { enemy = enemy, count = count });
                 remaining -= count;
             }
+        }
+
+        private static SkillNodeDefinition TreeNode(string id, string displayName, string description, string iconKey, Vector2 position,
+            int maxRanks, CurrencyType currency, int cost, float costGrowth, string prerequisite, bool isMajor,
+            params UpgradeEffect[] effects)
+        {
+            return new SkillNodeDefinition
+            {
+                id = id,
+                displayName = displayName,
+                description = description,
+                iconKey = iconKey,
+                radialPosition = position,
+                maxRanks = maxRanks,
+                costGrowthMultiplier = costGrowth,
+                costs = new[] { new CurrencyAmount(currency, cost) },
+                prerequisiteNodeIds = new[] { prerequisite },
+                isMajorUnlock = isMajor,
+                effects = effects
+            };
+        }
+
+        private static UpgradeEffect TreeEffect(UpgradeEffectType type, float value, string targetId = null)
+        {
+            return new UpgradeEffect { type = type, value = value, targetId = targetId };
         }
 
         private static TowerDefinition CreateTower(

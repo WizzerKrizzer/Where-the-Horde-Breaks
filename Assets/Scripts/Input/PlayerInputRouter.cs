@@ -68,6 +68,8 @@ namespace TowerDefense.Input
                 MousePanDelta = mousePanDelta,
                 Zoom = pointerOverUi ? 0f : UnityEngine.Input.mouseScrollDelta.y,
                 FireActive = leftClick,
+                FireHeld = UnityEngine.Input.GetMouseButton(0),
+                FireReleased = UnityEngine.Input.GetMouseButtonUp(0),
                 PlaceTower = leftClick,
                 RemoveTower = UnityEngine.Input.GetKeyDown(KeyCode.Delete),
                 RemoveAllTowers = UnityEngine.Input.GetKeyDown(KeyCode.Backspace),

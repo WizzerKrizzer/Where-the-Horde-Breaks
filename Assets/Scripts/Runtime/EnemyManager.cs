@@ -115,7 +115,8 @@ namespace TowerDefense.Runtime
             totalSpawned = 0;
             totalResolved = 0;
             BuildSpawnSequence();
-            if (path == null || !path.HasUsableRoute || spawnSequence.Count == 0)
+            // A wave without enemies (Level 1 for now) stays set, so it is complete at once.
+            if (path == null || !path.HasUsableRoute)
             {
                 wave = null;
             }
@@ -602,11 +603,45 @@ namespace TowerDefense.Runtime
             }
         }
 
-        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount)
+        /// <summary>Stuns every enemy within radius of center for seconds (the rock's quake).</summary>
+        public void StunInRadius(Vector3 center, float radius, float seconds)
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
-                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets, out hitCount);
+                hordePrototype.StunInRadius(center, radius, seconds);
+                return;
+            }
+
+            if (radius <= 0f || seconds <= 0f)
+            {
+                return;
+            }
+
+            var radiusSq = radius * radius;
+            CollectNearbyEnemies(center, radius, targetCandidates, maxResults: 128);
+            foreach (var enemy in targetCandidates)
+            {
+                if (enemy.IsAlive && (enemy.transform.position - center).sqrMagnitude <= radiusSq)
+                {
+                    enemy.ApplySlow(0.95f, seconds);
+                }
+            }
+        }
+
+        /// <summary>Stuns one horde goblin for seconds (the slingers' stunning stone).</summary>
+        public void StunHordeTarget(int targetIndex, float seconds)
+        {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                hordePrototype.StunTarget(targetIndex, seconds);
+            }
+        }
+
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipHordeIndex = -1)
+        {
+            if (hordePrototype != null && hordePrototype.IsRunning)
+            {
+                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets, out hitCount, skipHordeIndex);
             }
 
             var radiusSq = radius * radius;
@@ -676,7 +711,8 @@ namespace TowerDefense.Runtime
             out int hitCount,
             float knockbackPropagationRadius = 0f,
             float launch = 0f,
-            int reportId = 0)
+            int reportId = 0,
+            float maxPushMass = 0f)
         {
             return DamageAndKnockbackInRadiusInternal(
                 center,
@@ -692,11 +728,43 @@ namespace TowerDefense.Runtime
                 0,
                 knockbackPropagationRadius,
                 launch,
-                reportId);
+                reportId,
+                maxPushMass);
+        }
+
+        // Nothing pushes an enemy that cannot be pushed (the boss); maxPushMass > 0 also spares the
+        // heavier ones (the mammoth does not push Orc Brutes until upgraded).
+        internal static bool CanBePushed(EnemyDefinition definition, float maxPushMass)
+        {
+            return definition == null ||
+                   (!definition.cannotBePushed && (maxPushMass <= 0f || definition.mass <= maxPushMass));
         }
 
         private int lastAreaReportId;
         private readonly Dictionary<int, float> cpuAreaReports = new();
+        private readonly Dictionary<int, float> cpuBlockedReports = new();
+        private float cpuBlockedMass;
+
+        /// <summary>
+        /// The mass of the enemies that effects with this report id hit but could not push (see
+        /// CanBePushed), returned and cleared.
+        /// </summary>
+        public float TakeBlockedReport(int reportId)
+        {
+            var mass = 0f;
+            if (cpuBlockedReports.TryGetValue(reportId, out var cpuMass))
+            {
+                mass += cpuMass;
+                cpuBlockedReports.Remove(reportId);
+            }
+
+            if (hordePrototype != null)
+            {
+                mass += hordePrototype.TakeBlockedReport(reportId);
+            }
+
+            return mass;
+        }
 
         /// <summary>
         /// A new id for DamageAndKnockbackInRadius's reportId: the mass of enemies on the ground that
@@ -736,7 +804,8 @@ namespace TowerDefense.Runtime
             int maxBurnStacks,
             float knockbackPropagationRadius,
             float launch = 0f,
-            int reportId = 0)
+            int reportId = 0,
+            float maxPushMass = 0f)
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
@@ -753,15 +822,24 @@ namespace TowerDefense.Runtime
                     maxBurnStacks,
                     knockbackPropagationRadius,
                     launch,
-                    reportId);
+                    reportId,
+                    maxPushMass);
             }
 
             if (reportId != 0)
             {
+                cpuBlockedMass = 0f;
                 var applied = DamageAndKnockbackInRadiusInternal(center, radius, damage, knockbackDistance, maxTargets, out hitCount,
-                    burnSource, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks, knockbackPropagationRadius, launch);
+                    burnSource, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks, knockbackPropagationRadius, launch,
+                    0, maxPushMass);
                 cpuAreaReports.TryGetValue(reportId, out var reported);
                 cpuAreaReports[reportId] = reported + hitCount;
+                if (cpuBlockedMass > 0f)
+                {
+                    cpuBlockedReports.TryGetValue(reportId, out var blocked);
+                    cpuBlockedReports[reportId] = blocked + cpuBlockedMass;
+                }
+
                 return applied;
             }
 
@@ -787,7 +865,15 @@ namespace TowerDefense.Runtime
                     continue;
                 }
 
-                enemy.ApplyKnockback(center, knockbackDistance);
+                if (CanBePushed(enemy.Definition, maxPushMass))
+                {
+                    enemy.ApplyKnockback(center, knockbackDistance);
+                }
+                else if (knockbackDistance > 0f)
+                {
+                    cpuBlockedMass += Mathf.Max(0.1f, enemy.Definition.mass);
+                }
+
                 appliedDamage += enemy.ApplyDamage(damage);
                 enemy.ApplyBurn(burnSource, burnDamagePerTick, burnTicksPerSecond, burnDuration, maxBurnStacks);
                 hitCount++;
@@ -882,7 +968,9 @@ namespace TowerDefense.Runtime
             float burnDuration = 0f,
             int maxBurnStacks = 1,
             uint projectileId = 0u,
-            bool resetHitCount = true)
+            bool resetHitCount = true,
+            float hitDamageKeep = 1f,
+            float heavyDamageMultiplier = 1f)
         {
             return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.QueueProjectile(
                 start,
@@ -897,7 +985,9 @@ namespace TowerDefense.Runtime
                 burnDuration,
                 maxBurnStacks,
                 projectileId,
-                resetHitCount);
+                resetHitCount,
+                hitDamageKeep,
+                heavyDamageMultiplier);
         }
 
         public uint CreateHordeProjectileId()

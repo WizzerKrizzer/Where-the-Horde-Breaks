@@ -22,6 +22,22 @@ namespace TowerDefense.Runtime
         public Vector3 ShockwaveArenaCenter { get; set; }
         public float ShockwaveArenaRadius { get; set; }
         public string DisplayName { get; set; } = "Volley of Arrows";
+        // The prehistoric rock (RollingRock) instead of an instant blast: press on a point, drag
+        // for the direction along the road, release to drop it.
+        public bool Rock { get; set; }
+        public float RockRollDistance { get; set; } = 8f;
+        public bool RockFireTrail { get; set; }
+        // Rock specials (user, 2026-11-08), set from the skill tree; 0 = not bought.
+        public float RockFireDamageMultiplier { get; set; } = 1f;
+        public float RockFireTicksPerSecond { get; set; } = 2f;
+        public int RockShatterShards { get; set; }
+        public float RockShatterDamageFraction { get; set; }
+        public float RockQuakeRadius { get; set; }
+        public float RockQuakeSeconds { get; set; }
+        public bool IsAimingRock => aimingRock;
+        private bool aimingRock;
+        private Vector3 rockAimPoint;
+        private GameObject rockAimMarker;
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
         public bool CanFire
@@ -89,6 +105,12 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (Rock)
+            {
+                UpdateRockAim();
+                return;
+            }
+
             if (towers != null && towers.GetNearestTower(input.Current.PointerWorld) != null)
             {
                 return;
@@ -124,11 +146,103 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (Rock)
+            {
+                ThrowRock(aimPoint, Vector3.zero);
+                cooldown = CooldownSeconds / Mathf.Clamp(DevAutoEfficiency, 0.1f, 1f);
+                return;
+            }
+
             var appliedDamage = ApplyWeaponEffect(aimPoint, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds / Mathf.Clamp(DevAutoEfficiency, 0.1f, 1f);
             SpawnImpactMarker(aimPoint);
+        }
+
+        // Press on a point, drag the way it should roll along the road, release to drop it.
+        private void UpdateRockAim()
+        {
+            var current = input.Current;
+            if (!aimingRock)
+            {
+                if (!current.FireActive || cooldown > 0f ||
+                    (towers != null && towers.GetNearestTower(current.PointerWorld) != null))
+                {
+                    return;
+                }
+
+                aimingRock = true;
+                rockAimPoint = current.PointerWorld;
+            }
+
+            var drag = current.PointerWorld - rockAimPoint;
+            drag.y = 0f;
+            ShowRockAim(drag);
+            if (current.FireReleased || !current.FireHeld)
+            {
+                aimingRock = false;
+                HideRockAim();
+                ThrowRock(rockAimPoint, drag);
+                cooldown = CooldownSeconds;
+            }
+        }
+
+        private void ThrowRock(Vector3 point, Vector3 drag)
+        {
+            // TEMPORARY numbers until balancing: the roll hurts each goblin half the impact
+            // damage, and the fire trail burns a tenth of it per tick.
+            var settings = new RollingRock.Settings
+            {
+                ImpactRadius = Radius,
+                ImpactDamage = Damage,
+                ImpactKnockback = KnockbackDistance,
+                ImpactLaunch = 0.9f,
+                ImpactMaxTargets = MaxTargets,
+                RollDistance = RockRollDistance,
+                RollSpeed = 6f,
+                RollRadius = 1.3f,
+                RollDamage = Damage * 0.5f,
+                RollKnockback = 1.2f,
+                FireTrail = RockFireTrail,
+                FireDamagePerTick = Damage * 0.1f * RockFireDamageMultiplier,
+                FireTicksPerSecond = RockFireTicksPerSecond,
+                ShatterShards = RockShatterShards,
+                ShatterDamage = Damage * RockShatterDamageFraction,
+                QuakeRadius = RockQuakeRadius,
+                QuakeSeconds = RockQuakeSeconds
+            };
+            RollingRock.Throw(enemies, point, drag, settings, dealt =>
+            {
+                TotalDamageEvents++;
+                TotalDamageDealt += dealt;
+            });
+        }
+
+        private void ShowRockAim(Vector3 drag)
+        {
+            if (rockAimMarker == null)
+            {
+                rockAimMarker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                rockAimMarker.name = "RockAim";
+                RemovePrimitiveCollider(rockAimMarker);
+                rockAimMarker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Accent);
+            }
+
+            var length = Mathf.Max(0.6f, drag.magnitude);
+            var forward = drag.sqrMagnitude > 0.01f ? drag.normalized : Vector3.forward;
+            rockAimMarker.SetActive(true);
+            rockAimMarker.transform.position = rockAimPoint + forward * length * 0.5f + Vector3.up * 0.1f;
+            rockAimMarker.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            rockAimMarker.transform.localScale = new Vector3(0.25f, 0.05f, length);
+        }
+
+        private void HideRockAim()
+        {
+            if (rockAimMarker != null)
+            {
+                rockAimMarker.SetActive(false);
+            }
         }
 
         private float ApplyWeaponEffect(Vector3 position, out int hitCount)

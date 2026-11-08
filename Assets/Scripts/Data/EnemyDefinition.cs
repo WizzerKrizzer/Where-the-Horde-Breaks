@@ -13,6 +13,8 @@ namespace TowerDefense.Data
         [TextArea(2, 4)]
         public string weaknessDescription = "Weaknesses have not been defined yet.";
         public EnemyRole role = EnemyRole.Runner;
+        // The era it belongs to (EraId); each era has its own enemies.
+        public int eraIndex;
         public float maxHealth = 10f;
         public float speed = 3f;
         public float mass = 1f;
@@ -25,6 +27,11 @@ namespace TowerDefense.Data
         public float wallDamageMultiplier = 1f;
         public float alliedDamageMultiplier = 1f;
         public bool isFlying;
+        // Nothing pushes or throws it: no mammoth, rock or knockback (the boss).
+        public bool cannotBePushed;
+        // Blockers (cavemen, the fighting mammoth) only slow it down; it strikes them as it walks
+        // on (the boss).
+        public bool passesBlockers;
         public bool healsEnemies;
         public float healAmount;
         public float healInterval = 2.5f;

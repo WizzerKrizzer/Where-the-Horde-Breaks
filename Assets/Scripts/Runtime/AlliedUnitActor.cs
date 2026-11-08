@@ -26,8 +26,14 @@ namespace TowerDefense.Runtime
         public float CurrentBlockedMass => GetBlockedMass();
         public float CurrentHealth => health;
         public float MaximumHealth => maxHealth;
-        public float Armor => definition != null ? Mathf.Max(0f, definition.alliedUnitDefense) : 0f;
-        public float PhysicalResistance => 0f;
+        public float Armor => definition != null ? Mathf.Max(0f, definition.alliedUnitDefense + definition.alliedUnitBonusArmor) : 0f;
+        // The cave's shields (a special): this share of every blow is stopped.
+        public float PhysicalResistance => definition != null ? Mathf.Clamp(definition.alliedUnitDamageReduction, 0f, 0.9f) : 0f;
+        // The cave's chief (a special): tougher, hits harder, and the cavemen near him hit harder.
+        public bool IsChief { get; private set; }
+        private const float ChiefDamageMultiplier = 1.5f;
+        private const float ChiefAuraRadius = 4f;
+        private const float ChiefScale = 1.3f;
         public float FireResistance => 0f;
         public float SlowResistance => 0f;
         public float ThornsDamage => 0f;
@@ -82,9 +88,9 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (!IsRangedArcher && enemies.TryGetHordeTargetPosition(transform.position, definition.alliedUnitAggroRange, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, out hordeTarget))
+            if (!IsRangedArcher && enemies.TryGetHordeTargetSnapshot(transform.position, definition.alliedUnitAggroRange, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, out var hordeIndex, out hordeTarget, out _))
             {
-                UpdateMeleeHordeCombat(hordeTarget);
+                UpdateMeleeHordeCombat(hordeIndex, hordeTarget);
                 return;
             }
 
@@ -113,12 +119,59 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = target.ApplyDamage(definition.alliedUnitDamage);
+            var appliedDamage = target.ApplyDamage(definition.alliedUnitDamage * GetDamageMultiplier());
             owner?.RecordDamage(appliedDamage);
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }
 
-        private void UpdateMeleeHordeCombat(Vector3 targetPosition)
+        public void MakeChief()
+        {
+            IsChief = true;
+            maxHealth *= 1f + Mathf.Max(0f, definition.chiefHealthBonus);
+            health = maxHealth;
+            transform.localScale *= ChiefScale;
+            UpdateHealthBar();
+        }
+
+        // The chief hits harder himself, and lends the cavemen of his cave near him his strength.
+        private float GetDamageMultiplier()
+        {
+            if (IsChief)
+            {
+                return ChiefDamageMultiplier;
+            }
+
+            if (definition.chiefAuraBonus <= 0f)
+            {
+                return 1f;
+            }
+
+            foreach (var unit in AllUnits)
+            {
+                if (unit != this && unit != null && unit.IsChief && unit.owner == owner && unit.IsAlive &&
+                    (unit.transform.position - transform.position).sqrMagnitude <= ChiefAuraRadius * ChiefAuraRadius)
+                {
+                    return 1f + definition.chiefAuraBonus;
+                }
+            }
+
+            return 1f;
+        }
+
+        // Torches (a special): the goblin a caveman strikes catches fire.
+        private void LightTorchBurn(Vector3 targetPosition)
+        {
+            if (definition.torchBurnDamagePerSecond <= 0f || definition.torchBurnSeconds <= 0f)
+            {
+                return;
+            }
+
+            const float ticksPerSecond = 2f;
+            enemies.DamageAndKnockbackInRadius(targetPosition, 0.6f, 0f, 0f, out _, null,
+                definition.torchBurnDamagePerSecond / ticksPerSecond, ticksPerSecond, definition.torchBurnSeconds, 2);
+        }
+
+        private void UpdateMeleeHordeCombat(int targetIndex, Vector3 targetPosition)
         {
             var attackRange = Mathf.Max(definition.alliedUnitRange, CombatRadius + 0.48f);
             if (!IsWithinXzRange(targetPosition, attackRange))
@@ -132,8 +185,15 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = enemies.DamageHordeTarget(transform.position, attackRange + 0.35f, definition.alliedUnitCanHitFlying, TowerTargetingMode.Closest, definition.alliedUnitDamage, out _);
+            // Strike the goblin it is already tracking. A fresh target query at the moment of the
+            // blow (as before 2026-11-08) was never answered in time: GPU target answers go stale
+            // after a few frames, and blows are 0.8 s apart, so the cavemen never hurt anyone.
+            var appliedDamage = enemies.DamageHordeTarget(targetIndex, definition.alliedUnitDamage * GetDamageMultiplier());
             owner?.RecordDamage(appliedDamage);
+            if (appliedDamage > 0f)
+            {
+                LightTorchBurn(targetPosition);
+            }
             attackCooldown = Mathf.Max(0.1f, definition.alliedUnitAttackInterval);
         }
 
@@ -211,7 +271,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var appliedDamage = Mathf.Max(0f, damage - definition.alliedUnitDefense);
+            var appliedDamage = Mathf.Max(0f, damage - Armor) * (1f - PhysicalResistance);
             health -= appliedDamage;
             UpdateHealthBar();
             if (health > 0f)
@@ -364,6 +424,9 @@ namespace TowerDefense.Runtime
                     return new Vector3(0.24f, 0.52f, 0.24f);
                 case AlliedUnitType.Paladin:
                     return new Vector3(0.42f, 0.72f, 0.42f);
+                case AlliedUnitType.Caveman:
+                    // Stocky, a little wider than a knight (greybox until its model exists).
+                    return new Vector3(0.4f, 0.62f, 0.4f);
                 default:
                     return new Vector3(0.34f, 0.6f, 0.34f);
             }
