@@ -12,6 +12,9 @@ Shader "TowerDefense/HordeIndirect"
         _UseSpeedColors ("Use Speed Colors", Float) = 0
         _PackingScale ("Dense Packing Silhouette Scale", Range(1, 1.25)) = 1.18
         _VisualScaleMultiplier ("Visual Scale Multiplier", Range(0.1, 2)) = 1
+        _BurnColor ("Burning Overlay", Color) = (0.95, 0.45, 0.12, 1)
+        _PoisonColor ("Poisoned Overlay", Color) = (0.42, 0.85, 0.22, 1)
+        _StunColor ("Stunned Overlay", Color) = (1, 0.9, 0.45, 1)
     }
 
     SubShader
@@ -86,6 +89,9 @@ Shader "TowerDefense/HordeIndirect"
             float _UseSpeedColors;
             float _PackingScale;
             float _VisualScaleMultiplier;
+            float4 _BurnColor;
+            float4 _PoisonColor;
+            float4 _StunColor;
             float _LightingVariation;
             float _PresentationAlpha;
 
@@ -104,6 +110,8 @@ Shader "TowerDefense/HordeIndirect"
                 float active : TEXCOORD2;
                 float variation : TEXCOORD3;
                 float rare : TEXCOORD4;
+                // 0: none, 1: burning, 2: poisoned, 3: stunned (a light wash; the stars may be capped).
+                float burn : TEXCOORD5;
             };
 
             Varyings Vert(Attributes input)
@@ -131,6 +139,9 @@ Shader "TowerDefense/HordeIndirect"
                 output.active = active;
                 output.variation = frac(sin((float)agentIndex * 12.9898) * 43758.5453);
                 output.rare = ((agentIndex + 1u) % 1000u) == 0u && _UseSpeedColors < 0.5 ? 1.0 : 0.0;
+                output.burn = state.burnTimer > 0.0 && state.burnDamagePerSecond > 0.0
+                    ? ((state.flags & 8u) != 0u ? 2.0 : 1.0)
+                    : (state.slowTimer > 0.0 && state.slowMultiplier <= 0.06 ? 3.0 : 0.0);
                 return output;
             }
 
@@ -152,6 +163,15 @@ Shader "TowerDefense/HordeIndirect"
                     else enemyColor = _SpeedColor3;
                 }
                 enemyColor = lerp(enemyColor, _RareColor, input.rare);
+                // Status overlays are flat colour washes (fire orange, poison green).
+                if (input.burn > 2.5)
+                {
+                    enemyColor.rgb = lerp(enemyColor.rgb, _StunColor.rgb, 0.35);
+                }
+                else if (input.burn > 0.5)
+                {
+                    enemyColor.rgb = lerp(enemyColor.rgb, input.burn > 1.5 ? _PoisonColor.rgb : _BurnColor.rgb, 0.62);
+                }
                 // Light changes the brightness only; multiplying the alpha too made bodies see-through.
                 return float4(enemyColor.rgb * light, enemyColor.a);
             }

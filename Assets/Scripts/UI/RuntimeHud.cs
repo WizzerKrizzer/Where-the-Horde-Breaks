@@ -42,10 +42,12 @@ namespace TowerDefense.UI
         private Image activeWeaponCooldownFill;
         private Text activeWeaponCooldownText;
         private Text activeWeaponLabel;
+        // Beside the pointer while the rock is being aimed, so the player knows to pick a direction.
+        private Text rockAimHint;
         private GameObject selectedTowerPanel;
         private Text selectedTowerTitle;
         private Text selectedTowerBody;
-        private readonly Button[] selectedTowerTargetButtons = new Button[4];
+        private readonly Button[] selectedTowerTargetButtons = new Button[5];
         private Button startBattleButton;
         private Slider devSpeedSlider;
         private Text devSpeedValueText;
@@ -609,19 +611,35 @@ namespace TowerDefense.UI
 
         private void CreatePausePanel(Transform parent)
         {
-            pausePanel = CreatePanel("PausePanel", parent, new Vector2(0f, 124f), new Vector2(300f, 150f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            pausePanel = CreatePanel("PausePanel", parent, new Vector2(0f, 124f), new Vector2(300f, 184f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
             var title = CreateText("PauseTitle", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 22);
-            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 118f), new Vector2(240f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
+            ConfigureCenteredRect(title.GetComponent<RectTransform>(), new Vector2(0f, 152f), new Vector2(240f, 28f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             title.text = "PAUSED";
-            var surrenderButton = CreateButton("SurrenderButton", pausePanel.transform, "SURRENDER", new Vector2(0f, 78f), new Vector2(132f, 28f), 13);
+            var surrenderButton = CreateButton("SurrenderButton", pausePanel.transform, "SURRENDER", new Vector2(0f, 112f), new Vector2(132f, 28f), 13);
             surrenderButton.onClick.AddListener(SurrenderFromPause);
-            var resumeButton = CreateButton("ResumeButton", pausePanel.transform, "RESUME", new Vector2(0f, 44f), new Vector2(132f, 28f), 13);
+            var resumeButton = CreateButton("ResumeButton", pausePanel.transform, "RESUME", new Vector2(0f, 78f), new Vector2(132f, 28f), 13);
             resumeButton.onClick.AddListener(() => SetPausePanelVisible(false));
+            // Effects (user, 2026-11-09): one setting, Full / Reduced / Minimal, for crowded fights.
+            var effectsButton = CreateButton("EffectsButton", pausePanel.transform, EffectsButtonLabel(), new Vector2(0f, 44f), new Vector2(180f, 28f), 13);
+            var effectsLabel = effectsButton.GetComponentInChildren<Text>();
+            effectsButton.onClick.AddListener(() =>
+            {
+                EffectsQuality.Set(EffectsQuality.Next(EffectsQuality.Current));
+                if (effectsLabel != null)
+                {
+                    effectsLabel.text = EffectsButtonLabel();
+                }
+            });
             var hint = CreateText("PauseHint", pausePanel.transform, Vector2.zero, TextAnchor.MiddleCenter, 11);
             ConfigureCenteredRect(hint.GetComponent<RectTransform>(), new Vector2(0f, 16f), new Vector2(250f, 22f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f));
             hint.text = "Escape resumes the battle.";
             input.RegisterBlockingUiRect(pausePanel.GetComponent<RectTransform>());
             pausePanel.SetActive(false);
+        }
+
+        private static string EffectsButtonLabel()
+        {
+            return $"EFFECTS: {EffectsQuality.Label(EffectsQuality.Current)}";
         }
 
         private void CreateUpgradePanel(Transform parent)
@@ -1368,16 +1386,17 @@ namespace TowerDefense.UI
             ConfigureCenteredRect(selectedTowerTitle.GetComponent<RectTransform>(), new Vector2(12f, -12f), new Vector2(260f, 22f), new Vector2(0f, 1f), new Vector2(0f, 1f));
             selectedTowerBody = CreateText("SelectedTowerBody", selectedTowerPanel.transform, Vector2.zero, TextAnchor.UpperLeft, 11);
             ConfigureCenteredRect(selectedTowerBody.GetComponent<RectTransform>(), new Vector2(12f, -38f), new Vector2(260f, 78f), new Vector2(0f, 1f), new Vector2(0f, 1f));
-            CreateTargetingButton(0, TowerTargetingMode.First, "FIRST", new Vector2(46f, -130f));
-            CreateTargetingButton(1, TowerTargetingMode.Last, "LAST", new Vector2(111f, -130f));
-            CreateTargetingButton(2, TowerTargetingMode.Closest, "CLOSE", new Vector2(176f, -130f));
-            CreateTargetingButton(3, TowerTargetingMode.HighestHealth, "STRONG", new Vector2(241f, -130f));
+            CreateTargetingButton(0, TowerTargetingMode.First, "FIRST", new Vector2(41f, -130f));
+            CreateTargetingButton(1, TowerTargetingMode.Last, "LAST", new Vector2(93f, -130f));
+            CreateTargetingButton(2, TowerTargetingMode.Closest, "CLOSE", new Vector2(145f, -130f));
+            CreateTargetingButton(3, TowerTargetingMode.HighestHealth, "STRONG", new Vector2(197f, -130f));
+            CreateTargetingButton(4, TowerTargetingMode.Heaviest, "HEAVY", new Vector2(249f, -130f));
             selectedTowerPanel.SetActive(false);
         }
 
         private void CreateTargetingButton(int index, TowerTargetingMode mode, string label, Vector2 position)
         {
-            var button = CreateAnchoredButton($"Targeting_{mode}", selectedTowerPanel.transform, label, position, new Vector2(58f, 22f), new Vector2(0f, 1f), 9);
+            var button = CreateAnchoredButton($"Targeting_{mode}", selectedTowerPanel.transform, label, position, new Vector2(48f, 22f), new Vector2(0f, 1f), 9);
             button.onClick.AddListener(() => session.SetSelectedTowerTargeting(mode));
             selectedTowerTargetButtons[index] = button;
         }
@@ -1443,6 +1462,8 @@ namespace TowerDefense.UI
                     return "Last";
                 case TowerTargetingMode.HighestHealth:
                     return "Strong";
+                case TowerTargetingMode.Heaviest:
+                    return "Heaviest";
                 default:
                     return "Closest";
             }
@@ -4260,6 +4281,19 @@ namespace TowerDefense.UI
             activeWeaponCooldownFill.fillMethod = Image.FillMethod.Vertical;
             activeWeaponCooldownFill.fillOrigin = (int)Image.OriginVertical.Bottom;
 
+            rockAimHint = CreateText("RockAimHint", parent, Vector2.zero, TextAnchor.LowerLeft, 12);
+            var hintRect = rockAimHint.GetComponent<RectTransform>();
+            hintRect.anchorMin = Vector2.zero;
+            hintRect.anchorMax = Vector2.zero;
+            hintRect.pivot = Vector2.zero;
+            hintRect.sizeDelta = new Vector2(260f, 20f);
+            rockAimHint.text = "Move to aim, click to throw";
+            rockAimHint.color = new Color(1f, 1f, 1f, 0.7f);
+            var hintShadow = rockAimHint.gameObject.AddComponent<Shadow>();
+            hintShadow.effectColor = new Color(0f, 0f, 0f, 0.9f);
+            hintShadow.effectDistance = new Vector2(1.5f, -1.5f);
+            rockAimHint.gameObject.SetActive(false);
+
             activeWeaponLabel = CreateText("Label", root.transform, new Vector2(0f, 11f), TextAnchor.MiddleCenter, 10);
             activeWeaponLabel.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0f);
             activeWeaponLabel.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0f);
@@ -4284,7 +4318,25 @@ namespace TowerDefense.UI
             activeWeaponIcon.color = activeWeapon.IsReady ? PlaceholderPalette.Grey(.611f, 1f) : PlaceholderPalette.Grey(.45f, 1f);
             if (activeWeaponLabel != null)
             {
-                activeWeaponLabel.text = activeWeapon.KnockbackDistance > 0f ? "LMB: EXPLODE" : "Active";
+                activeWeaponLabel.text = activeWeapon.Rock
+                    ? "CLICK + AIM"
+                    : activeWeapon.KnockbackDistance > 0f ? "LMB: EXPLODE" : "Active";
+            }
+
+            if (rockAimHint != null)
+            {
+                var showHint = activeWeapon.Rock && activeWeapon.IsAimingRock && !activeWeapon.HasThrownRock;
+                if (rockAimHint.gameObject.activeSelf != showHint)
+                {
+                    rockAimHint.gameObject.SetActive(showHint);
+                }
+
+                if (showHint)
+                {
+                    var canvas = rockAimHint.canvas;
+                    var scale = canvas != null && canvas.scaleFactor > 0f ? canvas.scaleFactor : 1f;
+                    rockAimHint.rectTransform.anchoredPosition = (Vector2)UnityEngine.Input.mousePosition / scale + new Vector2(18f, 14f);
+                }
             }
             activeWeaponCooldownFill.fillAmount = activeWeapon.CanFire ? 1f - activeWeapon.CooldownProgress : 1f;
             activeWeaponCooldownFill.enabled = !activeWeapon.IsReady;

@@ -66,7 +66,9 @@ namespace TowerDefense.Data
         First,
         Last,
         Closest,
-        HighestHealth
+        HighestHealth,
+        // The heaviest goblin in range first (the boss, then brutes); among equals, the one furthest along the road.
+        Heaviest
     }
 
     public enum UpgradeEffectType

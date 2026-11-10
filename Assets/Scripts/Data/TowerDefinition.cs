@@ -80,6 +80,14 @@ namespace TowerDefense.Data
         // The shot flies on along its line past the target, through everything in its way
         // (Ballista, Spear Throwers); how many it can hit is pierce + 1.
         public bool flyThroughShot;
+        // Thrown spears (Spear Throwers, user 2026-11-08): the hunters on the rock take turns, each
+        // throw raises a dust cloud at the thrower's feet, the spear knocks the goblins it passes
+        // through along its line (knockbackDistance) and sticks in the ground where it stops.
+        public bool throwsSpears;
+        // How many hunters stand on the tower and take turns throwing (Spear Throwers: 3).
+        public int crewSize;
+        // The targeting a newly built tower starts with; the player can still change it.
+        public TowerTargetingMode defaultTargetingMode = TowerTargetingMode.First;
         // Charge towers (TowerBehavior.Charge): how far along the road the beast runs, how fast,
         // and how wide it hits. damage is what one charge deals to each enemy it runs over.
         public float chargeDistance = 14f;

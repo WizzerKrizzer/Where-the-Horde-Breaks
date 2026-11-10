@@ -24,8 +24,12 @@ to `Logs/StyleDefenders/meshy-warrior`.
 
 ## Source files
 
-- `stonehide-warrior.glb` (in git): the Meshy model with its rig, textured, with Walking and
-  Running clips. Model created with Meshy.
+All source art (Gemini concepts, Meshy models, Mixamo clips) lives in the root `Art/` folder,
+one folder per item (`Art/Characters/Slinger/`, `Art/Buildings/Cave/`, ...), each with `Gemini/`,
+`Meshy/` and, for characters, `Mixamo/` subfolders.
+
+- `Art/Characters/Slinger/Meshy/stonehide-warrior.glb` (in git): the Meshy model with its rig,
+  textured, with Walking and Running clips. Model created with Meshy.
 
 ## Mixamo files (not in git)
 
@@ -35,12 +39,38 @@ skips. That includes the built slinger, `Resources/Mixamo/stonehide.fbx`, becaus
 the Mixamo "Throw". Keep a copy elsewhere, or download the clips again and rebuild. Without the
 FBX, the `RenderMeshyWarrior` test is skipped.
 
-The clips go in `source/Mixamo/`:
+The clips go in `Art/Characters/Slinger/Mixamo/`:
 
 - `mixamo-throw.fbx`: the Mixamo "Throw" clip, without skin, at 30 fps, with no keyframe
   reduction. The slinger's body comes from this clip.
 - `mixamo-throw-object.fbx`, `mixamo-shooting-arrow.fbx`, `mixamo-goalie-throw.fbx`,
   `mixamo-throw-in.fbx`: kept for future towers (boulder thrower, archers).
+
+## The spear hunter
+
+`build_spear_hunter.sh` runs `meshy/build_hunter.py` and installs `Resources/Mixamo/spearhunter.fbx`,
+its texture and the rock. The test `SpearHunterCaptureTests.RecordSpearHunter` renders
+them to `Logs/SpearHunter`.
+
+- The model is the Meshy hunter rigged in Mixamo (`Art/Characters/SpearHunter/Mixamo/Idle.fbx`,
+  with skin). By default it is mirrored, so the spear bundle is over the right shoulder where the
+  right hand reaches; `MIRROR=0` keeps it as made.
+- The spears and the hides are taken off the arm bones, so they no longer stretch when an arm
+  moves.
+- `Idle` is the Mixamo "Breathing Idle". `Draw`, `Aim` and `Throw` are Kevin Iglesias's
+  `UnsheatheBack01_R`, `ThrowSpear01_R - Hold` and `ThrowSpear01_R`, retargeted by world
+  rotation change. `Cycle` joins draw, a short aim and the throw. Its release marker (frame 35 at 30 fps)
+  is in the build report; the capture test finds the grab from the bundle bones.
+- A `RightHandProp` bone follows the source hand prop, and the spear is drawn in that hand. The
+  spears are thrown by hand; the Meshy atlatl did not fit and is not used.
+- `SpearBundle` and `SpearBundleTip` bones (on `Spine2`) run along the bundle on the back. The
+  hand reaches back empty, takes a spear where it comes closest to the bundle's top, and draws it
+  up along the bundle's line. Then the spear turns straight into the aim's grip. The source prop
+  rolls tip-down in between, like a sword's draw, so its axis is used only once the aim settles.
+
+The Kevin Iglesias files are under the Unity Asset Store EULA: they may be used in the game but
+not redistributed, so `Art/Characters/SpearHunter/KevinIglesias/` is ignored by git and the built
+FBX is in a `Mixamo` folder.
 
 ## How the throw is made
 

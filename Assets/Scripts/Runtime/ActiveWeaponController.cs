@@ -36,8 +36,27 @@ namespace TowerDefense.Runtime
         public float RockQuakeSeconds { get; set; }
         public bool IsAimingRock => aimingRock;
         private bool aimingRock;
+        // After a click without a drag: the rock's point is set and the direction follows the
+        // pointer until the next click.
+        private bool pickingRockDirection;
+        // A drag shorter than this on release is a click: the direction is picked next.
+        private const float MinimumRockDrag = 0.6f;
         private Vector3 rockAimPoint;
         private GameObject rockAimMarker;
+        private Transform rockAimShaft;
+        private Transform rockAimHeadLeft;
+        private Transform rockAimHeadRight;
+        private Transform[] rockAimRingDashes;
+        private const int RockAimRingDashCount = 20;
+        // The aim is drawn above the crowd (user, 2026-11-09: in a big horde the old flat arrow on
+        // the ground was hidden under the goblins).
+        private const float RockAimHeight = 1.7f;
+        // Kept quiet (user, 2026-11-09: the bright yellow arrow, disc and text were too much): a thin
+        // see-through white line with a chevron tip, and a dashed outline where the rock falls.
+        private static readonly Color RockAimColor = new(1f, 1f, 1f, 0.55f);
+        private static readonly Color RockAimRingColor = new(1f, 1f, 1f, 0.4f);
+        // The aiming hint shows until the player's first throw.
+        public bool HasThrownRock { get; private set; }
         public int TotalDamageEvents { get; private set; }
         public float TotalDamageDealt { get; private set; }
         public bool CanFire
@@ -160,7 +179,9 @@ namespace TowerDefense.Runtime
             SpawnImpactMarker(aimPoint);
         }
 
-        // Press on a point, drag the way it should roll along the road, release to drop it.
+        // Aiming the rock (user, 2026-11-08): click where it should fall, then move the pointer the
+        // way it should roll and click again. Pressing, dragging and releasing works too. A right
+        // click or Escape puts the rock down without throwing.
         private void UpdateRockAim()
         {
             var current = input.Current;
@@ -173,19 +194,52 @@ namespace TowerDefense.Runtime
                 }
 
                 aimingRock = true;
+                pickingRockDirection = false;
                 rockAimPoint = current.PointerWorld;
+            }
+
+            if (UnityEngine.Input.GetMouseButtonDown(1) || UnityEngine.Input.GetKeyDown(KeyCode.Escape))
+            {
+                aimingRock = false;
+                pickingRockDirection = false;
+                HideRockAim();
+                return;
             }
 
             var drag = current.PointerWorld - rockAimPoint;
             drag.y = 0f;
             ShowRockAim(drag);
+            if (pickingRockDirection)
+            {
+                if (current.FireActive)
+                {
+                    Release(drag);
+                }
+
+                return;
+            }
+
             if (current.FireReleased || !current.FireHeld)
             {
-                aimingRock = false;
-                HideRockAim();
-                ThrowRock(rockAimPoint, drag);
-                cooldown = CooldownSeconds;
+                if (drag.magnitude < MinimumRockDrag)
+                {
+                    pickingRockDirection = true;
+                    return;
+                }
+
+                Release(drag);
             }
+        }
+
+        private void Release(Vector3 drag)
+        {
+            aimingRock = false;
+            pickingRockDirection = false;
+            HideRockAim();
+            // As the arrow showed: a drag this short means the default roll along the road.
+            ThrowRock(rockAimPoint, drag.magnitude >= MinimumRockDrag ? drag : Vector3.zero);
+            HasThrownRock = true;
+            cooldown = CooldownSeconds;
         }
 
         private void ThrowRock(Vector3 point, Vector3 drag)
@@ -219,22 +273,90 @@ namespace TowerDefense.Runtime
             });
         }
 
+        // A ring where the rock will fall and an arrow as long as its roll, the way it will roll:
+        // the drag's way, or with no drag yet, back along the road against the horde.
         private void ShowRockAim(Vector3 drag)
         {
             if (rockAimMarker == null)
             {
-                rockAimMarker = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                rockAimMarker.name = "RockAim";
-                RemovePrimitiveCollider(rockAimMarker);
-                rockAimMarker.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Accent);
+                rockAimMarker = new GameObject("RockAim");
+                rockAimRingDashes = new Transform[RockAimRingDashCount];
+                for (var i = 0; i < rockAimRingDashes.Length; i++)
+                {
+                    rockAimRingDashes[i] = CreateAimPart("RingDash", PrimitiveType.Cube, RockAimRingColor);
+                }
+
+                rockAimShaft = CreateAimPart("Shaft", PrimitiveType.Cube, RockAimColor);
+                rockAimHeadLeft = CreateAimPart("HeadLeft", PrimitiveType.Cube, RockAimColor);
+                rockAimHeadRight = CreateAimPart("HeadRight", PrimitiveType.Cube, RockAimColor);
             }
 
-            var length = Mathf.Max(0.6f, drag.magnitude);
-            var forward = drag.sqrMagnitude > 0.01f ? drag.normalized : Vector3.forward;
+            drag.y = 0f;
+            var forward = drag.magnitude >= MinimumRockDrag ? drag.normalized : DefaultRollDirection(rockAimPoint);
+            var length = Mathf.Max(1.5f, RockRollDistance);
+            var top = new Vector3(rockAimPoint.x, RockAimHeight, rockAimPoint.z);
             rockAimMarker.SetActive(true);
-            rockAimMarker.transform.position = rockAimPoint + forward * length * 0.5f + Vector3.up * 0.1f;
-            rockAimMarker.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-            rockAimMarker.transform.localScale = new Vector3(0.25f, 0.05f, length);
+
+            // Dashed outline of where it falls: short segments around the circle with gaps.
+            var circumference = 2f * Mathf.PI * Radius;
+            var dashLength = circumference / RockAimRingDashCount * 0.55f;
+            for (var i = 0; i < rockAimRingDashes.Length; i++)
+            {
+                var angle = i * 360f / RockAimRingDashCount;
+                var radians = angle * Mathf.Deg2Rad;
+                var dash = rockAimRingDashes[i];
+                dash.position = top + new Vector3(Mathf.Cos(radians), 0f, Mathf.Sin(radians)) * Radius;
+                dash.rotation = Quaternion.Euler(0f, -angle, 0f);
+                dash.localScale = new Vector3(0.08f, 0.02f, dashLength);
+            }
+
+            // A thin line the length of the roll, ending in a chevron.
+            const float lineWidth = 0.1f;
+            const float headLength = 0.7f;
+            var rotation = Quaternion.LookRotation(forward, Vector3.up);
+            var tip = top + forward * length;
+            rockAimShaft.position = top + forward * (length * 0.5f);
+            rockAimShaft.rotation = rotation;
+            rockAimShaft.localScale = new Vector3(lineWidth, 0.02f, length);
+            PlaceChevronStroke(rockAimHeadLeft, tip, rotation, 35f, headLength, lineWidth);
+            PlaceChevronStroke(rockAimHeadRight, tip, rotation, -35f, headLength, lineWidth);
+        }
+
+        private static void PlaceChevronStroke(Transform stroke, Vector3 tip, Quaternion rotation, float angle, float length, float width)
+        {
+            var strokeRotation = rotation * Quaternion.Euler(0f, angle, 0f);
+            stroke.rotation = strokeRotation;
+            stroke.position = tip - strokeRotation * Vector3.forward * (length * 0.5f);
+            stroke.localScale = new Vector3(width, 0.02f, length);
+        }
+
+        private Transform CreateAimPart(string partName, PrimitiveType type, Color color)
+        {
+            var part = GameObject.CreatePrimitive(type);
+            part.name = partName;
+            RemovePrimitiveCollider(part);
+            part.transform.SetParent(rockAimMarker.transform, false);
+            var renderer = part.GetComponent<Renderer>();
+            renderer.sharedMaterial = BootstrapMaterials.GetUnlit(color);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return part.transform;
+        }
+
+        // The way a rock thrown without a drag rolls: back along the road, against the horde.
+        private Vector3 DefaultRollDirection(Vector3 point)
+        {
+            var route = enemies != null ? enemies.Route : null;
+            if (route == null || !route.HasUsableRoute)
+            {
+                return Vector3.forward;
+            }
+
+            var roadPoint = route.GetNearestRoadPoint(point, out _);
+            var distance = enemies.EstimatePathDistance(roadPoint);
+            var back = route.Sample(Mathf.Max(0f, distance - 1f)) - route.Sample(Mathf.Min(route.TotalLength, distance + 1f));
+            back.y = 0f;
+            return back.sqrMagnitude > 0.0001f ? back.normalized : Vector3.forward;
         }
 
         private void HideRockAim()

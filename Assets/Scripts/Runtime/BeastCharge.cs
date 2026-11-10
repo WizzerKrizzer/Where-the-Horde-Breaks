@@ -11,7 +11,7 @@ namespace TowerDefense.Runtime
     /// against the enemies' flow, trampling them and throwing them aside. Every enemy it runs into
     /// slows it down, so it ploughs through a thin crowd and bogs down in a thick one. Once it has
     /// slowed to a walk, or has run its full distance, it stops and fights where it stands: the
-    /// horde attacks it like an allied unit and it stomps around itself, tiring as it fights, until
+    /// horde attacks it like an allied unit and it scoops at the goblins in front with its tusks, tiring as it fights, until
     /// it falls and sinks into the ground. A new mammoth appears in the pen once the tower's fire
     /// interval has passed.
     ///
@@ -48,12 +48,22 @@ namespace TowerDefense.Runtime
         private const float SlowestChargeFraction = 0.3f;
         // Slowed below this, the charge is over and the beast fights where it stands.
         private const float StopSpeed = 1.5f;
-        // Fighting: a stomp every so often hurts and pushes back the enemies around it.
+        // Fighting (user, 2026-11-09): every StompSeconds it dips its head and scoops up with its
+        // tusks, hitting the goblins in front of it and tossing them up and away ahead and to the
+        // sides. It used to stomp in a circle around itself, which showed no movement at all.
+        // The blow lands ScoopHitSeconds into the swing. Sizes TEMPORARY until balancing.
         private const float StompSeconds = 0.8f;
-        private const float StompRadius = 2.4f;
         private const float StompDamageFraction = 0.6f;
-        private const float StompKnockback = 0.5f;
         private const int MaxStompedPerStep = 30;
+        private const float ScoopReach = 1.8f;
+        private const float ScoopRadius = 1.7f;
+        private const float ScoopKnockback = 8f;
+        private const float ScoopLaunch = 1.1f;
+        // How much of the toss goes ahead rather than sideways (1 would be the rock's mostly
+        // sideways throw).
+        private const float ScoopForward = 3f;
+        private const float ScoopHitSeconds = 0.2f;
+        private const float ScoopSwingSeconds = 0.55f;
         // It tires while it fights, losing this share of its health per second even untouched.
         private const float TiringPerSecond = 0.03f;
         private const float FallSeconds = 1.6f;
@@ -103,7 +113,7 @@ namespace TowerDefense.Runtime
         public int ChargeCount { get; private set; }
         public int FallCount { get; private set; }
         public int RiderVolleys { get; private set; }
-        // Rage (a special): wounded below the threshold, it stomps faster and harder.
+        // Rage (a special): wounded below the threshold, it scoops faster and harder.
         public bool IsRaging => state == State.Fighting && definition != null && definition.rageBonus > 0f &&
                                 RemainingHealth <= MaximumHealth * definition.rageThreshold;
         // How far along the road the last charge ran before it stopped.
@@ -190,16 +200,10 @@ namespace TowerDefense.Runtime
             {
                 case State.Resting:
                     cooldown -= Time.deltaTime;
+                    UpdateInPen(route);
                     if (cooldown > 0f)
                     {
                         break;
-                    }
-
-                    // A new mammoth stands in the pen.
-                    if (!beast.gameObject.activeSelf)
-                    {
-                        beast.position = restPosition;
-                        beast.gameObject.SetActive(true);
                     }
 
                     if (route != null && route.TotalLength > 0f && EnemiesOnStretch(route))
@@ -235,6 +239,8 @@ namespace TowerDefense.Runtime
                 ShoveAwayFromBody();
             }
 
+            UpdateRageTint();
+            UpdateHeadPose();
             if (state == State.Charging || state == State.Fighting)
             {
                 UpdateRiders();
@@ -349,6 +355,7 @@ namespace TowerDefense.Runtime
             state = State.Fighting;
             LastRunDistance = chargeStart - chargeDistance;
             stompTimer = 0f;
+            scoopAge = -1f;
             blockers.Clear();
             enemies.RegisterCombatTarget(this);
         }
@@ -362,19 +369,158 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            // It scoops at what is in front of it, so it turns to face up the road, into the
+            // oncoming horde; bogged down as it came onto the road it would face the roadside.
+            var route = enemies.Route;
+            if (route != null && route.TotalLength > 0f)
+            {
+                var upRoad = route.Sample(Mathf.Max(0f, chargeDistance - 2f)) - beast.position;
+                upRoad.y = 0f;
+                if (upRoad.sqrMagnitude > 0.04f)
+                {
+                    Face(upRoad, 180f);
+                }
+            }
+
             stompTimer -= Time.deltaTime;
-            if (stompTimer > 0f)
+            if (stompTimer <= 0f && scoopAge < 0f)
+            {
+                var rage = IsRaging ? 1f + definition.rageBonus : 1f;
+                stompTimer += StompSeconds / rage;
+                scoopAge = 0f;
+                scoopLanded = false;
+            }
+
+            if (scoopAge < 0f)
             {
                 return;
             }
 
+            scoopAge += Time.deltaTime * (IsRaging ? 1f + definition.rageBonus : 1f);
+            if (!scoopLanded && scoopAge >= ScoopHitSeconds)
+            {
+                scoopLanded = true;
+                Scoop();
+            }
+
+            if (scoopAge >= ScoopSwingSeconds)
+            {
+                scoopAge = -1f;
+            }
+        }
+
+        // The blow of the scoop: hurts the goblins in front and tosses them ahead and aside.
+        private void Scoop()
+        {
             var rage = IsRaging ? 1f + definition.rageBonus : 1f;
-            stompTimer += StompSeconds / rage;
-            // Pushes the goblins around it back along the ground, without throwing them.
             var damage = definition.damage * tower.DamageMultiplier * StompDamageFraction * rage;
-            var dealt = enemies.DamageAndKnockbackInRadius(beast.position, StompRadius, damage, StompKnockback, MaxStompedPerStep, out _,
+            var forward = beast.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+            var center = beast.position + forward * ScoopReach;
+            center.y = 0f;
+            var dealt = enemies.DamageAndKnockbackInRadius(center, ScoopRadius, damage, 0f, MaxStompedPerStep, out _,
                 maxPushMass: PushLimit);
             tower.RecordDamage(dealt);
+            enemies.ThrowOffLine(center, ScoopRadius, ScoopKnockback * rage, ScoopLaunch, forward, ScoopForward, PushLimit);
+            ScoopCount++;
+            SpecialEffectVisuals.SpawnPuff(center, IsRaging ? 2f : 1.4f);
+        }
+
+        /// <summary>Scoops so far (tests).</summary>
+        public int ScoopCount { get; private set; }
+
+        /// <summary>
+        /// Where the head is in its scoop, 0 to 1 (-1 between scoops), for the mammoth's animation.
+        /// </summary>
+        public float ScoopProgress => scoopAge < 0f ? -1f : Mathf.Clamp01(scoopAge / ScoopSwingSeconds);
+
+        private float scoopAge = -1f;
+        private bool scoopLanded;
+
+        // Greybox head: dips, sweeps up through the blow, and settles. TEMPORARY until the
+        // mammoth's own animation.
+        private void UpdateHeadPose()
+        {
+            headPivot ??= beast.Find("Head");
+            if (headPivot == null)
+            {
+                return;
+            }
+
+            var pitch = 0f;
+            if (state == State.Fighting && scoopAge >= 0f)
+            {
+                const float dipEnd = ScoopHitSeconds * 0.7f;
+                const float sweepEnd = ScoopHitSeconds + 0.1f;
+                if (scoopAge < dipEnd)
+                {
+                    pitch = Mathf.SmoothStep(0f, 28f, scoopAge / dipEnd);
+                }
+                else if (scoopAge < sweepEnd)
+                {
+                    pitch = Mathf.Lerp(28f, -40f, (scoopAge - dipEnd) / (sweepEnd - dipEnd));
+                }
+                else
+                {
+                    pitch = Mathf.SmoothStep(-40f, 0f, (scoopAge - sweepEnd) / (ScoopSwingSeconds - sweepEnd));
+                }
+            }
+
+            // Grazing while it waits in the pen; it lifts its head as it gets ready.
+            if (state == State.Resting && PenReadiness < 1f)
+            {
+                var graze = Mathf.Clamp01((0.85f - PenReadiness) / 0.15f);
+                pitch = graze * (22f + 8f * Mathf.Sin(Time.time * 2.6f));
+            }
+
+            headPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        }
+
+        private Transform headPivot;
+
+        // Rage (a special) shows as a red pulse over the whole beast while it lasts. Works on any
+        // model under the beast, so it carries over to the real mammoth.
+        private static readonly Color RageColor = new(0.85f, 0.18f, 0.12f, 1f);
+        private Renderer[] beastRenderers;
+        private MaterialPropertyBlock rageBlock;
+        private bool rageShown;
+
+        private void UpdateRageTint()
+        {
+            var raging = IsRaging;
+            if (!raging && !rageShown)
+            {
+                return;
+            }
+
+            beastRenderers ??= beast.GetComponentsInChildren<Renderer>(true);
+            rageBlock ??= new MaterialPropertyBlock();
+            foreach (var renderer in beastRenderers)
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                if (!raging)
+                {
+                    renderer.SetPropertyBlock(null);
+                    continue;
+                }
+
+                var baseColor = renderer.sharedMaterial != null && renderer.sharedMaterial.HasProperty("_Color")
+                    ? renderer.sharedMaterial.color
+                    : PlaceholderPalette.Grey(0.62f);
+                var pulse = 0.35f + 0.25f * Mathf.Sin(Time.time * 9f);
+                var tinted = Color.Lerp(baseColor, RageColor, pulse);
+                renderer.GetPropertyBlock(rageBlock);
+                rageBlock.SetColor("_Color", tinted);
+                rageBlock.SetColor("_BaseColor", tinted);
+                renderer.SetPropertyBlock(rageBlock);
+            }
+
+            rageShown = raging;
         }
 
         // The slingers on its back throw at the goblins ahead of it while it charges and fights.
@@ -428,11 +574,48 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            beast.gameObject.SetActive(false);
-            beast.position = restPosition;
-            beast.rotation = Quaternion.identity;
             state = State.Resting;
             cooldown = definition.fireInterval / Mathf.Max(0.05f, tower.FireRateMultiplier);
+            penWaitSeconds = cooldown;
+            // The next mammoth is already in the pen, at the back, and walks to the gate while it
+            // gets ready (user, 2026-11-09): the player sees when it comes without a timer.
+            beast.position = PenBack(enemies.Route);
+            beast.rotation = Quaternion.LookRotation(PenOutward(enemies.Route), Vector3.up);
+        }
+
+        // In the pen, between mammoths. TEMPORARY sizes until the pen's model.
+        private const float PenHalfDepth = 0.9f;
+        private float penWaitSeconds;
+
+        /// <summary>How far the waiting mammoth is from ready, 0 to 1 (1: at the gate).</summary>
+        public float PenReadiness => state != State.Resting ? 1f
+            : penWaitSeconds <= 0f ? 1f : Mathf.Clamp01(1f - cooldown / penWaitSeconds);
+
+        // From the pen towards the road: the way out through the gate.
+        private Vector3 PenOutward(PathRoute route)
+        {
+            var outward = Vector3.zero;
+            if (route != null && route.TotalLength > 0f)
+            {
+                outward = route.GetNearestRoadPoint(restPosition, out _) - restPosition;
+                outward.y = 0f;
+            }
+
+            return outward.sqrMagnitude > 0.0001f ? outward.normalized : Vector3.forward;
+        }
+
+        private Vector3 PenBack(PathRoute route) => restPosition - PenOutward(route) * PenHalfDepth;
+
+        private Vector3 PenGate(PathRoute route) => restPosition + PenOutward(route) * PenHalfDepth;
+
+        // The waiting mammoth grazes at the back of the pen and walks slowly to the gate as it
+        // gets ready; ready, it stands at the gate until goblins come.
+        private void UpdateInPen(PathRoute route)
+        {
+            var readiness = PenReadiness;
+            var target = Vector3.Lerp(PenBack(route), PenGate(route), Mathf.SmoothStep(0f, 1f, readiness));
+            beast.position = target;
+            Face(PenOutward(route), 90f);
         }
 
         public bool TryAddBlocker(EnemyActor enemy)
@@ -594,11 +777,16 @@ namespace TowerDefense.Runtime
             root.transform.SetParent(parent, false);
             var material = BootstrapMaterials.Get(PlaceholderPalette.Grey(0.62f));
             AddPart(root.transform, PrimitiveType.Capsule, new Vector3(0f, 1.15f, 0f), new Vector3(90f, 0f, 0f), new Vector3(1.4f, 1.3f, 1.3f), material);
-            AddPart(root.transform, PrimitiveType.Sphere, new Vector3(0f, 1.6f, 1.3f), Vector3.zero, new Vector3(1.0f, 1.0f, 1.0f), material);
-            AddPart(root.transform, PrimitiveType.Cylinder, new Vector3(0f, 0.75f, 1.85f), new Vector3(25f, 0f, 0f), new Vector3(0.28f, 0.55f, 0.28f), material);
+            // Head, trunk and tusks hang from a neck pivot, so the scoop can swing them together.
+            var head = new GameObject("Head").transform;
+            head.SetParent(root.transform, false);
+            var neck = new Vector3(0f, 1.6f, 0.9f);
+            head.localPosition = neck;
+            AddPart(head, PrimitiveType.Sphere, new Vector3(0f, 1.6f, 1.3f) - neck, Vector3.zero, new Vector3(1.0f, 1.0f, 1.0f), material);
+            AddPart(head, PrimitiveType.Cylinder, new Vector3(0f, 0.75f, 1.85f) - neck, new Vector3(25f, 0f, 0f), new Vector3(0.28f, 0.55f, 0.28f), material);
             foreach (var side in new[] { -1f, 1f })
             {
-                AddPart(root.transform, PrimitiveType.Cylinder, new Vector3(0.32f * side, 1.15f, 1.85f), new Vector3(70f, 0f, 0f), new Vector3(0.12f, 0.45f, 0.12f), BootstrapMaterials.Get(PlaceholderPalette.Accent));
+                AddPart(head, PrimitiveType.Cylinder, new Vector3(0.32f * side, 1.15f, 1.85f) - neck, new Vector3(70f, 0f, 0f), new Vector3(0.12f, 0.45f, 0.12f), BootstrapMaterials.Get(PlaceholderPalette.Accent));
             }
 
             return root;

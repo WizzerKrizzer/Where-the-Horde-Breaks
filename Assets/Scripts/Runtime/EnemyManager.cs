@@ -421,6 +421,9 @@ namespace TowerDefense.Runtime
                     case TowerTargetingMode.HighestHealth:
                         score = enemy.Health;
                         break;
+                    case TowerTargetingMode.Heaviest:
+                        score = (enemy.Definition != null ? enemy.Definition.mass : 1f) * 100000f + enemy.PathDistance;
+                        break;
                 }
 
                 if (best == null || score > bestScore || (Mathf.Approximately(score, bestScore) && distance < bestDistance))
@@ -790,6 +793,27 @@ namespace TowerDefense.Runtime
             return mass;
         }
 
+        /// <summary>
+        /// Throws every enemy within radius off the line through center along axis: mostly sideways,
+        /// a little forward (the rolling rock). Without the GPU horde it pushes straight out instead.
+        /// </summary>
+        /// <summary>
+        /// Throws the goblins within radius off the axis: sideways and along it, none back. forward
+        /// scales the share along it (1: mostly sideways, the rock; 3: mostly ahead, the mammoth's
+        /// scoop). Bodies heavier than maxPushMass stay put (0: no limit).
+        /// </summary>
+        public void ThrowOffLine(Vector3 center, float radius, float knockback, float launch, Vector3 axis,
+            float forward = 1f, float maxPushMass = 0f)
+        {
+            if (hordePrototype != null && hordePrototype.IsRunning &&
+                hordePrototype.ThrowOffLine(center, radius, knockback, launch, axis, forward, maxPushMass))
+            {
+                return;
+            }
+
+            DamageAndKnockbackInRadius(center, radius, 0f, knockback, 0, out _, launch: launch, maxPushMass: maxPushMass);
+        }
+
         private float DamageAndKnockbackInRadiusInternal(
             Vector3 center,
             float radius,
@@ -970,7 +994,8 @@ namespace TowerDefense.Runtime
             uint projectileId = 0u,
             bool resetHitCount = true,
             float hitDamageKeep = 1f,
-            float heavyDamageMultiplier = 1f)
+            float heavyDamageMultiplier = 1f,
+            bool poison = false)
         {
             return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.QueueProjectile(
                 start,
@@ -987,7 +1012,8 @@ namespace TowerDefense.Runtime
                 projectileId,
                 resetHitCount,
                 hitDamageKeep,
-                heavyDamageMultiplier);
+                heavyDamageMultiplier,
+                poison);
         }
 
         public uint CreateHordeProjectileId()

@@ -34,3 +34,8 @@ Assets/InitTestScene*.unity.meta
 # redistributing those files, and this repository is public.
 **/Mixamo/
 **/Mixamo.meta
+
+# Kevin Iglesias animations (Unity Asset Store EULA): royalty-free in the game, but the files may not
+# be redistributed, so they and anything built from them stay out of this public repository.
+**/KevinIglesias/
+**/KevinIglesias.meta

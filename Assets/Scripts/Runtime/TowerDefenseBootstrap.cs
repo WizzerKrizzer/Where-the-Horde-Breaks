@@ -387,6 +387,12 @@ namespace TowerDefense.Runtime
                 (int)EraId.Prehistoric, 1, 9.5f, 12f, 1.6f, 12f, PlaceholderPalette.Tower);
             spearThrower.canHitFlying = true;
             spearThrower.flyThroughShot = true;
+            // User, 2026-11-08: up to 3 hunters on a rock outcrop; they aim at the heaviest goblin
+            // first (the boss, brutes). Knockback size is TEMPORARY.
+            spearThrower.throwsSpears = true;
+            spearThrower.crewSize = 3;
+            spearThrower.defaultTargetingMode = TowerTargetingMode.Heaviest;
+            spearThrower.knockbackDistance = 0.35f;
             spearThrower.nextEvolution = ballista;
             // Fast, regular throws with small damage: they finish off the goblins that slipped past
             // the mammoth (docs/Handoff.md). TEMPORARY numbers until balancing.
@@ -934,13 +940,13 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.TowerDamagePercent, 5f, "spear_thrower")),
                 TreeNode("mammoth_unlock", "Tamed Mammoth", "A mammoth that charges into the horde, trampling and throwing goblins aside. Costs a Victory Sigil.", "mammoth", new Vector2(484f, 129f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
                     TreeEffect(UpgradeEffectType.UnlockTower, 1f, "mammoth")),
-                TreeNode("mammoth_damage", "Heavy Tread", "The mammoth tramples and stomps harder.", "damage", new Vector2(662f, 193f), 10, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
+                TreeNode("mammoth_damage", "Heavy Tread", "The mammoth tramples and scoops harder.", "damage", new Vector2(662f, 193f), 10, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "mammoth")),
                 TreeNode("mammoth_health", "Thick Fur", "The mammoth has 20 more health.", "health", new Vector2(269f, 183f), 8, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerHealthFlat, 20f, "mammoth")),
                 TreeNode("mammoth_herd", "Bigger Herd", "The next mammoth is ready sooner.", "cooldown", new Vector2(490f, 277f), 5, CurrencyType.KillEssence, 4, 1.25f, "mammoth_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerFireRatePercent, 8f, "mammoth")),
-                TreeNode("mammoth_rage", "Rage", "Special: below 40% health the mammoth stomps 30% faster and harder.", "rage", new Vector2(640f, 78f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "mammoth_unlock", true,
+                TreeNode("mammoth_rage", "Rage", "Special: below 40% health the mammoth scoops 30% faster and harder.", "rage", new Vector2(640f, 78f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "mammoth_unlock", true,
                     TreeEffect(UpgradeEffectType.TowerBeastRagePercent, 30f, "mammoth"), TreeEffect(UpgradeEffectType.TowerBeastRageThresholdPercent, 40f, "mammoth")),
                 TreeNode("mammoth_rage_power", "Blind Fury", "Rage: +10% faster and harder.", "rage|up", new Vector2(766f, 91f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_rage", false,
                     TreeEffect(UpgradeEffectType.TowerBeastRagePercent, 10f, "mammoth")),

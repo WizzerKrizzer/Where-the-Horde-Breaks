@@ -314,6 +314,64 @@ namespace TowerDefense.Tests
             Assert.That(burning, Is.GreaterThan(0), "The fire rock left no burning goblins.");
         }
 
+        // User, 2026-11-08: the rock's blast must push the goblins away from where it fell, not pull
+        // them in. The goblins around the landing point are followed through the blast.
+        [UnityTest]
+        public IEnumerator Rock_ImpactPushesTheGoblinsAwayFromWhereItFalls()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld(cleanup);
+            var wave = OnlyEnemy(world, "runner", 120, out var runner);
+            runner.maxHealth = 4000f;
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            yield return WaitForSpawned(world, 120);
+            var point = world.Route.Sample(10f);
+            var deadline = Time.realtimeSinceStartup + 20f;
+            while (AgentsWithin(world, point, 2.5f) < 8 && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            var settings = new RollingRock.Settings
+            {
+                ImpactRadius = 2.5f, ImpactDamage = 30f, ImpactKnockback = 2f, ImpactLaunch = 0.9f, ImpactMaxTargets = 40,
+                RollDistance = 0f
+            };
+            var rock = RollingRock.Throw(world.Enemies, point, Vector3.zero, settings);
+            cleanup.Add(rock.gameObject);
+            // The rock lands 0.35 s after the throw; take the crowd just before it lands.
+            yield return new WaitForSeconds(0.3f);
+            var simulation = PrehistoricTowerTests.Simulation(world);
+            var count = world.Enemies.TotalSpawned;
+            var before = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(before, count);
+            var center = new Vector2(point.x, point.z);
+            yield return new WaitForSeconds(0.6f);
+            var after = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(after, count);
+            var followed = 0;
+            var pushedOut = 0;
+            var change = 0f;
+            for (var i = 0; i < count; i++)
+            {
+                var start = Vector2.Distance(before[i].Position, center);
+                if (before[i].Status != 1u || start > 2.5f || after[i].Status != 1u)
+                {
+                    continue;
+                }
+
+                var end = Vector2.Distance(after[i].Position, center);
+                followed++;
+                change += end - start;
+                pushedOut += end > start + 0.3f ? 1 : 0;
+            }
+
+            Debug.Log($"Rock blast: {followed} goblins under it, {pushedOut} pushed out, mean change {(followed > 0 ? change / followed : 0f):F2} m.");
+            Assert.That(followed, Is.GreaterThanOrEqualTo(5), "Too few goblins were under the rock.");
+            Assert.That(change / followed, Is.GreaterThan(0.5f), "The blast did not push the goblins away from where the rock fell.");
+            Assert.That(pushedOut, Is.GreaterThan(followed / 2), "Most goblins under the rock were not pushed out.");
+        }
+
         [UnityTest]
         public IEnumerator Slingers_SpecialsStunAndHitMoreGoblins()
         {
@@ -469,6 +527,100 @@ namespace TowerDefense.Tests
             }
 
             done((Wounded(world), HealthLost(world), burning));
+        }
+
+        // User, 2026-11-08: three hunters on the rock take turns, each throw raises dust, they aim at
+        // the heaviest goblin first, the spears stick in the ground where they stop, big-game hits
+        // flash red and poisoned goblins are marked as poisoned (drawn green).
+        [UnityTest]
+        public IEnumerator Spear_HuntersTakeTurnsAimAtTheHeaviestAndLeaveSpears()
+        {
+            RequireComputeShaders();
+            SpearVisuals.ResetCounters();
+            var world = CreateWorld(cleanup);
+            var spear = Object.Instantiate(world.Spear);
+            cleanup.Add(spear);
+            spear.heavyDamageMultiplier = 1.5f;
+            spear.poisonDamagePerSecond = 1f;
+            spear.poisonSeconds = 5f;
+            world.Towers.SetAvailableTowers(new[] { spear });
+            Assert.That(world.Towers.TryPlace(spear, new Vector3(-25f, 0f, 4.6f)), Is.True, "The Spear Throwers could not be placed.");
+            var tower = world.Towers.Towers[0];
+            Assert.That(tower.TargetingMode, Is.EqualTo(TowerTargetingMode.Heaviest), "A new spear rock does not aim at the heaviest goblin.");
+            var hunters = 0;
+            foreach (Transform child in tower.transform)
+            {
+                hunters += child.name.StartsWith("Hunter_") ? 1 : 0;
+            }
+            Assert.That(hunters, Is.EqualTo(3), "The rock does not hold three hunters.");
+
+            var wave = OnlyEnemy(world, "runner", 30, out var runner);
+            runner.maxHealth = 400f;
+            OnlyEnemy(world, "brute", 3, out var brute);
+            brute.maxHealth = 600f;
+            wave.totalEnemyCount = 33;
+            wave.entries = new[] { new WaveEntry { enemy = runner, count = 30 }, new WaveEntry { enemy = brute, count = 3 } };
+            UnityEngine.Random.InitState(4242);
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            yield return WaitForSpawned(world, 33);
+
+            var simulation = PrehistoricTowerTests.Simulation(world);
+            var checks = 0;
+            var wrongPicks = 0;
+            var poisoned = 0;
+            var until = Time.realtimeSinceStartup + 12f;
+            while (Time.realtimeSinceStartup < until)
+            {
+                var count = world.Enemies.TotalSpawned;
+                var states = new GpuHordeSimulation.AgentState[count];
+                simulation.ReadStatesSynchronous(states, count);
+                var bruteInRange = false;
+                var poisonedNow = 0;
+                foreach (var state in states)
+                {
+                    if (state.Status != 1u)
+                    {
+                        continue;
+                    }
+
+                    var offset = new Vector2(state.Position.x - tower.Position.x, state.Position.y - tower.Position.z);
+                    bruteInRange |= state.Mass >= 2.5f && offset.magnitude < spear.range - 0.5f;
+                    poisonedNow += state.BurnTimer > 0f && (state.Flags & 8u) != 0u ? 1 : 0;
+                }
+
+                poisoned = Mathf.Max(poisoned, poisonedNow);
+                // A GPU target answer counts as fresh for only a few frames, and a batch run can go
+                // through thousands of frames a second, so ask again each frame until one is fresh.
+                var index = -1;
+                var answered = false;
+                for (var attempt = 0; bruteInRange && !answered && attempt < 120; attempt++)
+                {
+                    answered = world.Enemies.TryGetHordeTargetSnapshot(tower.Position, spear.range, spear.canHitFlying,
+                        TowerTargetingMode.Heaviest, out index, out _, out _);
+                    if (!answered)
+                    {
+                        yield return null;
+                    }
+                }
+
+                if (answered && index >= 0 && index < count)
+                {
+                    checks++;
+                    wrongPicks += states[index].Mass >= 2.5f ? 0 : 1;
+                }
+
+                yield return new WaitForSeconds(0.25f);
+            }
+
+            Debug.Log($"Spear rock: {checks} heaviest checks, {wrongPicks} wrong; {SpearVisuals.DustCloudsSpawned} dust clouds, " +
+                      $"{SpearVisuals.SpearsStuck} spears stuck, {world.Horde.HeavyHits} heavy hits, {poisoned} poisoned.");
+            Assert.That(checks, Is.GreaterThan(0), "No brute ever came in range of the rock.");
+            Assert.That(wrongPicks, Is.LessThanOrEqualTo(checks / 5), "The hunters did not aim at the brutes first.");
+            Assert.That(SpearVisuals.DustCloudsSpawned, Is.GreaterThanOrEqualTo(3), "The throws raised no dust.");
+            Assert.That(SpearVisuals.SpearsStuck, Is.GreaterThanOrEqualTo(1), "No spear stuck in the ground.");
+            Assert.That(world.Horde.HeavyHits, Is.GreaterThan(0), "No big-game hit on a brute.");
+            Assert.That(SpearVisuals.HeavyFlashesSpawned, Is.GreaterThan(0), "Big-game hits did not flash.");
+            Assert.That(poisoned, Is.GreaterThan(0), "No goblin was marked as poisoned.");
         }
 
         [UnityTest]

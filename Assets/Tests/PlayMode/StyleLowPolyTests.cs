@@ -327,13 +327,32 @@ namespace TowerDefense.Tests
         private const float WeaponArm = 0.75f;
         private const float Static = 1f;
 
+        /// <summary>Colours and the optional head mark of a goblin (readability tests).</summary>
+        internal struct GoblinLook
+        {
+            public Color Skin;
+            public Color SkinDark;
+            public Color Hide;
+            public Color Mark;
+            public int MarkShape; // 0 none, 1 war-paint stripe over the head, 2 bone cap with horns
+
+            public static GoblinLook Current => new GoblinLook
+            {
+                Skin = new Color(0.36f, 0.62f, 0.24f),
+                SkinDark = new Color(0.26f, 0.47f, 0.17f),
+                Hide = new Color(0.47f, 0.31f, 0.18f)
+            };
+        }
+
+        public static Mesh Goblin() => Goblin(GoblinLook.Current);
+
         // Prehistoric goblin seen from above (+Z forward): big head with ears and bright eyes,
         // hunched torso, hide loincloth, two legs and a bone-studded club in the right hand.
-        public static Mesh Goblin()
+        public static Mesh Goblin(GoblinLook look)
         {
-            var skin = new Color(0.36f, 0.62f, 0.24f);
-            var skinDark = new Color(0.26f, 0.47f, 0.17f);
-            var hide = new Color(0.47f, 0.31f, 0.18f);
+            var skin = look.Skin;
+            var skinDark = look.SkinDark;
+            var hide = look.Hide;
             var eye = new Color(1f, 0.8f, 0.22f);
             var dark = new Color(0.1f, 0.13f, 0.07f);
             var bone = new Color(0.92f, 0.88f, 0.72f);
@@ -369,6 +388,20 @@ namespace TowerDefense.Tests
             builder.Frustum(Ellipse(0.91f, 1.22f, 0.09f, 0.09f, 4), 0.94f, 1.1f, 0.2f, bone, WeaponArm);
             builder.Prism(new[] { V(1.14f, 1.14f), V(1.32f, 1.22f), V(1.14f, 1.3f) }, 0.7f, 0.82f, bone, WeaponArm);
             builder.Prism(new[] { V(0.68f, 1.14f), V(0.68f, 1.3f), V(0.5f, 1.22f) }, 0.7f, 0.82f, bone, WeaponArm);
+            if (look.MarkShape == 1)
+            {
+                // A broad stripe of paint from the brow back over the crown and down the neck.
+                builder.Box(-0.12f, 0.12f, -0.12f, 0.52f, 1.44f, 1.47f, look.Mark, Body);
+                builder.Box(-0.2f, 0.2f, 0.36f, 0.5f, 1.44f, 1.475f, look.Mark, Body);
+            }
+            else if (look.MarkShape == 2)
+            {
+                // A bone cap on the crown with two short horns pointing back and out.
+                builder.Frustum(Ellipse(0f, 0.24f, 0.34f, 0.32f, 7), 1.42f, 1.56f, 0.7f, look.Mark, Body);
+                builder.Prism(new[] { V(-0.22f, 0.14f), V(-0.5f, -0.2f), V(-0.12f, 0.04f) }, 1.5f, 1.62f, look.Mark, Body);
+                builder.Prism(new[] { V(0.22f, 0.14f), V(0.12f, 0.04f), V(0.5f, -0.2f) }, 1.5f, 1.62f, look.Mark, Body);
+            }
+
             return builder.ToMesh("LowPolyGoblin");
         }
 

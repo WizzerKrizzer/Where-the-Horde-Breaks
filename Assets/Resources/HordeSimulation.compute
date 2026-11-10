@@ -213,7 +213,33 @@ struct AreaEffectCommand
     // event 9; skipAgent - 1 is left out (the healer itself), 0 leaves no one out.
     float heal;
     uint skipAgent;
+    // When not zero: bodies are thrown mostly sideways off this line and a little along it, not
+    // straight out from the centre (the rolling rock, user 2026-11-09). Its length scales the
+    // share along the line: 1 for the rock, more for the mammoth's forward scoop.
+    float2 pushAxis;
 };
+
+// Throws sideways off the axis, a little forward, with some scatter per body so the spread is even.
+float2 AxisThrowDirection(float2 offset, float2 axis, uint agentIndex)
+{
+    float forwardBias = max(0.0001, length(axis));
+    axis /= forwardBias;
+    float2 lateral = offset - dot(offset, axis) * axis;
+    float noise = frac(sin((float)(agentIndex + 1u) * 12.9898 + dot(axis, float2(4.1, 7.3))) * 43758.5453);
+    float2 side = float2(-axis.y, axis.x);
+    float lateralLength = length(lateral);
+    if (lateralLength > 0.05)
+    {
+        side = lateral / lateralLength;
+    }
+    else if (noise < 0.5)
+    {
+        side = -side;
+    }
+    // Forward share 0.35 to 0.8: between about 20 and 40 degrees ahead of straight sideways.
+    float2 direction = side + axis * lerp(0.35, 0.8, frac(noise * 9.731)) * forwardBias;
+    return normalize(direction);
+}
 
 struct ProjectileCommand
 {
@@ -231,6 +257,8 @@ struct ProjectileCommand
     uint projectileId;
     uint resetHitCount;
     float2 padding;
+    // Bit 0: the burn it sets is poison (drawn green, not as fire).
+    uint markFlags;
 };
 
 // Bodies thrown by a blast fly in an arc. In the air they pass over the crowd without
@@ -242,6 +270,8 @@ struct ProjectileCommand
 #define AIR_MAX_LAUNCH_SPEED 8.0
 #define AIR_MAX_HORIZONTAL_SPEED 4.5
 #define AIR_DRAG 0.6
+// How hard a body in the air steers towards emptier ground (metres per second squared).
+#define AIR_LANDING_STEER 9.0
 #define LANDING_SECONDS 0.45
 
 bool IsAirborne(AgentState state)
@@ -292,11 +322,31 @@ RWStructuredBuffer<float2> _Impulses;
 // One shared auxiliary buffer keeps kernels within the 8-UAV limit:
 //   [0]                       corpse ring cursor
 //   [1 + 2i], [2 + 2i]        fixed-point knockback exchanged by contact pairs (agent i)
-//   [_CorpseBase + 4s ..]     corpse slot s: position x, position y, scale, valid (float bits)
+//   [_CorpseBase + 12s ..]    corpse slot s (CORPSE_STRIDE values, see RecordCorpse)
 // The corpse ring is presentation only and never takes part in the XPBD contact solve.
 RWStructuredBuffer<int> _Aux;
 uint _CorpseCapacity;
 uint _CorpseBase;
+// The simulation clock (seconds) that corpse birth times are measured on; HordeCorpse.shader
+// gets the same clock and plays each body's fall from it.
+float _CorpseClock;
+#define CORPSE_STRIDE 12u
+// After the corpses, three counters of stunned bodies (HordeStatusMark.shader caps its stars when
+// many are stunned at once). Each step counts into _StunCountSlot and clears the slot after it,
+// so the slot before it always holds a whole step's count while it is drawn.
+uint _StunCountBase;
+uint _StunCountSlot;
+// A stun is the GPU's near-total slow (HordeEnemyManager.StunSpeedMultiplier, 5%).
+#define STUN_SLOW_LIMIT 0.06
+// After the counters, per counter slot, the first MAX_STUN_STARS stunned bodies of that step:
+// the star layer draws only these (performance: not one ring per horde slot).
+#define MAX_STUN_STARS 64u
+// The corpse layer's indirect draw arguments: its instance count is set to the corpses recorded
+// so far (at most the ring), so empty slots cost nothing.
+RWByteAddressBuffer _CorpseDrawArgs;
+// How quickly a corpse sliding on the ground stops (the landing skid of a live body).
+#define CORPSE_GROUND_DRAG 5.4
+#define CORPSE_MAX_GROUND_SPEED 6.0
 StructuredBuffer<float4> _FlowVectors;
 StructuredBuffer<float4> _FlowData;
 RWStructuredBuffer<uint> _CellCounts;
@@ -424,18 +474,6 @@ void EmitDetailedEvent(uint objectIndex, uint eventType, float value, uint gener
         result.padding = 0.0;
         _HordeEvents[eventIndex] = result;
     }
-}
-
-void RecordCorpse(AgentState state)
-{
-    if (_CorpseCapacity == 0u) return;
-    int cursor;
-    InterlockedAdd(_Aux[0], 1, cursor);
-    uint offset = _CorpseBase + ((uint)cursor % _CorpseCapacity) * 4u;
-    _Aux[offset] = asint(state.position.x);
-    _Aux[offset + 1u] = asint(state.position.y);
-    _Aux[offset + 2u] = asint(state.scale);
-    _Aux[offset + 3u] = asint(1.0);
 }
 
 void EmitEvent(uint agentIndex, uint eventType, float value)
@@ -674,6 +712,84 @@ float2 ConstrainMove(float2 current, float2 desired)
     return result;
 }
 
+// A body that dies keeps the motion it had (a blast, a spear, its own fall) and finishes it as a
+// corpse: up in an arc if it was thrown, then a skid along the ground that stops at the road's
+// edge. The whole path is decided here, once, and HordeCorpse.shader plays it back from the
+// birth time, so corpses cost nothing in the simulation. toss and lift add a death throw
+// (horizontal metres per second, upward metres per second) on top of the body's own motion.
+//
+// Slot layout (float bits unless noted), CORPSE_STRIDE values:
+//   0,1 start x,y   2,3 rest x,y   4 scale   5 birth time (0 = empty slot)
+//   6 flight seconds   7 start height   8 upward speed   9 horizontal speed
+//   10 fall direction (radians)   11 uint: definition index | death mark << 16
+//      (death mark: 1 burned, 2 poisoned), so a future per-kind or charred look can read it.
+void RecordCorpse(AgentState state, float2 toss, float lift)
+{
+    if (_CorpseCapacity == 0u) return;
+    float2 velocity = state.knockbackVelocity + toss;
+    bool airborne = IsAirborne(state);
+    float height = airborne ? max(0.0, state.airHeight) : 0.0;
+    float rise = (airborne ? state.airSpeed : 0.0) + max(0.0, lift);
+    float flight = height > 0.0 || rise > 0.0
+        ? (rise + sqrt(max(0.0, rise * rise + 2.0 * AIR_GRAVITY * height))) / AIR_GRAVITY
+        : 0.0;
+    float speed = length(velocity);
+    float2 direction = speed > 0.001 ? velocity / speed : state.facing;
+    if (dot(direction, direction) < 0.0001) direction = float2(1.0, 0.0);
+    direction = normalize(direction);
+    speed = min(speed, flight > 0.0 ? AIR_MAX_HORIZONTAL_SPEED : CORPSE_MAX_GROUND_SPEED);
+    float airDecay = exp(-AIR_DRAG * flight);
+    float travel = speed * (1.0 - airDecay) / AIR_DRAG + speed * airDecay / CORPSE_GROUND_DRAG;
+    float2 rest = travel > 0.001 ? ConstrainMove(state.position, state.position + direction * travel) : state.position;
+    uint mark = state.burnTimer > 0.0 && state.burnDamagePerSecond > 0.0
+        ? ((state.flags & 8u) != 0u ? 2u : 1u)
+        : 0u;
+
+    int cursor;
+    InterlockedAdd(_Aux[0], 1, cursor);
+    uint offset = _CorpseBase + ((uint)cursor % _CorpseCapacity) * CORPSE_STRIDE;
+    _Aux[offset] = asint(state.position.x);
+    _Aux[offset + 1u] = asint(state.position.y);
+    _Aux[offset + 2u] = asint(rest.x);
+    _Aux[offset + 3u] = asint(rest.y);
+    _Aux[offset + 4u] = asint(state.scale);
+    _Aux[offset + 5u] = asint(max(0.001, _CorpseClock));
+    _Aux[offset + 6u] = asint(flight);
+    _Aux[offset + 7u] = asint(height);
+    _Aux[offset + 8u] = asint(rise);
+    _Aux[offset + 9u] = asint(speed);
+    _Aux[offset + 10u] = asint(atan2(direction.y, direction.x));
+    _Aux[offset + 11u] = (int)((state.definitionIndex & 0xFFFFu) | (mark << 16));
+}
+
+// The throw a blast gives the bodies it kills: away from its centre, or off its line when it
+// has an axis, harder near the centre. Small hits (a stone, a club) only drop the body.
+// Presentation only: it moves the corpse, never a living goblin.
+void BlastDeathThrow(float2 center, float radius, float2 axis, uint agentIndex, float2 position,
+    out float2 toss, out float lift)
+{
+    float2 offset = position - center;
+    float distance = length(offset);
+    float2 direction;
+    if (distance > 0.001)
+    {
+        direction = offset / distance;
+    }
+    else
+    {
+        float angle = frac((agentIndex + 1u) * 0.61803398875) * 6.2831853;
+        sincos(angle, direction.y, direction.x);
+    }
+    if (dot(axis, axis) > 0.0001) direction = AxisThrowDirection(offset, axis, agentIndex);
+    float blast = saturate((radius - 0.6) / 1.4);
+    float falloff = 1.0 - saturate(distance / max(0.01, radius));
+    float noise = frac(sin((float)(agentIndex + 1u) * 78.233) * 43758.5453);
+    // Mostly up, not far: thrown far, the bodies would land under the crowd around the blast and
+    // vanish again. Up and down within about a metre, they lie in the hole the blast made.
+    toss = direction * blast * lerp(0.6, 1.8, falloff) * lerp(0.8, 1.2, noise);
+    lift = blast * lerp(2.5, 5.0, falloff) * lerp(0.85, 1.15, frac(noise * 7.31));
+}
+
 [numthreads(64, 1, 1)]
 void ApplyDynamicTargetCommands(uint3 id : SV_DispatchThreadID)
 {
@@ -897,6 +1013,10 @@ void FinalizeActiveDispatch(uint3 id : SV_DispatchThreadID)
     _ActiveDispatchArgs.Store(0, groupCount);
     _ActiveDispatchArgs.Store(4, 1u);
     _ActiveDispatchArgs.Store(8, 1u);
+    if (_CorpseCapacity > 0u)
+    {
+        _CorpseDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
+    }
 }
 
 [numthreads(64, 1, 1)]
@@ -926,6 +1046,7 @@ void ApplyDamageCommands(uint3 id : SV_DispatchThreadID)
     {
         state.health = 0.0;
         state.status = 3;
+        RecordCorpse(state, float2(0.0, 0.0), 0.0);
         EmitEvent(command.index, 1u, appliedDamage);
         _StatesWrite[command.index] = state;
     }
@@ -966,6 +1087,7 @@ void ApplyStatusCommands(uint3 id : SV_DispatchThreadID)
         uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + command.burnApplications);
         state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
         state.burnTimer = max(state.burnTimer, command.burnDuration);
+        state.flags &= 0xFFFFFFF7u;
     }
 
     _StatesRead[command.index] = state;
@@ -1076,6 +1198,10 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                             float angle = frac((agentIndex + 1u) * 0.61803398875) * 6.2831853;
                             sincos(angle, direction.y, direction.x);
                         }
+                        if (dot(command.pushAxis, command.pushAxis) > 0.0001)
+                        {
+                            direction = AxisThrowDirection(offset, command.pushAxis, agentIndex);
+                        }
                         float falloff = 1.0 - saturate(distance / command.radius);
                         float2 addedVelocity = direction * command.knockback * lerp(2.5, 8.0, falloff);
                         state.knockbackVelocity += addedVelocity;
@@ -1091,6 +1217,11 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                         {
                             state.health = 0.0;
                             state.status = 3;
+                            float2 deathToss;
+                            float deathLift;
+                            BlastDeathThrow(command.center, command.radius, command.pushAxis, agentIndex,
+                                state.position, deathToss, deathLift);
+                            RecordCorpse(state, deathToss, deathLift);
                             EmitEvent(agentIndex, 1u, appliedDamage);
                         }
                         else
@@ -1105,6 +1236,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                         uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
                         state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
                         state.burnTimer = max(state.burnTimer, command.burnDuration);
+                        state.flags &= 0xFFFFFFF7u;
                     }
 
                     if (state.status == 1 && applySlow)
@@ -1210,6 +1342,11 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
                 sincos(angle, direction.y, direction.x);
             }
 
+            if (dot(command.pushAxis, command.pushAxis) > 0.0001)
+            {
+                direction = AxisThrowDirection(offset, command.pushAxis, agentIndex);
+            }
+
             float gameplayFalloff = 1.0;
             if (command.innerRadius <= 0.0)
             {
@@ -1275,7 +1412,11 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             {
                 state.health = 0.0;
                 state.status = 3u;
-                RecordCorpse(state);
+                float2 deathToss;
+                float deathLift;
+                BlastDeathThrow(effectCenter, command.radius, command.pushAxis, agentIndex,
+                    state.position, deathToss, deathLift);
+                RecordCorpse(state, deathToss, deathLift);
                 EmitEvent(agentIndex, 1u, appliedDamage);
             }
             else
@@ -1291,6 +1432,7 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks *
                 (1.0 - saturate(state.fireResistance));
             state.burnTimer = max(state.burnTimer, command.burnDuration);
+            state.flags &= 0xFFFFFFF7u;
         }
 
         if (state.status != 1u)
@@ -1387,7 +1529,9 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                     state.health = max(0.0, state.health - appliedDamage);
                     if (command.knockback > 0.0 && CanBePushed(state, 0.0))
                     {
-                        float2 offset = state.position - command.end;
+                        // A shot along a line (a spear) pushes along its flight; a splash pushes
+                        // away from where it landed.
+                        float2 offset = command.mode == 0u ? command.end - command.start : state.position - command.end;
                         float offsetLength = length(offset);
                         float2 direction = offsetLength > 0.0001 ? offset / offsetLength : float2(1.0, 0.0);
                         state.knockbackVelocity += direction * command.knockback * 5.0;
@@ -1396,7 +1540,8 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                     if (state.health <= 0.0)
                     {
                         state.status = 3u;
-                        RecordCorpse(state);
+                        // A spear knocks its kill back along its flight with a small hop.
+                        RecordCorpse(state, float2(0.0, 0.0), command.knockback > 0.0 ? 1.6 : 0.0);
                         EmitEvent(agentIndex, 1u, appliedDamage);
                     }
                     else
@@ -1408,7 +1553,14 @@ void ApplyProjectile(uint3 id : SV_DispatchThreadID)
                             uint nextStacks = min(max(1u, command.maxBurnStacks), existingStacks + 1u);
                             state.burnDamagePerSecond = command.burnDamagePerSecond * nextStacks * (1.0 - saturate(state.fireResistance));
                             state.burnTimer = max(state.burnTimer, command.burnDuration);
+                            // Bit 3 of flags: the burn is poison.
+                            state.flags = (command.markFlags & 1u) != 0u ? (state.flags | 8u) : (state.flags & 0xFFFFFFF7u);
                         }
+                    }
+                    if (heavyBonus > 1.0)
+                    {
+                        // Event 10: a big-game hit on a heavy goblin (the CPU flashes it red).
+                        EmitEvent(agentIndex, 10u, appliedDamage);
                     }
 
                     _StatesRead[agentIndex] = state;
@@ -1439,6 +1591,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     uint index = _ActiveIndicesRead[activeSlot];
+    if (activeSlot == 0u) _Aux[_StunCountBase + (_StunCountSlot + 1u) % 3u] = 0;
 
     AgentState state = _StatesInput[index];
     float4 control = _Controls[index];
@@ -1498,6 +1651,16 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         }
     }
 
+    if (state.slowTimer > 0.0 && state.slowMultiplier <= STUN_SLOW_LIMIT)
+    {
+        int stunOrder;
+        InterlockedAdd(_Aux[_StunCountBase + _StunCountSlot], 1, stunOrder);
+        if ((uint)stunOrder < MAX_STUN_STARS)
+        {
+            _Aux[_StunCountBase + 3u + _StunCountSlot * MAX_STUN_STARS + (uint)stunOrder] = (int)index;
+        }
+    }
+
     if (state.slowTimer > 0.0)
     {
         state.slowTimer -= simulationDelta;
@@ -1516,6 +1679,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         {
             state.health = 0.0;
             state.status = 3;
+            RecordCorpse(state, float2(0.0, 0.0), 0.0);
             EmitEvent(index, 1u, state.burnDamagePerSecond * simulationDelta);
             _StatesWrite[index] = state;
             return;
@@ -1525,6 +1689,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
         {
             state.burnTimer = 0.0;
             state.burnDamagePerSecond = 0.0;
+            state.flags &= 0xFFFFFFF7u;
         }
     }
 
@@ -1594,6 +1759,7 @@ void QueryTargets(uint3 id : SV_DispatchThreadID)
                 if (query.mode == 1u) score = state.progress;
                 else if (query.mode == 2u) score = -state.progress;
                 else if (query.mode == 3u) score = state.health - reservedDamage;
+                else if (query.mode == 4u) score = state.mass * 100000.0 + state.progress;
                 if (best.index < 0 || score > best.score || (abs(score - best.score) < 0.0001 && distanceSq < bestDistanceSq))
                 {
                     best.secondPosition = best.position;
@@ -1919,7 +2085,7 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
                     if (state.health <= 0.0)
                     {
                         state.status = 3u;
-                        RecordCorpse(state);
+                        RecordCorpse(state, float2(0.0, 0.0), 0.0);
                         EmitEvent(index, 1u, thornDamage);
                         _StatesWrite[index] = state;
                         return;
@@ -1963,6 +2129,47 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     bool airborne = IsAirborne(state);
     if (airborne)
     {
+        // Looking for somewhere to land (user, 2026-11-09): drift towards the emptier of the
+        // neighbouring cells, so thrown bodies come down in gaps instead of on top of the crowd.
+        int2 airCell = WorldToCell(state.position);
+        if (IsInside(airCell))
+        {
+            float hereCount = (float)_CellCountsRead[CellIndex(airCell)];
+            float2 towardsRoom = float2(0.0, 0.0);
+            [unroll]
+            for (int ay = -1; ay <= 1; ay++)
+            {
+                [unroll]
+                for (int ax = -1; ax <= 1; ax++)
+                {
+                    int2 neighbour = airCell + int2(ax, ay);
+                    if ((ax == 0 && ay == 0) || !IsInside(neighbour) ||
+                        SampleBoundaryDistance(_GridOrigin + ((float2)neighbour + 0.5) * _CellSize) <= 0.0)
+                    {
+                        continue;
+                    }
+
+                    float room = hereCount - (float)_CellCountsRead[CellIndex(neighbour)];
+                    towardsRoom += normalize(float2(ax, ay)) * room;
+                }
+            }
+
+            // Never back against the throw: the emptiest place is usually the hole the blast
+            // just made, and steering there undid the push (Rock_ImpactPushesTheGoblinsAway).
+            float throwSpeed = length(state.knockbackVelocity);
+            if (throwSpeed > 0.0001)
+            {
+                float2 throwDirection = state.knockbackVelocity / throwSpeed;
+                towardsRoom -= throwDirection * min(0.0, dot(towardsRoom, throwDirection));
+            }
+
+            float roomLength = length(towardsRoom);
+            if (roomLength > 0.5)
+            {
+                state.knockbackVelocity += towardsRoom / roomLength * AIR_LANDING_STEER * simulationDelta;
+            }
+        }
+
         state.airSpeed -= AIR_GRAVITY * simulationDelta;
         state.airHeight += state.airSpeed * simulationDelta;
         if (state.airHeight <= 0.0)
@@ -2502,6 +2709,15 @@ void ApplyXpbdCorrections(uint3 id : SV_DispatchThreadID)
                 // Contact changed the accepted motion, so feed that response
                 // back into the external channel. A pure per-tick travel cap is
                 // different: preserve the remaining impulse for later ticks.
+                // The body's own walking is what the crowd blocks first: keep
+                // only the part of it that was accepted. Otherwise a pushed body
+                // in a jam (accepting almost nothing) had its blocked walk turned
+                // into a push straight back, towards the start of the road
+                // (user, 2026-11-09).
+                float walkSpeed = length(state.velocity);
+                float2 walkDirection = walkSpeed > 0.0001 ? state.velocity / walkSpeed : float2(0.0, 0.0);
+                float acceptedWalk = clamp(dot(acceptedVelocity, walkDirection), 0.0, walkSpeed);
+                state.velocity = walkDirection * acceptedWalk;
                 state.knockbackVelocity = acceptedVelocity - state.velocity;
             }
             // A reflected shockwave must keep its decaying inward impulse while

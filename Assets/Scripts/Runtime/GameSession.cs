@@ -2847,33 +2847,8 @@ namespace TowerDefense.Runtime
             activeWeapon.RockShatterDamageFraction = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponShatterDamagePercent) / 100f;
             activeWeapon.RockQuakeRadius = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat);
             activeWeapon.RockQuakeSeconds = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat);
-            if (level != null && (level.id == "level_02" || level.id == "level_02_1"))
-            {
-                activeWeapon.Rock = false;
-                // Level 2 and 2.1 are the crowd-physics laboratory. The charge causes no
-                // damage so repeated tests preserve the full 10k horde; only its
-                // radial impulse and contact propagation are under observation.
-                activeWeapon.Damage = 0f;
-                activeWeapon.CooldownSeconds = 0.65f;
-                activeWeapon.Radius = 3.4f;
-                activeWeapon.MaxTargets = 0;
-                activeWeapon.KnockbackDistance = 5.5f;
-                activeWeapon.KnockbackPropagationRadius = 12f;
-                activeWeapon.DisplayName = "Physics Charge";
-            }
-            else if (level != null && level.id == "level_07")
-            {
-                activeWeapon.Rock = false;
-                activeWeapon.Damage = 100f;
-                activeWeapon.CooldownSeconds = 0.1f * activeCooldownMultiplier;
-                activeWeapon.Radius = 10f + activeRadiusBonus;
-                activeWeapon.MaxTargets = 0;
-                activeWeapon.KnockbackDistance = 16f;
-                activeWeapon.KnockbackPropagationRadius = 110f;
-                activeWeapon.ShockwaveArenaCenter = level.groundCenter;
-                activeWeapon.ShockwaveArenaRadius = level.arenaRadius;
-                activeWeapon.DisplayName = "Shockwave Bomb";
-            }
+            // The rock is the weapon on every level (user, 2026-11-08): the crowd-lab weapons of
+            // Levels 2, 2.1 (Physics Charge) and 7 (Shockwave Bomb) no longer replace it.
             activeWeapon.AutoFireUnlocked = activeAutoFireUnlocked;
         }
 

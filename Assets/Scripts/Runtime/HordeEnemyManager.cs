@@ -216,6 +216,7 @@ namespace TowerDefense.Runtime
             healers.Clear();
             healerTimers.Clear();
             TotalHealed = 0f;
+            HeavyHits = 0;
             positions = new Vector3[count];
             previousPositions = new Vector3[count];
             pathDistances = new float[count];
@@ -466,6 +467,8 @@ namespace TowerDefense.Runtime
 
         /// <summary>Health the Shamans gave back to the horde in this wave.</summary>
         public float TotalHealed { get; private set; }
+        // Hits on heavy goblins that the big-game hunters made stronger.
+        public int HeavyHits { get; private set; }
 
         // Every living Shaman heals the goblins around it, but not itself, every healInterval
         // seconds (docs/Handoff.md: it only heals).
@@ -1197,7 +1200,8 @@ namespace TowerDefense.Runtime
             uint projectileId = 0u,
             bool resetHitCount = true,
             float hitDamageKeep = 1f,
-            float heavyDamageMultiplier = 1f)
+            float heavyDamageMultiplier = 1f,
+            bool poison = false)
         {
             return gpuSimulation != null && gpuSimulation.QueueProjectile(
                 start,
@@ -1214,7 +1218,8 @@ namespace TowerDefense.Runtime
                 projectileId,
                 resetHitCount,
                 hitDamageKeep,
-                heavyDamageMultiplier);
+                heavyDamageMultiplier,
+                poison);
         }
 
         public uint CreateProjectileId()
@@ -1361,6 +1366,16 @@ namespace TowerDefense.Runtime
             slowMultipliers[index] = Mathf.Min(slowMultipliers[index], StunSpeedMultiplier);
             slowTimers[index] = Mathf.Max(slowTimers[index], seconds);
             gpuSimulation?.QueueStatus(index, StunSpeedMultiplier, seconds, 0f, 0f, 0);
+        }
+
+        // Throws every body within radius off the line through center along axis: mostly sideways,
+        // a little forward (the rolling rock). GPU horde only.
+        public bool ThrowOffLine(Vector3 center, float radius, float knockback, float launch, Vector3 axis,
+            float forward = 1f, float maxPushMass = 0f)
+        {
+            return gpuSimulation != null && activeCount > 0 &&
+                   gpuSimulation.QueueAreaEffect(center, radius, 0f, knockback, 0, 0f, 0f, 1, launch: launch,
+                       maxPushMass: maxPushMass, pushAxis: axis, pushForward: forward);
         }
 
         public float DamageAndKnockbackInRadius(
@@ -1569,6 +1584,9 @@ namespace TowerDefense.Runtime
                     case TowerTargetingMode.HighestHealth:
                         score = health[i];
                         break;
+                    case TowerTargetingMode.Heaviest:
+                        score = definitions[i].mass * 100000f + pathDistances[i];
+                        break;
                 }
 
                 if (bestIndex < 0 || score > bestScore || (Mathf.Approximately(score, bestScore) && distanceSq < bestDistanceSq))
@@ -1678,6 +1696,14 @@ namespace TowerDefense.Runtime
                 if (eventType == 6u)
                 {
                     HordeProjectileVisual.CompleteProjectile((uint)eventIndex);
+                    continue;
+                }
+
+                if (eventType == 10u && eventIndex >= 0 && eventIndex < totalSpawned)
+                {
+                    // A big-game hit on a heavy goblin (Spear Throwers' special).
+                    HeavyHits++;
+                    SpearVisuals.SpawnHeavyHitFlash(positions[eventIndex]);
                     continue;
                 }
 

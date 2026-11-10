@@ -56,6 +56,25 @@ namespace TowerDefense.Runtime
             GetComponent<Renderer>().material = BootstrapMaterials.Get(GetColor(towerDefinition));
             EnsureHealthBar();
             UpdateHealthBar();
+            // The cave's specials show on the caveman (greybox props until the cavemen's model).
+            // A reused unit starts as an ordinary caveman again until it is made chief.
+            var horns = transform.Find("ChiefHorns");
+            if (horns != null)
+            {
+                horns.SetParent(null, false);
+                Destroy(horns.gameObject);
+            }
+
+            if (!IsRangedArcher && towerDefinition.torchBurnDamagePerSecond > 0f && towerDefinition.torchBurnSeconds > 0f)
+            {
+                SpecialEffectVisuals.AttachTorch(transform);
+            }
+
+            if (!IsRangedArcher && towerDefinition.alliedUnitDamageReduction > 0f)
+            {
+                SpecialEffectVisuals.AttachShield(transform);
+            }
+
             if (!IsRangedArcher)
             {
                 enemies.RegisterCombatTarget(this);
@@ -130,6 +149,7 @@ namespace TowerDefense.Runtime
             maxHealth *= 1f + Mathf.Max(0f, definition.chiefHealthBonus);
             health = maxHealth;
             transform.localScale *= ChiefScale;
+            SpecialEffectVisuals.AttachChiefHorns(transform);
             UpdateHealthBar();
         }
 

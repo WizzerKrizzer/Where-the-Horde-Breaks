@@ -213,6 +213,8 @@ namespace TowerDefense.Runtime
             public float MaxPushMass;
             public float Heal;
             public uint SkipAgent;
+            // Zero, or the line bodies are thrown sideways off (see AxisThrowDirection).
+            public Vector2 PushAxis;
         }
 
         private struct PendingShockwave
@@ -241,6 +243,8 @@ namespace TowerDefense.Runtime
             public uint ProjectileId;
             public uint ResetHitCount;
             public Vector2 Padding;
+            // Bit 0: the burn it sets is poison (drawn green).
+            public uint MarkFlags;
         }
 
         private readonly struct TargetQueryKey : IEquatable<TargetQueryKey>
@@ -409,9 +413,18 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer auxiliary;
         private readonly GraphicsBuffer corpseArgs;
         private readonly Material corpseMaterial;
+        // Stars over stunned goblins (HordeStatusMark.shader): one small ring per horde slot.
+        private readonly GraphicsBuffer stunMarkArgs;
+        private readonly Material stunMarkMaterial;
+        private readonly Mesh stunMarkMesh;
         // Shadows of goblins thrown into the air (HordeAirShadow.shader).
         private readonly Material airShadowMaterial;
-        private readonly Mesh corpseMesh;
+        private Mesh corpseMesh;
+        // Seconds of simulation since this horde began; corpses play their fall on this clock,
+        // so they freeze while the game is paused. Starts above 0 because 0 marks an empty slot.
+        private float corpseClock = 1f;
+        // The stunned-goblin counter the last step wrote (0 to 2); its count is complete when drawn.
+        private int stunCountSlot;
         private readonly uint[] corpseDrawArgs = new uint[5];
         private readonly GraphicsBuffer xpbdCorrectionX;
         private readonly GraphicsBuffer xpbdCorrectionY;
@@ -550,6 +563,12 @@ namespace TowerDefense.Runtime
 
         /// <summary>Ring-buffer size of the GPU corpse layer.</summary>
         public const int CorpseCapacity = 16384;
+
+        /// <summary>Values per corpse slot; must match CORPSE_STRIDE in HordeSimulation.compute.</summary>
+        public const int CorpseStride = 12;
+
+        /// <summary>At most this many stunned goblins show stars; must match MAX_STUN_STARS.</summary>
+        public const int MaxStunStars = 64;
 
         /// <summary>
         /// Advances one exact simulation tick. Tests use this instead of a render
@@ -707,23 +726,42 @@ namespace TowerDefense.Runtime
             xpbdPairCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
             xpbdPairDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
             var corpseBase = 1 + capacity * 2;
-            auxiliary = new GraphicsBuffer(GraphicsBuffer.Target.Structured, corpseBase + CorpseCapacity * 4, sizeof(int));
-            auxiliary.SetData(new int[corpseBase + CorpseCapacity * 4]);
+            // After the corpses: three rotating counters of stunned goblins (see _StunCountBase).
+            // Then, per counter, the first MaxStunStars stunned goblins (the star layer's list).
+            var stunCountBase = corpseBase + CorpseCapacity * CorpseStride;
+            var auxiliarySize = stunCountBase + 3 + 3 * MaxStunStars;
+            auxiliary = new GraphicsBuffer(GraphicsBuffer.Target.Structured, auxiliarySize, sizeof(int));
+            auxiliary.SetData(new int[auxiliarySize]);
+            compute.SetInt("_StunCountBase", stunCountBase);
             var corpseShader = Resources.Load<Shader>("HordeCorpse");
             corpseMesh = lowDetailMesh;
+            // The instance count is written by the GPU (FinalizeActiveDispatch): only recorded corpses draw.
+            corpseArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+            corpseArgs.SetData(corpseDrawArgs);
             if (corpseShader != null && corpseMesh != null)
             {
                 corpseMaterial = new Material(corpseShader);
-                corpseMaterial.SetColor("_Color", PlaceholderPalette.Grey(0.22f));
                 corpseMaterial.SetBuffer("_Aux", auxiliary);
                 corpseMaterial.SetInt("_CorpseBase", corpseBase);
-                corpseArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
-                corpseDrawArgs[0] = corpseMesh.GetIndexCount(0);
-                corpseDrawArgs[1] = (uint)CorpseCapacity;
-                corpseDrawArgs[2] = corpseMesh.GetIndexStart(0);
-                corpseDrawArgs[3] = (uint)corpseMesh.GetBaseVertex(0);
-                corpseArgs.SetData(corpseDrawArgs);
+                SetCorpseMesh(corpseMesh);
             }
+            var stunMarkShader = Resources.Load<Shader>("HordeStatusMark");
+            if (stunMarkShader != null)
+            {
+                stunMarkMesh = CreateStunStarsMesh();
+                stunMarkMaterial = new Material(stunMarkShader);
+                stunMarkMaterial.SetInt("_AgentCapacity", capacity);
+                stunMarkMaterial.SetBuffer("_Aux", auxiliary);
+                stunMarkMaterial.SetInt("_StunCountBase", stunCountBase);
+                stunMarkMaterial.SetFloat("_HeadHeight", lowDetailMesh != null ? lowDetailMesh.bounds.max.y : 2f);
+                stunMarkArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+                stunMarkArgs.SetData(new[]
+                {
+                    stunMarkMesh.GetIndexCount(0), (uint)MaxStunStars, stunMarkMesh.GetIndexStart(0),
+                    (uint)stunMarkMesh.GetBaseVertex(0), 0u
+                });
+            }
+
             compute.SetInt("_CorpseCapacity", CorpseCapacity);
             compute.SetInt("_CorpseBase", corpseBase);
             xpbdCorrectionX = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
@@ -813,11 +851,20 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(gridKernel, "_SpatialStates", spatialStates);
             compute.SetBuffer(finalizeActiveKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(finalizeActiveKernel, "_ActiveDispatchArgs", activeDispatchArgs);
+            compute.SetBuffer(finalizeActiveKernel, "_CorpseDrawArgs", corpseArgs);
+            compute.SetBuffer(finalizeActiveKernel, "_Aux", auxiliary);
             compute.SetBuffer(simulateKernel, "_Controls", controls);
             compute.SetBuffer(simulateKernel, "_Impulses", impulses);
-            foreach (var kernel in new[] { simulateKernel, projectileKernel, unlimitedAreaEffectsKernel, solveXpbdPairsKernel })
+            foreach (var kernel in new[] { simulateKernel, projectileKernel, unlimitedAreaEffectsKernel, solveXpbdPairsKernel,
+                         damageKernel, areaEffectKernel })
             {
                 compute.SetBuffer(kernel, "_Aux", auxiliary);
+            }
+
+            // Every kernel that can kill records a corpse, and a corpse's skid is kept on the road.
+            foreach (var kernel in new[] { projectileKernel, damageKernel, areaEffectKernel })
+            {
+                compute.SetBuffer(kernel, "_FlowData", flowData);
             }
             compute.SetBuffer(simulateKernel, "_FlowVectors", flowVectors);
             compute.SetBuffer(simulateKernel, "_FlowData", flowData);
@@ -1175,6 +1222,35 @@ namespace TowerDefense.Runtime
             readStates.GetData(destination, 0, 0, count);
         }
 
+        /// <summary>How many corpses have been recorded since this horde began (tests).</summary>
+        internal int ReadCorpseCountSynchronous()
+        {
+            if (disposed || auxiliary == null)
+            {
+                return 0;
+            }
+
+            var cursor = new int[1];
+            auxiliary.GetData(cursor, 0, 0, 1);
+            return cursor[0];
+        }
+
+        /// <summary>Where recorded corpse <paramref name="index"/> comes to rest (tests).</summary>
+        internal Vector2 ReadCorpseRestSynchronous(int index)
+        {
+            if (disposed || auxiliary == null)
+            {
+                return Vector2.zero;
+            }
+
+            var slot = new float[2];
+            var raw = new int[2];
+            auxiliary.GetData(raw, 0, 1 + capacity * 2 + (index % CorpseCapacity) * CorpseStride + 2, 2);
+            slot[0] = System.BitConverter.Int32BitsToSingle(raw[0]);
+            slot[1] = System.BitConverter.Int32BitsToSingle(raw[1]);
+            return new Vector2(slot[0], slot[1]);
+        }
+
         internal void SynchronizeDiagnostics(uint[] destination)
         {
             if (!disposed && destination != null && destination.Length >= 4)
@@ -1353,6 +1429,10 @@ namespace TowerDefense.Runtime
             }
             compute.SetInt("_AgentCount", uploadCount);
             compute.SetFloat("_DeltaTime", Mathf.Min(deltaTime, 0.1f));
+            corpseClock += Mathf.Min(deltaTime, 0.1f);
+            compute.SetFloat("_CorpseClock", corpseClock);
+            stunCountSlot = (stunCountSlot + 1) % 3;
+            compute.SetInt("_StunCountSlot", stunCountSlot);
             maximumMotionDistance = Mathf.Max(collisionDiameter * 0.4f,
                 maximumDesiredSpeed * movementSpeedMultiplier * Mathf.Min(deltaTime, 0.1f) * 1.12f);
             lastSimulationDelta = Mathf.Min(deltaTime, 0.1f);
@@ -1512,7 +1592,8 @@ namespace TowerDefense.Runtime
             uint projectileId = 0u,
             bool resetHitCount = true,
             float hitDamageKeep = 1f,
-            float heavyDamageMultiplier = 1f)
+            float heavyDamageMultiplier = 1f,
+            bool poison = false)
         {
             if (disposed || queuedProjectiles.Count >= MaxProjectileCommands || damage <= 0f)
             {
@@ -1541,7 +1622,8 @@ namespace TowerDefense.Runtime
                 ProjectileId = projectileId,
                 ResetHitCount = resetHitCount ? 1u : 0u,
                 // x: share of the damage each next goblin takes; y: multiplier on heavy goblins.
-                Padding = new Vector2(Mathf.Clamp(hitDamageKeep, 0.01f, 1f), Mathf.Max(1f, heavyDamageMultiplier))
+                Padding = new Vector2(Mathf.Clamp(hitDamageKeep, 0.01f, 1f), Mathf.Max(1f, heavyDamageMultiplier)),
+                MarkFlags = poison ? 1u : 0u
             });
             return true;
         }
@@ -1650,7 +1732,7 @@ namespace TowerDefense.Runtime
                 ? gridDiagonal + Vector2.Distance(new Vector2(position.x, position.z), gridCenter)
                 : Mathf.Max(0.05f, range);
             var key = new TargetQueryKey(position, queryRange, targetingMode, canHitFlying, excludedIndex);
-            var hasFreshResult = cachedTargets.TryGetValue(key, out var cached) && Time.frameCount - cached.Frame <= 8;
+            var hasFreshResult = cachedTargets.TryGetValue(key, out var cached) && IsFreshTarget(cached);
             if (!queuedTargetKeys.Contains(key) && pendingTargetQueries.Count < MaxTargetQueries &&
                 (!hasFreshResult || Time.frameCount - cached.Frame >= 2))
             {
@@ -1697,7 +1779,7 @@ namespace TowerDefense.Runtime
                 ? gridDiagonal + Vector2.Distance(new Vector2(position.x, position.z), gridCenter)
                 : Mathf.Max(0.05f, range);
             var key = new TargetQueryKey(position, queryRange, targetingMode, canHitFlying, -1);
-            if (!cachedTargets.TryGetValue(key, out var cached) || Time.frameCount - cached.Frame > 8 || cached.SecondIndex < 0)
+            if (!cachedTargets.TryGetValue(key, out var cached) || !IsFreshTarget(cached) || cached.SecondIndex < 0)
             {
                 return false;
             }
@@ -1763,7 +1845,9 @@ namespace TowerDefense.Runtime
             int reportId = 0,
             float maxPushMass = 0f,
             float heal = 0f,
-            int skipAgent = -1)
+            int skipAgent = -1,
+            Vector3 pushAxis = default,
+            float pushForward = 1f)
         {
             if (disposed || radius <= 0f || queuedAreaEffects.Count >= MaxAreaCommands)
             {
@@ -1789,7 +1873,10 @@ namespace TowerDefense.Runtime
                 ReportId = (uint)Mathf.Max(0, reportId),
                 MaxPushMass = Mathf.Max(0f, maxPushMass),
                 Heal = Mathf.Max(0f, heal),
-                SkipAgent = skipAgent >= 0 ? (uint)skipAgent + 1u : 0u
+                SkipAgent = skipAgent >= 0 ? (uint)skipAgent + 1u : 0u,
+                PushAxis = new Vector2(pushAxis.x, pushAxis.z).sqrMagnitude > 0.0001f
+                    ? new Vector2(pushAxis.x, pushAxis.z).normalized * Mathf.Max(0.1f, pushForward)
+                    : Vector2.zero
             };
             if (propagationRadius > 0f && knockback > 0f && maxTargets == 0)
             {
@@ -1887,6 +1974,17 @@ namespace TowerDefense.Runtime
             variantLodProperties.SetBuffer("_VisibleIndices", visibleIndices);
             if (corpseMaterial != null)
             {
+                corpseMaterial.SetFloat("_CorpseClock", corpseClock - (1f - presentationAlpha) * lastSimulationDelta);
+                if (stunMarkMaterial != null)
+                {
+                    stunMarkMaterial.SetBuffer("_AgentStates", readStates);
+                    stunMarkMaterial.SetFloat("_PresentationAlpha", presentationAlpha);
+                    stunMarkMaterial.SetInt("_StunCountSlot", stunCountSlot);
+                    stunMarkMaterial.SetFloat("_StarCap", EffectsQuality.StunStarCap);
+                    Graphics.DrawMeshInstancedIndirect(stunMarkMesh, 0, stunMarkMaterial, drawBounds, stunMarkArgs, 0, null,
+                        ShadowCastingMode.Off, false, layer);
+                }
+
                 Graphics.DrawMeshInstancedIndirect(
                     corpseMesh,
                     0,
@@ -1937,6 +2035,75 @@ namespace TowerDefense.Runtime
             lodProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
             variantProperties.SetFloat("_VisualScaleMultiplier", multiplier);
             variantLodProperties.SetFloat("_VisualScaleMultiplier", multiplier);
+            if (corpseMaterial != null) corpseMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
+            if (stunMarkMaterial != null) stunMarkMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
+        }
+
+        // Three small four-pointed stars around a unit circle on the ground plane; the shader
+        // spins and rocks the ring above a stunned goblin's head.
+        private static Mesh CreateStunStarsMesh()
+        {
+            const int stars = 3;
+            const float outer = 0.34f;
+            const float inner = 0.12f;
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            for (var star = 0; star < stars; star++)
+            {
+                var angle = star * Mathf.PI * 2f / stars;
+                var center = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                var centerIndex = vertices.Count;
+                vertices.Add(center);
+                for (var point = 0; point < 8; point++)
+                {
+                    var pointAngle = point * Mathf.PI / 4f + angle;
+                    var radius = point % 2 == 0 ? outer : inner;
+                    vertices.Add(center + new Vector3(Mathf.Cos(pointAngle), 0f, Mathf.Sin(pointAngle)) * radius);
+                }
+
+                for (var point = 0; point < 8; point++)
+                {
+                    triangles.Add(centerIndex);
+                    triangles.Add(centerIndex + 1 + (point + 1) % 8);
+                    triangles.Add(centerIndex + 1 + point);
+                }
+            }
+
+            var mesh = new Mesh { name = "HordeStunStars" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>
+        /// The shape a dead goblin is drawn with. Today it is the placeholder body, tipped over
+        /// and squashed. When the real goblin model arrives, pass its mesh (or a ready-made
+        /// lying pose of it) here: <paramref name="lieAngle"/> is how far the shader tips a
+        /// standing mesh over (0 for a mesh that already lies down), <paramref name="flatten"/>
+        /// squashes it vertically (1 keeps the model's own shape). The corpse slot also keeps
+        /// the goblin kind and how it died (burned, poisoned) for a per-kind or charred look.
+        /// </summary>
+        public void SetCorpseMesh(Mesh mesh, float lieAngle = 90f, float flatten = 0.55f)
+        {
+            if (mesh == null || corpseArgs == null || corpseMaterial == null)
+            {
+                return;
+            }
+
+            corpseMesh = mesh;
+            corpseDrawArgs[0] = mesh.GetIndexCount(0);
+            corpseDrawArgs[2] = mesh.GetIndexStart(0);
+            corpseDrawArgs[3] = (uint)mesh.GetBaseVertex(0);
+            // Leave the instance count (element 1) to the GPU.
+            corpseArgs.SetData(corpseDrawArgs, 0, 0, 1);
+            corpseArgs.SetData(corpseDrawArgs, 2, 2, 2);
+            corpseMaterial.SetFloat("_LieAngle", lieAngle);
+            corpseMaterial.SetFloat("_Flatten", flatten);
+            // The shader tips the body over around its middle and rests it on its side.
+            var bounds = mesh.bounds;
+            corpseMaterial.SetFloat("_BodyHeight", Mathf.Max(0.01f, bounds.max.y));
+            corpseMaterial.SetFloat("_BodyRadius", Mathf.Max(0.01f, Mathf.Max(bounds.extents.x, bounds.extents.z)));
         }
 
         public void SetSpeedColorMode(bool enabled)
@@ -2036,6 +2203,9 @@ namespace TowerDefense.Runtime
             xpbdPairDispatchArgs?.Dispose();
             auxiliary?.Dispose();
             corpseArgs?.Dispose();
+            stunMarkArgs?.Dispose();
+            if (stunMarkMaterial != null) UnityEngine.Object.Destroy(stunMarkMaterial);
+            if (stunMarkMesh != null) UnityEngine.Object.Destroy(stunMarkMesh);
             if (corpseMaterial != null) UnityEngine.Object.Destroy(corpseMaterial);
             if (airShadowMaterial != null) UnityEngine.Object.Destroy(airShadowMaterial);
             xpbdCorrectionX?.Dispose();
@@ -2270,6 +2440,16 @@ namespace TowerDefense.Runtime
             });
         }
 
+        // A target answer is fresh for 8 frames, or for TargetAnswerSeconds when frames are faster
+        // than that: the game runs uncapped, and at a thousand frames a second the GPU's answer
+        // arrived already 8 frames old, so towers barely found targets (2026-11-09).
+        private const float TargetAnswerSeconds = 0.12f;
+
+        private static bool IsFreshTarget(CachedTarget cached)
+        {
+            return Time.frameCount - cached.Frame <= 8 || Time.unscaledTime - cached.UnscaledTime <= TargetAnswerSeconds;
+        }
+
         private void DispatchTargetQueries()
         {
             if (targetReadbackPending || pendingTargetQueries.Count == 0)
@@ -2333,6 +2513,7 @@ namespace TowerDefense.Runtime
                 TowerTargetingMode.First => 1u,
                 TowerTargetingMode.Last => 2u,
                 TowerTargetingMode.HighestHealth => 3u,
+                TowerTargetingMode.Heaviest => 4u,
                 _ => 0u
             };
         }

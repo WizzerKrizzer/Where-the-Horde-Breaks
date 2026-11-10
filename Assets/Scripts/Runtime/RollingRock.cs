@@ -11,7 +11,7 @@ namespace TowerDefense.Runtime
     /// and pushing aside the goblins in its way. A fire rock leaves a burning trail behind it.
     /// Specials (user, 2026-11-08): a quake stuns the goblins around where it lands, and a
     /// shattering rock bursts into shards at the end of its roll.
-    /// Greybox: a grey ball; the trail is flat discs, the quake a flat ring.
+    /// Greybox: a grey ball; the trail, quake and shards are drawn by SpecialEffectVisuals.
     /// </summary>
     public sealed class RollingRock : MonoBehaviour
     {
@@ -64,7 +64,12 @@ namespace TowerDefense.Runtime
         private const float ShardFlightSeconds = 0.3f;
         private const float ShardKnockback = 0.6f;
         private const int ShardMaxTargets = 8;
-        private const float QuakeRingSeconds = 0.4f;
+        // Pushing a packed crowd (user, 2026-11-09): the damage stays capped, but the push reaches
+        // every goblin under the rock and throws them into the air, where they fly over the others,
+        // so a jam has somewhere to go. The GPU's push on every body is gentler per unit than the
+        // capped one, hence the scale. TEMPORARY until balancing.
+        private const float CrowdPushScale = 7f;
+        private const float RollLaunch = 0.6f;
 
         private enum State
         {
@@ -86,6 +91,7 @@ namespace TowerDefense.Runtime
             public Vector3 To;
             public float Age;
             public Transform Visual;
+            public Vector3 Spin;
         }
 
         private EnemyManager enemies;
@@ -99,6 +105,11 @@ namespace TowerDefense.Runtime
         private Vector3 lateralOffset;
         private float distance;
         private float direction;
+        // Thrown with a drag (user, 2026-11-08): it rolls straight the way the drag points, on any
+        // map; without one (the dev auto-throw) it follows the road back against the horde.
+        private bool rollsStraight;
+        private Vector3 straightDirection;
+        private Vector3 straightStart;
         private float rolled;
         private float hitTimer;
         private float nextTrailAt;
@@ -106,16 +117,14 @@ namespace TowerDefense.Runtime
         private readonly List<TrailPatch> trail = new();
         private readonly List<Shard> shards = new();
         private bool shattered;
-        private Transform quakeRing;
-        private float quakeAge;
 
         public bool IsRolling => state == State.Rolling;
         public float Rolled => rolled;
         public Vector3 BallPosition => ball != null ? ball.position : transform.position;
 
         /// <summary>
-        /// Drops a rock on point and rolls it along the road towards drag (a direction on the
-        /// ground); a short or no drag rolls it against the horde, towards the road's start.
+        /// Drops a rock on point and rolls it straight the way drag points (a direction on the
+        /// ground); a short or no drag rolls it along the road against the horde, towards its start.
         /// </summary>
         public static RollingRock Throw(EnemyManager enemies, Vector3 point, Vector3 drag, Settings settings, Action<float> reportDamage = null)
         {
@@ -133,6 +142,9 @@ namespace TowerDefense.Runtime
             reportDamage = damageReport;
             point.y = 0f;
             dropPoint = point;
+            drag.y = 0f;
+            rollsStraight = drag.sqrMagnitude > 0.25f;
+            straightDirection = rollsStraight ? drag.normalized : Vector3.zero;
             if (route != null && route.HasUsableRoute)
             {
                 var roadPoint = route.GetNearestRoadPoint(point, out _);
@@ -166,7 +178,6 @@ namespace TowerDefense.Runtime
         {
             UpdateTrail();
             UpdateShards();
-            UpdateQuakeRing();
             switch (state)
             {
                 case State.Falling:
@@ -185,7 +196,7 @@ namespace TowerDefense.Runtime
                 case State.Fading:
                     timer += Time.deltaTime;
                     ball.localScale = Vector3.one * BallRadius * 2f * Mathf.Clamp01(1f - timer / FadeSeconds);
-                    if (timer >= FadeSeconds && trail.Count == 0 && shards.Count == 0 && quakeRing == null)
+                    if (timer >= FadeSeconds && trail.Count == 0 && shards.Count == 0)
                     {
                         Destroy(gameObject);
                     }
@@ -197,17 +208,23 @@ namespace TowerDefense.Runtime
         private void Impact()
         {
             var dealt = enemies != null
-                ? enemies.DamageAndKnockbackInRadius(dropPoint, settings.ImpactRadius, settings.ImpactDamage, settings.ImpactKnockback,
-                    settings.ImpactMaxTargets, out _, launch: settings.ImpactLaunch)
+                ? enemies.DamageAndKnockbackInRadius(dropPoint, settings.ImpactRadius, settings.ImpactDamage, 0f,
+                    settings.ImpactMaxTargets, out _)
                 : 0f;
             reportDamage?.Invoke(dealt);
+            // Thrown off the way it will roll: sideways and forward, none back (user, 2026-11-09).
+            enemies?.ThrowOffLine(dropPoint, settings.ImpactRadius, settings.ImpactKnockback * CrowdPushScale,
+                settings.ImpactLaunch, RollAxis());
             if (settings.QuakeRadius > 0f && settings.QuakeSeconds > 0f)
             {
                 enemies?.StunInRadius(dropPoint, settings.QuakeRadius, settings.QuakeSeconds);
-                ShowQuakeRing();
+                SpecialEffectVisuals.SpawnQuake(dropPoint, settings.QuakeRadius);
             }
 
-            state = route != null && route.HasUsableRoute && settings.RollDistance > 0f ? State.Rolling : State.Fading;
+            state = settings.RollDistance > 0f && (rollsStraight || (route != null && route.HasUsableRoute))
+                ? State.Rolling
+                : State.Fading;
+            straightStart = dropPoint;
             if (state == State.Fading)
             {
                 Shatter(dropPoint);
@@ -224,8 +241,16 @@ namespace TowerDefense.Runtime
             var previous = ball.position;
             distance += direction * step;
             rolled += step;
-            var joined = Mathf.Clamp01(1f - rolled / JoinRoadDistance);
-            var position = route.Sample(Mathf.Clamp(distance, 0f, route.TotalLength)) + lateralOffset * joined;
+            Vector3 position;
+            if (rollsStraight)
+            {
+                position = straightStart + straightDirection * Mathf.Min(rolled, settings.RollDistance);
+            }
+            else
+            {
+                var joined = Mathf.Clamp01(1f - rolled / JoinRoadDistance);
+                position = route.Sample(Mathf.Clamp(distance, 0f, route.TotalLength)) + lateralOffset * joined;
+            }
             position.y = BallRadius;
             ball.position = position;
             var moved = position - previous;
@@ -243,8 +268,10 @@ namespace TowerDefense.Runtime
                 // Spread over the steps a goblin spends under the rock, so one pass deals RollDamage.
                 var stepsUnder = Mathf.Max(1f, 2f * settings.RollRadius / Mathf.Max(0.1f, settings.RollSpeed) / HitStepSeconds);
                 var dealt = enemies.DamageAndKnockbackInRadius(position, settings.RollRadius, settings.RollDamage / stepsUnder,
-                    settings.RollKnockback, MaxRolledPerStep, out _);
+                    0f, MaxRolledPerStep, out _);
                 reportDamage?.Invoke(dealt);
+                enemies.ThrowOffLine(position, settings.RollRadius, settings.RollKnockback * CrowdPushScale, RollLaunch,
+                    RollAxis());
             }
 
             if (settings.FireTrail && rolled >= nextTrailAt)
@@ -253,12 +280,33 @@ namespace TowerDefense.Runtime
                 AddTrailPatch(new Vector3(position.x, 0f, position.z));
             }
 
-            if (rolled >= settings.RollDistance || distance <= 0f || distance >= route.TotalLength)
+            if (rolled >= settings.RollDistance ||
+                (!rollsStraight && (distance <= 0f || distance >= route.TotalLength)))
             {
                 state = State.Fading;
                 timer = 0f;
                 Shatter(new Vector3(position.x, 0f, position.z));
             }
+        }
+
+        // The way the rock rolls here: the drag's way, or along the road in its rolling direction.
+        private Vector3 RollAxis()
+        {
+            if (rollsStraight)
+            {
+                return straightDirection;
+            }
+
+            if (route == null || !route.HasUsableRoute)
+            {
+                return Vector3.zero;
+            }
+
+            var here = Mathf.Clamp(distance, 0f, route.TotalLength);
+            var ahead = Mathf.Clamp(distance + direction, 0f, route.TotalLength);
+            var axis = route.Sample(ahead) - route.Sample(here);
+            axis.y = 0f;
+            return axis.sqrMagnitude > 0.0001f ? axis.normalized : Vector3.zero;
         }
 
         private void Shatter(Vector3 center)
@@ -277,19 +325,16 @@ namespace TowerDefense.Runtime
             {
                 var angle = (turn + 360f * i / settings.ShatterShards) * Mathf.Deg2Rad;
                 var reach = UnityEngine.Random.Range(ShardMinDistance, ShardMaxDistance);
-                var visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                visual.name = "RockShard";
-                RemoveCollider(visual);
-                visual.transform.SetParent(transform, false);
-                visual.transform.localScale = Vector3.one * ShardRadius * 2f;
-                visual.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.42f));
                 shards.Add(new Shard
                 {
                     From = center + Vector3.up * BallRadius,
                     To = center + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * reach,
-                    Visual = visual.transform
+                    Visual = SpecialEffectVisuals.CreateRockChip(transform, ShardRadius * 1.4f),
+                    Spin = UnityEngine.Random.onUnitSphere * UnityEngine.Random.Range(360f, 900f)
                 });
             }
+
+            SpecialEffectVisuals.SpawnShatterBurst(center);
         }
 
         private void UpdateShards()
@@ -302,8 +347,10 @@ namespace TowerDefense.Runtime
                 var position = Vector3.Lerp(shard.From, shard.To, t);
                 position.y = Mathf.Lerp(shard.From.y, ShardRadius, t) + 4f * 0.8f * t * (1f - t);
                 shard.Visual.position = position;
+                shard.Visual.Rotate(shard.Spin * Time.deltaTime, Space.World);
                 if (t >= 1f)
                 {
+                    SpecialEffectVisuals.SpawnPuff(shard.To, 1.3f);
                     var dealt = enemies != null
                         ? enemies.DamageAndKnockbackInRadius(shard.To, ShardHitRadius, settings.ShatterDamage, ShardKnockback,
                             ShardMaxTargets, out _)
@@ -318,46 +365,10 @@ namespace TowerDefense.Runtime
             }
         }
 
-        private void ShowQuakeRing()
-        {
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            visual.name = "QuakeRing";
-            RemoveCollider(visual);
-            visual.transform.SetParent(transform, false);
-            visual.transform.position = dropPoint + Vector3.up * 0.02f;
-            visual.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.6f));
-            quakeRing = visual.transform;
-            quakeAge = 0f;
-            UpdateQuakeRing();
-        }
-
-        private void UpdateQuakeRing()
-        {
-            if (quakeRing == null)
-            {
-                return;
-            }
-
-            quakeAge += Time.deltaTime;
-            var t = Mathf.Clamp01(quakeAge / QuakeRingSeconds);
-            var diameter = settings.QuakeRadius * 2f * Mathf.Lerp(0.3f, 1f, t);
-            quakeRing.localScale = new Vector3(diameter, 0.01f, diameter);
-            if (t >= 1f)
-            {
-                Destroy(quakeRing.gameObject);
-                quakeRing = null;
-            }
-        }
-
         private void AddTrailPatch(Vector3 position)
         {
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            visual.name = "FireTrail";
-            RemoveCollider(visual);
-            visual.transform.SetParent(transform, false);
-            visual.transform.position = position + Vector3.up * 0.03f;
-            visual.transform.localScale = new Vector3(TrailRadius * 2f, 0.02f, TrailRadius * 2f);
-            visual.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Accent);
+            // Scorched ground with flames on it; the effect ends itself when the patch stops burning.
+            var visual = SpecialEffectVisuals.SpawnFirePatch(position, TrailRadius, TrailSeconds);
             trail.Add(new TrailPatch { Position = position, Visual = visual });
         }
 
@@ -381,7 +392,11 @@ namespace TowerDefense.Runtime
                 patch.Age += Time.deltaTime;
                 if (patch.Age >= TrailSeconds)
                 {
-                    Destroy(patch.Visual);
+                    if (patch.Visual != null)
+                    {
+                        Destroy(patch.Visual);
+                    }
+
                     trail.RemoveAt(i);
                     continue;
                 }

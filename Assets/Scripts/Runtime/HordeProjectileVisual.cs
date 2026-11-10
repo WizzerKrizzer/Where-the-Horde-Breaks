@@ -17,6 +17,33 @@ namespace TowerDefense.Runtime
         private Action<Vector3, Vector3> travelCallback;
         private Vector3 previousPosition;
         private uint projectileId;
+        // A thrown spear (Spear Throwers): a long shaft on a low arc that drops to the ground at the
+        // end of its flight, nose following the arc; where it stops, onStopped gets the ground point
+        // and the flight direction (it sticks in the ground there).
+        private bool spear;
+        private Action<Vector3, Vector3> stoppedCallback;
+        private bool stopped;
+        private const float SpearArcHeight = 0.6f;
+        private const float SpearLength = 1.05f;
+        // A pebble (the slingers' ricochet and shrapnel): a small stone on a low hop, with a puff
+        // of dust where it comes down.
+        private float hop;
+        private Action<Vector3> landedCallback;
+
+        public static void SpawnPebble(Vector3 from, Vector3 to, Color color, float travelDuration, float hopHeight, float size,
+            Action<Vector3> onLanded = null)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "HordePebbleVisual";
+            go.transform.position = from;
+            go.transform.localScale = Vector3.one * size;
+            go.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(color);
+            SpearVisuals.RemoveColliders(go);
+            var visual = go.AddComponent<HordeProjectileVisual>();
+            visual.hop = hopHeight;
+            visual.landedCallback = onLanded;
+            visual.Initialize(from, to, color, false, travelDuration, 0.05f, null, 0u);
+        }
 
         public static void Spawn(Vector3 from, Vector3 to, Color color, bool arcProjectile)
         {
@@ -49,12 +76,49 @@ namespace TowerDefense.Runtime
             visual.Initialize(from, to, color, arcProjectile, travelDuration, markerRadius, onTravel, trackedProjectileId);
         }
 
+        public static void SpawnSpear(Vector3 from, Vector3 groundEnd, Color color, float travelDuration, Action<Vector3, Vector3> onTravel, uint trackedProjectileId, Action<Vector3, Vector3> onStopped)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "HordeSpearVisual";
+            go.transform.position = from;
+            go.transform.localScale = new Vector3(0.06f, 0.06f, SpearLength);
+            go.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(color);
+            SpearVisuals.RemoveColliders(go);
+
+            var visual = go.AddComponent<HordeProjectileVisual>();
+            visual.spear = true;
+            visual.stoppedCallback = onStopped;
+            groundEnd.y = 0f;
+            var aim = groundEnd - from;
+            if (aim.sqrMagnitude > 0.0001f)
+            {
+                go.transform.rotation = Quaternion.LookRotation(aim.normalized, Vector3.up);
+            }
+            visual.Initialize(from, groundEnd, color, false, travelDuration, 0.1f, onTravel, trackedProjectileId);
+        }
+
         public static void CompleteProjectile(uint trackedProjectileId)
         {
             if (trackedProjectileId != 0u && ActiveProjectiles.TryGetValue(trackedProjectileId, out var visual) && visual != null)
             {
+                visual.Stop();
                 Destroy(visual.gameObject);
             }
+        }
+
+        private void Stop()
+        {
+            if (stopped)
+            {
+                return;
+            }
+
+            stopped = true;
+            var direction = end - start;
+            direction.y = 0f;
+            var ground = transform.position;
+            ground.y = 0f;
+            stoppedCallback?.Invoke(ground, direction);
         }
 
         private void Initialize(Vector3 from, Vector3 to, Color color, bool arcProjectile, float travelDuration, float markerRadius, Action<Vector3, Vector3> onTravel, uint trackedProjectileId)
@@ -93,11 +157,27 @@ namespace TowerDefense.Runtime
             {
                 position.y += Mathf.Sin(t * Mathf.PI) * 2.1f;
             }
+            else if (spear)
+            {
+                position.y += Mathf.Sin(t * Mathf.PI) * SpearArcHeight;
+            }
+            else if (hop > 0f)
+            {
+                position.y += Mathf.Sin(t * Mathf.PI) * hop;
+            }
 
             transform.position = position;
             travelCallback?.Invoke(previousPosition, position);
+            if (spear)
+            {
+                var velocity = position - previousPosition;
+                if (velocity.sqrMagnitude > 0.000001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(velocity.normalized, Vector3.up);
+                }
+            }
             previousPosition = position;
-            if (!arc)
+            if (!arc && !spear)
             {
                 var direction = end - start;
                 direction.y = 0f;
@@ -112,6 +192,15 @@ namespace TowerDefense.Runtime
                 if (arc)
                 {
                     SpawnImpactMarker(end, impactColor, true, impactRadius);
+                }
+                if (spear)
+                {
+                    Stop();
+                }
+                if (hop > 0f)
+                {
+                    SpecialEffectVisuals.SpawnPuff(end, 0.7f);
+                    landedCallback?.Invoke(end);
                 }
                 Destroy(gameObject);
             }
