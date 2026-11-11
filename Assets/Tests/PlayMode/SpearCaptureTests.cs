@@ -13,11 +13,11 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Records the Spear Throwers' rock on the Level 1 road against goblins and brutes, with the
     /// poisoned tips, piercing and the big-game hunters on, from two cameras: the game's view and a
-    /// close-up of the rock. Frames go to Logs/SpearRock. No game session or profile is involved.
+    /// close-up of the rock. Frames go to Logs/Captures/SpearRock. No game session or profile is involved.
     /// </summary>
     public sealed class SpearCaptureTests
     {
-        private const string Output = "Logs/SpearRock";
+        private const string Output = "Logs/Captures/SpearRock";
         private readonly List<Object> cleanup = new();
 
         [UnityTearDown]
@@ -36,7 +36,7 @@ namespace TowerDefense.Tests
             yield return null;
         }
 
-        [UnityTest, Explicit("Records the Spear Throwers' rock to Logs/SpearRock.")]
+        [UnityTest, Explicit("Records the Spear Throwers' rock to Logs/Captures/SpearRock.")]
         public IEnumerator RecordSpearRock()
         {
             RequireComputeShaders();

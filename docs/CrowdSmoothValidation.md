@@ -54,8 +54,8 @@ These are editor/test-runner frame throughput measurements, including CPU and
 GPU synchronization, not isolated GPU timings or a standalone FPS guarantee.
 Spawn timing depends on available entrance space and asynchronous clearance
 queries, so sample counts and exact crowd trajectories differ between runs.
-Raw measurements are in `Logs/CrowdSmooth/before-metrics.txt` and
-`Logs/CrowdSmooth/after-metrics.txt`.
+Raw measurements are in `Logs/Reports/CrowdSmooth/before-metrics.txt` and
+`Logs/Reports/CrowdSmooth/after-metrics.txt`.
 
 ## Regression checks
 
@@ -81,14 +81,14 @@ reproduced against the pre-change runtime: knockback-chain propagation, culling
 expectations, damage/escape events, overflow diagnostics, slow/burn status,
 accelerated spawning ratio, and Level 7 authored content. The remaining wave
 completion timeout is covered by the final passing run. The existing failures
-were not weakened or disabled. XML reports are retained in `Logs/CrowdSmooth`.
+were not weakened or disabled. XML reports are retained in `Logs/Reports/CrowdSmooth`.
 
-Visual captures: `Logs/CrowdSmooth/braced-close-45.png` and
-`Logs/CrowdSmooth/braced-close-89.png`.
+Visual captures: `Logs/Reports/CrowdSmooth/braced-close-45.png` and
+`Logs/Reports/CrowdSmooth/braced-close-89.png`.
 
 Windows Development build succeeded. The copied player is
 `Builds/CrowdSmooth/WhereTheHordeBreaks.exe`; build output is recorded in
-`Logs/CrowdSmooth/build.log`. The normal player's existing goblin-preview
+`Logs/Reports/CrowdSmooth/build.log`. The normal player's existing goblin-preview
 preference/default is preserved. The fixes are also available directly in the
 main Unity project on the next Play Mode start.
 
@@ -106,8 +106,8 @@ The final focused regression passes 8/8 tests. A fresh 10K rendered benchmark
 also passes: spawning mean 1.216 ms, p95 3.116 ms, max 8.498 ms; settled mean
 9.852 ms, p95 13.273 ms, max 14.304 ms. The settled p95 remains below the
 16.667 ms budget for 60 FPS. Raw output is retained in
-`Logs/CrowdSmooth/queue-release-metrics.txt` and the focused XML in
-`Logs/CrowdSmooth/queue-release-tests.xml`.
+`Logs/Reports/CrowdSmooth/queue-release-metrics.txt` and the focused XML in
+`Logs/Reports/CrowdSmooth/queue-release-tests.xml`.
 
 The follow-up collision correction now propagates the same safe ready speed
 through a free queue before movement, so followers do not consume the gap to
@@ -144,7 +144,7 @@ presented tick of a catch-up frame. Spawn clearance checks also run during fast
 forward and use at least 150% of the base body diameter.
 
 The final run passes **8/8** tests in
-`Logs/CrowdSmooth/motion-retired-buffers.xml`:
+`Logs/Reports/CrowdSmooth/motion-retired-buffers.xml`:
 
 - On the actual three-lane map, 10,000 live bodies are compared across two seconds
   at 1x speed. **85.2%** travel faster than 0.75 m/s; mean actual displacement speed
@@ -172,13 +172,13 @@ The rendered 10K right-angle benchmark uses the same editor, GPU, fixed seed,
 | Collision pairs / deepest overlap | 0 / 0.00% |
 
 The independent CPU position check also finds no overlapping pair. Raw data is
-in `Logs/CrowdSmooth/spawning-metrics.txt` and the final test log. These are editor
+in `Logs/Reports/CrowdSmooth/spawning-metrics.txt` and the final test log. These are editor
 throughput measurements; the recorded maximum includes a 52.751 ms spawning
 frame, so the result does not establish a frame-by-frame standalone FPS floor.
 The wider entrance clearance affects total spawn duration.
 
 The updated Windows player is `Builds/CrowdSmooth/WhereTheHordeBreaks.exe`;
-the build log is `Logs/CrowdSmooth/motion-build-retired.log`.
+the build log is `Logs/Reports/CrowdSmooth/motion-build-retired.log`.
 
 ## Contact jitter correction — 2026-09-17
 
@@ -196,7 +196,7 @@ Three targeted PlayMode tests pass in **8.28 seconds**:
   subsequent catch-up frames retain body spacing and forward travel.
 - Held 96-body queue: maximum settled step **0.01 mm**, with planted animation.
 
-Results: `Logs/CrowdSmooth/jitter-short.xml` and `jitter-short.log`. Tests use an
+Results: `Logs/Reports/CrowdSmooth/jitter-short.xml` and `jitter-short.log`. Tests use an
 isolated project copy because the user's editor is open. No full 10K benchmark
 or Windows build was repeated. This correction is in the Unity project; the
 previous Windows executable above predates it.

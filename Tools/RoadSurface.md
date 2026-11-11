@@ -43,10 +43,10 @@ RedGoblinQueue_TouchesBodiesAndSettlesWithoutRunningInPlace: 3 passed.
 - Batch Editor wide-view frame interval: 5.94ms (previous crowd-only run 5.80ms).
   This is not a standalone GPU frame-time benchmark or a guaranteed player FPS.
 
-Screenshots: `Logs/RoadReview/level-2-view-0.png` (overview),
+Screenshots: `Logs/Captures/RoadReview/level-2-view-0.png` (overview),
 `level-2-view-1.png` (junction), `level-2-view-2.png` (surface detail),
-and `Logs/CrowdFix/crowd-exit.png` (crowded junction).
-Results: `Logs/RoadReview/final-results.xml`.
+and `Logs/Old/CrowdFix/crowd-exit.png` (crowded junction).
+Results: `Logs/Captures/RoadReview/final-results.xml`.
 
 Existing EXE builds have not been rebuilt by this change; use Play in Unity or
 make a fresh normal player build to see the new road.

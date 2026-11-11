@@ -475,7 +475,7 @@ namespace TowerDefense.Runtime
 
         private void WriteReport(CrowdLabReport report)
         {
-            var directory = Path.Combine("Logs", "CrowdRebuild");
+            var directory = Path.Combine("Logs", "Reports", "CrowdRebuild");
             Directory.CreateDirectory(directory);
             var baseName = $"{report.Scenario}-{report.Seed}";
             File.WriteAllText(Path.Combine(directory, $"{baseName}.json"), JsonUtility.ToJson(report, true));

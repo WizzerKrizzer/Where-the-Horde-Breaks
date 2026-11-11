@@ -13,11 +13,11 @@ namespace TowerDefense.Tests
     /// spear thrower) with a shoot-and-wait cycle. Renders a close-up line-up, a close walk
     /// cycle of the goblins, and the converted Meshy tipi manned by slingers that turn to their
     /// targets and throw stones at the passing horde, at 11 / 14 / 20 m. Writes PNGs to
-    /// Logs/StyleDefenders.
+    /// Logs/Captures/StyleDefenders.
     /// </summary>
     public sealed class StyleDefenderTests
     {
-        private const string Output = "Logs/StyleDefenders";
+        private const string Output = "Logs/Captures/StyleDefenders";
         private const string MeshyTipi = "Assets/Tests/PlayMode/StyleAssets/meshy-tipi.txt";
         private const string TrellisSlingerPath = "Assets/Tests/PlayMode/StyleAssets/trellis-slinger.txt";
         private const string TrellisRigPath = "Assets/Tests/PlayMode/StyleAssets/trellis-slinger-rig.txt";
@@ -221,7 +221,7 @@ namespace TowerDefense.Tests
         }
 
         // TRELLIS slinger (converted from a generated model) next to the approved procedural one:
-        // same shader, same shot timing, its own pivots. Writes Logs/StyleDefenders/trellis.
+        // same shader, same shot timing, its own pivots. Writes Logs/Captures/StyleDefenders/trellis.
         [UnityTest, Explicit("Defender style test")]
         [Category("Performance")]
         public IEnumerator RenderTrellisSlinger()
@@ -374,7 +374,7 @@ namespace TowerDefense.Tests
         }
 
         // The rigged slinger (skeleton, eased keys, simulated sling, baked to a vertex animation
-        // texture) next to the approved procedural one. Writes Logs/StyleDefenders/vat.
+        // texture) next to the approved procedural one. Writes Logs/Captures/StyleDefenders/vat.
         [UnityTest, Explicit("Defender style test")]
         [Category("Performance")]
         public IEnumerator RenderVatSlinger()
@@ -524,7 +524,7 @@ namespace TowerDefense.Tests
         {
             // The Meshy "Stonehide Warrior" (skinned, textured) with its Walking and Running clips
             // and the retargeted sling Throw (sling bones + cords mesh), drawn by baking the
-            // skinned meshes on the CPU each frame. Writes Logs/StyleDefenders/meshy-warrior.
+            // skinned meshes on the CPU each frame. Writes Logs/Captures/StyleDefenders/meshy-warrior.
             const float throwRelease = 1.45f;
             // Target sizes (user, 2026-11-06): Neanderthal slingers about 1.95 m, goblins at most
             // about 1.2 m.
@@ -793,7 +793,12 @@ namespace TowerDefense.Tests
             };
             var eightPosts = Posts(towerPositions, eightSeats);
             var eightTargets = new Dictionary<long, int>();
-            foreach (var (height, lookAt) in new[] { (9f, towerPositions[0] + new Vector3(0f, 0f, -2.2f)), (13f, towerPositions[0] + new Vector3(0f, 0f, -4.5f)) })
+            foreach (var (height, lookAt) in new[]
+                     {
+                         (9f, towerPositions[0] + new Vector3(0f, 0f, -2.2f)), (13f, towerPositions[0] + new Vector3(0f, 0f, -4.5f)),
+                         // The far gameplay height (user, 2026-11-10).
+                         (40f, towerPositions[0] + new Vector3(0f, 0f, -5.6f))
+                     })
             {
                 var folder = $"{output}/eight-slingers-{height:F0}m";
                 Directory.CreateDirectory(folder);

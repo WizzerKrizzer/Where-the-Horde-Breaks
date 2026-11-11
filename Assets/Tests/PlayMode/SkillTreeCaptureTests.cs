@@ -14,7 +14,7 @@ namespace TowerDefense.Tests
     /// <summary>
     /// A tool, not a check: opens the skill tree in the real game and saves pictures of it (the
     /// whole tree, the rock at the centre and each of the four tower branches) to
-    /// Logs/SkillTreeShots, so the layout can be looked at away from the editor. Run it by name.
+    /// Logs/Captures/SkillTreeShots, so the layout can be looked at away from the editor. Run it by name.
     /// </summary>
     public sealed class SkillTreeCaptureTests
     {
@@ -58,7 +58,7 @@ namespace TowerDefense.Tests
             yield return null;
             yield return null;
 
-            var folder = Path.Combine(Application.dataPath, "..", "Logs", "SkillTreeShots");
+            var folder = Path.Combine(Application.dataPath, "..", "Logs", "Captures", "SkillTreeShots");
             Directory.CreateDirectory(folder);
             var minimumZoom = (float)typeof(RuntimeHud).GetMethod("GetMinimumUpgradeTreeZoom", Private).Invoke(hud, null);
             // Branch centres in the HUD's tree space: the authored positions times 1.22.

@@ -84,7 +84,7 @@ Findings:
   for a slowed one (a 1.32 step between the two states). The table above is size only and
   unchanged.
 - Crowd count does not change per-enemy size. 1K and 100K screenshots are in
-  `Logs/Readability/crowd-*.png` (regenerate with the test).
+  `Logs/Captures/Readability/crowd-*.png` (regenerate with the test).
 
 Minimum rules for any style:
 1. A class needs at least 6 px to be recognised: scale >= 0.0025 x zoom height

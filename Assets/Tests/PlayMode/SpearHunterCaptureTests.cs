@@ -11,11 +11,11 @@ namespace TowerDefense.Tests
     /// The spear hunter (Meshy model, Mixamo rig, Kevin Iglesias throw retargeted by
     /// Tools/Animation/meshy/build_hunter.py) on the Meshy rock, throwing spears by hand at the
     /// style crowd. The build mirrors the model (variant A, chosen 2026-11-10), so the bundle is
-    /// over the right shoulder and the hunter throws right-handed. Writes Logs/SpearHunter.
+    /// over the right shoulder and the hunter throws right-handed. Writes Logs/Captures/SpearHunter.
     /// </summary>
     public sealed class SpearHunterCaptureTests
     {
-        private const string Output = "Logs/SpearHunter";
+        private const string Output = "Logs/Captures/SpearHunter";
         private const float HunterHeight = 1.95f;
         // Markers of the 74-frame Cycle clip at 30 fps, from build_hunter.py's report.
         private const float CycleFps = 30f;
@@ -380,7 +380,7 @@ namespace TowerDefense.Tests
             var flights = new List<Flight>();
             foreach (var variant in new[] { "a" })
             {
-                foreach (var (height, frames) in new[] { (11f, 180), (16f, 150) })
+                foreach (var (height, frames) in new[] { (11f, 180), (16f, 150), (40f, 180) })
                 {
                     var folder = $"{Output}/rock-{variant}-{height:F0}m";
                     Directory.CreateDirectory(folder);
@@ -463,7 +463,7 @@ namespace TowerDefense.Tests
         }
 
         // A Meshy model's mesh with its node and root transforms baked in, so it stands upright.
-        private static Mesh Upright(GameObject prefab)
+        internal static Mesh Upright(GameObject prefab)
         {
             Mesh source;
             Transform node;

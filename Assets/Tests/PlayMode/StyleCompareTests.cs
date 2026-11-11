@@ -11,7 +11,7 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Throwaway comparison: an AI pixel-art sprite against a low-poly toon 3D goblin with
     /// outline and pixelation, drawn into the same crowd at three zoom heights.
-    /// Writes PNGs to Logs/StyleCompare.
+    /// Writes PNGs to Logs/Captures/StyleCompare.
     /// </summary>
     public sealed class StyleCompareTests
     {
@@ -27,7 +27,7 @@ namespace TowerDefense.Tests
         [Category("Performance")]
         public IEnumerator RenderSpriteVersusToon3D()
         {
-            Directory.CreateDirectory("Logs/StyleCompare");
+            Directory.CreateDirectory("Logs/Captures/StyleCompare");
             var toonShader = Shader.Find("TowerDefense/StyleToon");
             var spriteShader = Shader.Find("TowerDefense/StyleSprite");
             Assert.That(toonShader, Is.Not.Null);
@@ -110,7 +110,7 @@ namespace TowerDefense.Tests
                 var scale = 1.9f;
                 DrawSprite(spriteQuad, spriteMaterial, new List<Matrix4x4> { SpriteMatrix(-2.2f, 0f, scale, spriteAspect, 0f) });
                 DrawToon(goblinMesh, toonMaterial, new List<Matrix4x4> { Matrix(2.2f, 0f, RunnerScale * scale, 0f) });
-                yield return Render(camera, full, Width, Height, texture, "Logs/StyleCompare/lineup.png");
+                yield return Render(camera, full, Width, Height, texture, "Logs/Captures/StyleCompare/lineup.png");
             }
 
             foreach (var height in new[] { 20f, 60f, 150f })
@@ -120,14 +120,14 @@ namespace TowerDefense.Tests
                 var pixelSize = Mathf.Max(1, Mathf.RoundToInt(ppm * 1.2f / 16f));
                 var spriteList = BuildCrowd(camera, 1.5f, (x, z, yaw) => SpriteMatrix(x, z, 1f, spriteAspect, yaw));
                 DrawSprite(spriteQuad, spriteMaterial, spriteList);
-                yield return Render(camera, full, Width, Height, texture, $"Logs/StyleCompare/crowd-{height:F0}m-sprite.png");
+                yield return Render(camera, full, Width, Height, texture, $"Logs/Captures/StyleCompare/crowd-{height:F0}m-sprite.png");
 
                 toonMaterial.SetFloat("_OutlineWidth", Mathf.Max(0.04f, pixelSize * 0.9f / ppm));
                 var toonList = BuildCrowd(camera, 1.5f, (x, z, yaw) => Matrix(x, z, RunnerScale, yaw));
                 DrawToon(goblinMesh, toonMaterial, toonList);
                 var smallWidth = Mathf.Max(8, Width / pixelSize);
                 var smallHeight = Mathf.Max(8, Height / pixelSize);
-                yield return Render(camera, full, smallWidth, smallHeight, texture, $"Logs/StyleCompare/crowd-{height:F0}m-toon3d.png");
+                yield return Render(camera, full, smallWidth, smallHeight, texture, $"Logs/Captures/StyleCompare/crowd-{height:F0}m-toon3d.png");
             }
 
             Object.DestroyImmediate(ground);
@@ -158,7 +158,7 @@ namespace TowerDefense.Tests
         [Category("Performance")]
         public IEnumerator RenderGoblinBust()
         {
-            Directory.CreateDirectory("Logs/StyleCompare");
+            Directory.CreateDirectory("Logs/Captures/StyleCompare");
             var toonShader = Shader.Find("TowerDefense/StyleToon");
             Assert.That(toonShader, Is.Not.Null);
 
@@ -222,7 +222,7 @@ namespace TowerDefense.Tests
                 }
 
                 DrawToon(bust, toonMaterial, list);
-                yield return Render(camera, full, Width, Height, texture, "Logs/StyleCompare/bust-turntable.png");
+                yield return Render(camera, full, Width, Height, texture, "Logs/Captures/StyleCompare/bust-turntable.png");
             }
 
             foreach (var height in new[] { 20f, 60f, 150f })
@@ -233,7 +233,7 @@ namespace TowerDefense.Tests
                 DrawToon(bust, toonMaterial, BuildCrowd(camera, 1.5f, (x, z, yaw) => Matrix(x, z, RunnerScale, yaw), true));
                 yield return Render(
                     camera, full, Mathf.Max(8, Width / pixelSize), Mathf.Max(8, Height / pixelSize), texture,
-                    $"Logs/StyleCompare/bust-crowd-{height:F0}m.png");
+                    $"Logs/Captures/StyleCompare/bust-crowd-{height:F0}m.png");
             }
 
             Object.DestroyImmediate(ground);

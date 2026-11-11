@@ -13,13 +13,13 @@ namespace TowerDefense.Tests
 {
     /// <summary>
     /// Records the special upgrades' effects on the Level 1 road (user, 2026-11-09: "improve the
-    /// effects"), one folder each under Logs/SpecialEffects: the slingers' stunning, bouncing and
+    /// effects"), one folder each under Logs/Captures/SpecialEffects: the slingers' stunning, bouncing and
     /// bursting stones, the rock's quake, fire trail and shattering, the raging mammoth, and the
     /// cave's torches, shields and chief. Frames are 1/30 s of game time apart.
     /// </summary>
     public sealed class SpecialEffectsCaptureTests
     {
-        private const string Output = "Logs/SpecialEffects";
+        private const string Output = "Logs/Captures/SpecialEffects";
         private static readonly Vector3 TowerSpot = new(-25f, 0f, 4.6f);
         private readonly List<Object> cleanup = new();
 
@@ -39,7 +39,7 @@ namespace TowerDefense.Tests
             yield return null;
         }
 
-        [UnityTest, Explicit("Records the slingers' specials to Logs/SpecialEffects/slingers.")]
+        [UnityTest, Explicit("Records the slingers' specials to Logs/Captures/SpecialEffects/slingers.")]
         public IEnumerator RecordSlingerSpecials()
         {
             RequireComputeShaders();
@@ -62,7 +62,7 @@ namespace TowerDefense.Tests
             yield return Record(world, camera, "slingers", 30 * 6);
         }
 
-        [UnityTest, Explicit("Records the rock's specials to Logs/SpecialEffects/rock.")]
+        [UnityTest, Explicit("Records the rock's specials to Logs/Captures/SpecialEffects/rock.")]
         public IEnumerator RecordRockSpecials()
         {
             RequireComputeShaders();
@@ -88,7 +88,7 @@ namespace TowerDefense.Tests
             yield return Record(world, camera, "rock", 30 * 6);
         }
 
-        [UnityTest, Explicit("Records the raging mammoth to Logs/SpecialEffects/mammoth.")]
+        [UnityTest, Explicit("Records the raging mammoth to Logs/Captures/SpecialEffects/mammoth.")]
         public IEnumerator RecordMammothRage()
         {
             RequireComputeShaders();
@@ -119,7 +119,7 @@ namespace TowerDefense.Tests
 
         // User, 2026-11-09: the whole life of a plain mammoth, from the charge into a packed crowd
         // until it falls, before its attack is changed.
-        [UnityTest, Explicit("Records a mammoth charging into a packed crowd until it falls to Logs/SpecialEffects/mammoth_life.")]
+        [UnityTest, Explicit("Records a mammoth charging into a packed crowd until it falls to Logs/Captures/SpecialEffects/mammoth_life.")]
         public IEnumerator RecordMammothLife()
         {
             RequireComputeShaders();
@@ -192,7 +192,7 @@ namespace TowerDefense.Tests
             File.WriteAllText($"{folder}/report.txt", $"frames {frame}, fell at frame {fellAt}, ready again at frame {readyAt}, spawned {world.Enemies.TotalSpawned}");
         }
 
-        [UnityTest, Explicit("Records the cave's specials to Logs/SpecialEffects/cave.")]
+        [UnityTest, Explicit("Records the cave's specials to Logs/Captures/SpecialEffects/cave.")]
         public IEnumerator RecordCaveSpecials()
         {
             RequireComputeShaders();

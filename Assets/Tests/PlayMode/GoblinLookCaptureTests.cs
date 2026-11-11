@@ -10,11 +10,11 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Readability test for the goblin's colours and head mark (user, 2026-11-10): the low-poly
     /// crowd from the style test, recorded once per look at a close and a far camera height.
-    /// Writes frames to Logs/GoblinLooks/{height}/{look}; ffmpeg lays them out side by side.
+    /// Writes frames to Logs/Captures/GoblinLooks/{height}/{look}; ffmpeg lays them out side by side.
     /// </summary>
     public sealed class GoblinLookCaptureTests
     {
-        private const string Output = "Logs/GoblinLooks";
+        private const string Output = "Logs/Captures/GoblinLooks";
         private const int Frames = 120;
 
         [UnityTest, Explicit("Records the goblin look variants in a dense crowd.")]

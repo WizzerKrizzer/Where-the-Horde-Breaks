@@ -17,7 +17,7 @@ namespace TowerDefense.Tests
         {
             var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, HordePreviewSettings.DefaultEnabled);
             PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 1);
-            Directory.CreateDirectory("Logs/CrowdEnvelope");
+            Directory.CreateDirectory("Logs/Reports/CrowdEnvelope");
             var summary = new System.Text.StringBuilder();
             try
             {
@@ -79,8 +79,8 @@ namespace TowerDefense.Tests
                             if(tick%30==0) yield return null;
                         }
                         summary.AppendLine($"trial={trial} solver=xpbd maxPairs={maximumPairs} firstTickMoved={firstTickMoved}/{releasedCount} lastSecondSpeed={meanSpeed:F3} final-grid={GridSignal(states):F4}");
-                        File.WriteAllText($"Logs/CrowdEnvelope/order-{trial}-trace.csv",trace.ToString());
-                        File.WriteAllLines($"Logs/CrowdEnvelope/order-{trial}-positions.csv",Array.ConvertAll(states,state=>FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Status}")));
+                        File.WriteAllText($"Logs/Reports/CrowdEnvelope/order-{trial}-trace.csv",trace.ToString());
+                        File.WriteAllLines($"Logs/Reports/CrowdEnvelope/order-{trial}-positions.csv",Array.ConvertAll(states,state=>FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Status}")));
                         CrowdMergeValidationTests.AssertMinimalOverlap(maximumPairs, maximumDepth, states.Length, $"trial {trial}");
                         Assert.That(meanSpeed,Is.GreaterThan(.8f));
                     }
@@ -88,7 +88,7 @@ namespace TowerDefense.Tests
             }
             finally
             {
-                File.WriteAllText("Logs/CrowdEnvelope/order-summary.txt",summary.ToString());
+                File.WriteAllText("Logs/Reports/CrowdEnvelope/order-summary.txt",summary.ToString());
                 Debug.Log(summary.ToString());
                 PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey,preference);
             }

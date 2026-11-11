@@ -9,7 +9,7 @@ namespace TowerDefense.Tests
 {
     /// <summary>
     /// Throwaway: inflates a 2D front-view pixel sprite into a rounded voxel model so the back,
-    /// sides and a simple walk cycle can be derived by code. Writes PNGs to Logs/StyleVoxel.
+    /// sides and a simple walk cycle can be derived by code. Writes PNGs to Logs/Captures/StyleVoxel.
     /// </summary>
     public sealed class StyleVoxelTests
     {
@@ -22,7 +22,7 @@ namespace TowerDefense.Tests
         [Category("Performance")]
         public IEnumerator RenderVoxelGoblin()
         {
-            Directory.CreateDirectory("Logs/StyleVoxel");
+            Directory.CreateDirectory("Logs/Captures/StyleVoxel");
             var toonShader = Shader.Find("TowerDefense/StyleToon");
             Assert.That(toonShader, Is.Not.Null);
             Assert.That(File.Exists(ArtPath), Is.True);
@@ -77,7 +77,7 @@ namespace TowerDefense.Tests
                 }
             }
 
-            yield return Capture(camera, target, texture, "Logs/StyleVoxel/walk-grid.png");
+            yield return Capture(camera, target, texture, "Logs/Captures/StyleVoxel/walk-grid.png");
 
             // 2. Turntable through eight directions, at a low angle and at the game's 75 degrees.
             foreach (var pitch in new[] { 20f, 75f })
@@ -89,7 +89,7 @@ namespace TowerDefense.Tests
                         new Vector3(-5.25f + i * 1.5f, 0f, 0f), 180f + i * 45f, 1);
                 }
 
-                yield return Capture(camera, target, texture, $"Logs/StyleVoxel/turntable-{pitch:F0}.png");
+                yield return Capture(camera, target, texture, $"Logs/Captures/StyleVoxel/turntable-{pitch:F0}.png");
             }
 
             Object.DestroyImmediate(material);

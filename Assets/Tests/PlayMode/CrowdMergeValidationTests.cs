@@ -47,8 +47,8 @@ namespace TowerDefense.Tests
                 if (samples[0].cpuFrameTime > 0) cpu.Add((float)samples[0].cpuFrameTime);
                 if (samples[0].gpuFrameTime > 0) gpu.Add((float)samples[0].gpuFrameTime);
             }
-            Directory.CreateDirectory("Logs/MergeValidation");
-            File.WriteAllText("Logs/MergeValidation/timing-probe.txt", $"Enabled={FrameTimingManager.IsFeatureEnabled()} CPU {Timing(cpu)} GPU {Timing(gpu)} MarkerGPU {Timing(markerGpu)}");
+            Directory.CreateDirectory("Logs/Reports/MergeValidation");
+            File.WriteAllText("Logs/Reports/MergeValidation/timing-probe.txt", $"Enabled={FrameTimingManager.IsFeatureEnabled()} CPU {Timing(cpu)} GPU {Timing(gpu)} MarkerGPU {Timing(markerGpu)}");
             camera.targetTexture = previousTarget;
             renderTarget.Release(); UnityEngine.Object.Destroy(renderTarget);
             command.Dispose(); recorder.enabled = false;
@@ -142,16 +142,16 @@ namespace TowerDefense.Tests
                 var capture = 0;
                 var stagnantSamples = 0;
                 var nextCheckpoint = begin + 10;
-                Directory.CreateDirectory("Logs/MergeValidation");
+                Directory.CreateDirectory("Logs/Reports/MergeValidation");
                 // A passing run must not leave a previous candidate's failure
                 // capture looking current. The successful summary/result XML
                 // are retained; these files are created again only if this run
                 // observes a persistent deep contact.
-                File.Delete("Logs/MergeValidation/persistent-deep-pairs.txt");
-                File.Delete("Logs/MergeValidation/persistent-snapshot.json");
+                File.Delete("Logs/Reports/MergeValidation/persistent-deep-pairs.txt");
+                File.Delete("Logs/Reports/MergeValidation/persistent-snapshot.json");
                 for (var snapshotIndex = 0; snapshotIndex < 5; snapshotIndex++)
                 {
-                    File.Delete($"Logs/MergeValidation/persistent-preroll-{snapshotIndex}.json");
+                    File.Delete($"Logs/Reports/MergeValidation/persistent-preroll-{snapshotIndex}.json");
                 }
                 while (Time.realtimeSinceStartupAsDouble - begin < 420)
                 {
@@ -195,8 +195,8 @@ namespace TowerDefense.Tests
                     if (now >= nextCheckpoint)
                     {
                         nextCheckpoint = now + 10;
-                        File.WriteAllText("Logs/MergeValidation/frames.csv", frameLog.ToString());
-                        File.WriteAllText("Logs/MergeValidation/timing-checkpoint.txt", $"elapsed={now-begin:F1}s\nAll {Timing(allFrames)}\nCPU {Timing(cpuFrames)}\nGPU scope {Timing(gpuFrames)}\nClose {Timing(closeFrames)}\nOverview {Timing(overviewFrames)}");
+                        File.WriteAllText("Logs/Reports/MergeValidation/frames.csv", frameLog.ToString());
+                        File.WriteAllText("Logs/Reports/MergeValidation/timing-checkpoint.txt", $"elapsed={now-begin:F1}s\nAll {Timing(allFrames)}\nCPU {Timing(cpuFrames)}\nGPU scope {Timing(gpuFrames)}\nClose {Timing(closeFrames)}\nOverview {Timing(overviewFrames)}");
                     }
                     simulation.SynchronizeDiagnostics(diagnostics);
                     simulation.ReadStatesSynchronous(states, horde.TotalSpawned);
@@ -249,7 +249,7 @@ namespace TowerDefense.Tests
                             $"elapsed={now - begin:F2}, persistentBodies={diagnostics[15]}, deepDiskContacts={diagnostics[16]}"));
                         persistentReport.Append(DescribeDeepDiskPairs(states, collisionDiameter, 0.05f,
                             CrowdSolverProfile.Default.bodyRadiusPerVisualScale));
-                        File.WriteAllText("Logs/MergeValidation/persistent-deep-pairs.txt", persistentReport.ToString());
+                        File.WriteAllText("Logs/Reports/MergeValidation/persistent-deep-pairs.txt", persistentReport.ToString());
                         if (!persistentSnapshotCaptured)
                         {
                             persistentSnapshotCaptured = true;
@@ -257,11 +257,11 @@ namespace TowerDefense.Tests
                             for (var snapshotIndex = 0; snapshotIndex < preroll.Length; snapshotIndex++)
                             {
                                 File.WriteAllText(
-                                    $"Logs/MergeValidation/persistent-preroll-{snapshotIndex}.json",
+                                    $"Logs/Reports/MergeValidation/persistent-preroll-{snapshotIndex}.json",
                                     JsonUtility.ToJson(preroll[snapshotIndex]));
                             }
                             var persistentSnapshot = preroll[preroll.Length - 1];
-                            File.WriteAllText("Logs/MergeValidation/persistent-snapshot.json",
+                            File.WriteAllText("Logs/Reports/MergeValidation/persistent-snapshot.json",
                                 JsonUtility.ToJson(persistentSnapshot));
                         }
                     }
@@ -269,7 +269,7 @@ namespace TowerDefense.Tests
                         ? stagnantSamples + 1 : 0;
                     report.AppendLine(FormattableString.Invariant(
                         $"{now-begin:F2},{horde.TotalSpawned},{horde.ActiveCount},{diagnostics[5]},{diagnostics[6]/1000000f:F6},{diagnostics[15]},{diagnostics[16]},{diagnostics[17]},{diagnostics[18]},{speed:F3},{forward:F3},{horde.Performance.SpawnMs:F3}"));
-                    File.WriteAllText("Logs/MergeValidation/actual.csv", report.ToString());
+                    File.WriteAllText("Logs/Reports/MergeValidation/actual.csv", report.ToString());
                     if ((capture == 0 && occupiedMergeArea > 1500) || (capture == 1 && horde.TotalSpawned == 10000) || (capture == 2 && tailSamples > 0))
                     {
                         maxCpuPairs = Math.Max(maxCpuPairs, Pairs(states, collisionDiameter,
@@ -278,7 +278,7 @@ namespace TowerDefense.Tests
                         if (capture == 1)
                         {
                             var snapshot = new AuditSnapshot { States = states, Controls = (Vector4[])typeof(HordeEnemyManager).GetField("gpuControls", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde) };
-                            File.WriteAllText("Logs/MergeValidation/peak-snapshot.json", JsonUtility.ToJson(snapshot));
+                            File.WriteAllText("Logs/Reports/MergeValidation/peak-snapshot.json", JsonUtility.ToJson(snapshot));
                         }
                         capture++;
                     }
@@ -288,12 +288,12 @@ namespace TowerDefense.Tests
                     if (horde.TotalSpawned == 10000 && horde.ActiveCount < 1700) break;
                     if (stagnantSamples >= 10) break; // fail fast on a frozen but separated horde
                 }
-                File.WriteAllText("Logs/MergeValidation/actual.csv", report.ToString());
-                File.WriteAllText("Logs/MergeValidation/frames.csv", frameLog.ToString());
+                File.WriteAllText("Logs/Reports/MergeValidation/actual.csv", report.ToString());
+                File.WriteAllText("Logs/Reports/MergeValidation/frames.csv", frameLog.ToString());
                 var summary = $"1920x1080, camera.Render on every measured frame\nspawned={horde.TotalSpawned}, remaining={horde.ActiveCount}, collisionDiameter={collisionDiameter:F3}, mergeSamples={mergeSamples}, tailSamples={tailSamples}, maxDeepPairs={maxPairs}, persistentDeepBodies={maxPersistentDeepBodies}, deepDiskContacts={maxDeepDiskContacts}, deepBlockerContacts={maxDeepBlockerContacts}, deepWallContacts={maxDeepWallContacts}, CPU={maxCpuPairs}, forward={forwardSum/Mathf.Max(1,mergeSamples):F3}m/s, occupancy={maxOccupancy}, dropped={maxDropped}, gridFailures={maxGridFailures}, walkabilityViolations={walkabilityViolations}\nAll including observation/capture stalls: {Timing(allFrames)}\nCPU hardware frame: {Timing(cpuFrames)}\nGPU timestamp scope (simulation + camera, 3-frame delay): {Timing(gpuFrames)}\nClose: {Timing(closeFrames)}\nOverview: {Timing(overviewFrames)}\nCatchup frames={catchupFrames}, maximum ticks/frame={largestTickCount}\nWithout observation/capture stalls: {Timing(frames)}\nSpawning: {Timing(spawningFrames)}\nAfter spawning: {Timing(settledFrames)}\nTail: {Timing(tailFrames)}\n";
-                File.WriteAllText("Logs/MergeValidation/actual.txt", summary);
+                File.WriteAllText("Logs/Reports/MergeValidation/actual.txt", summary);
                 var finalSnapshot = new AuditSnapshot { States = states, Controls = (Vector4[])typeof(HordeEnemyManager).GetField("gpuControls", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(horde) };
-                File.WriteAllText("Logs/MergeValidation/final-snapshot.json", JsonUtility.ToJson(finalSnapshot));
+                File.WriteAllText("Logs/Reports/MergeValidation/final-snapshot.json", JsonUtility.ToJson(finalSnapshot));
                 UnityEngine.Debug.Log(summary);
                 Assert.That(stagnantSamples, Is.LessThan(10), $"The remaining {horde.ActiveCount} bodies stopped for five seconds.");
                 Assert.That(gpuFrames.Count, Is.GreaterThan(100), "Acceptance requires completed GPU timestamp scopes.");
@@ -364,7 +364,7 @@ namespace TowerDefense.Tests
                 var field = new HordeFlowField(primary, upper, 2.85f, 0.62f,
                     new[] { 2.85f, 2.85f, 2.85f }, new[] { 2.85f, 2.85f, 2.85f, 2.85f }, lower,
                     new[] { 2.85f, 2.85f, 2.85f, 2.85f });
-                Directory.CreateDirectory("Logs/MergeValidation");
+                Directory.CreateDirectory("Logs/Reports/MergeValidation");
                 var seed = new List<GpuHordeSimulation.AgentState>();
                 for (var row = 0; row < (tight ? 78 : 65); row++)
                 for (var col = 0; col < (tight ? 33 : 28); col++)
@@ -433,15 +433,15 @@ namespace TowerDefense.Tests
                         }
                         if (frame % 15 == 0) yield return null;
                     }
-                    File.WriteAllLines("Logs/MergeValidation/positions.csv", Array.ConvertAll(states, state => FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Velocity.x},{state.Velocity.y}")));
+                    File.WriteAllLines("Logs/Reports/MergeValidation/positions.csv", Array.ConvertAll(states, state => FormattableString.Invariant($"{state.Position.x},{state.Position.y},{state.Velocity.x},{state.Velocity.y}")));
                     CaptureViews(simulation, states, "short");
                     corrections.Sort();
                     var p95 = corrections[corrections.Count * 95 / 100];
                     alternating.Sort();
                     var alternating95 = alternating[alternating.Count * 95 / 100];
                     report.AppendLine($"RESULT speed={travel:F3}m/s p95-step-change={p95:F5}m p95-alternating-change={alternating95:F5}m max-pairs={maxPairs} interpolated-pairs={maxInterpolatedPairs} depth={deepest:P2} elapsed={timer.Elapsed.TotalSeconds:F2}s");
-                    Directory.CreateDirectory("Logs/MergeValidation");
-                    File.WriteAllText("Logs/MergeValidation/short.txt", report.ToString());
+                    Directory.CreateDirectory("Logs/Reports/MergeValidation");
+                    File.WriteAllText("Logs/Reports/MergeValidation/short.txt", report.ToString());
                     UnityEngine.Debug.Log(report.ToString());
                     AssertMinimalOverlap(maxPairs, deepest, states.Length, "Sampled ticks");
                     Assert.That(travel, Is.GreaterThan(0.8f));
@@ -517,14 +517,14 @@ namespace TowerDefense.Tests
                             Assert.That(pairs.pairs, Is.Zero);
                             yield return null;
                         }
-                        File.WriteAllText($"Logs/MergeValidation/replay-{trial}-snapshot.json", JsonUtility.ToJson(new AuditSnapshot { States=states, Controls=snapshot.Controls }));
+                        File.WriteAllText($"Logs/Reports/MergeValidation/replay-{trial}-snapshot.json", JsonUtility.ToJson(new AuditSnapshot { States=states, Controls=snapshot.Controls }));
                     }
                 }
             }
             finally
             {
-                Directory.CreateDirectory("Logs/MergeValidation");
-                File.WriteAllText("Logs/MergeValidation/replay.csv", report.ToString());
+                Directory.CreateDirectory("Logs/Reports/MergeValidation");
+                File.WriteAllText("Logs/Reports/MergeValidation/replay.csv", report.ToString());
                 PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, preference);
             }
         }
@@ -534,7 +534,7 @@ namespace TowerDefense.Tests
         {
             var snapshotPath = Environment.GetEnvironmentVariable("CROWD_SNAPSHOT");
             Assert.That(File.Exists(snapshotPath), Is.True,
-                "Set CROWD_SNAPSHOT to Logs/MergeValidation/persistent-snapshot.json from the full-wave test.");
+                "Set CROWD_SNAPSHOT to Logs/Reports/MergeValidation/persistent-snapshot.json from the full-wave test.");
             var preference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey, 1);
             try
             {
@@ -577,8 +577,8 @@ namespace TowerDefense.Tests
                         if (tick % 15 == 14) yield return null;
                     }
 
-                    Directory.CreateDirectory("Logs/MergeValidation");
-                    File.WriteAllText("Logs/MergeValidation/persistent-replay.csv", report.ToString());
+                    Directory.CreateDirectory("Logs/Reports/MergeValidation");
+                    File.WriteAllText("Logs/Reports/MergeValidation/persistent-replay.csv", report.ToString());
                     Assert.That(maxPersistentBodies, Is.Zero,
                         "A captured deep pair survived the 0.2-second persistence threshold during replay.");
                 }
@@ -624,7 +624,7 @@ namespace TowerDefense.Tests
                     simulation.Draw(EnemyManager.GetLowEnemyMesh(), 0);
                     camera.Render();
                     RenderTexture.active = target;
-                    SaveImage($"Logs/MergeValidation/{label}-{view}.png");
+                    SaveImage($"Logs/Reports/MergeValidation/{label}-{view}.png");
                     GL.PushMatrix();
                     GL.LoadProjectionMatrix(camera.projectionMatrix);
                     GL.modelview = camera.worldToCameraMatrix;
@@ -646,7 +646,7 @@ namespace TowerDefense.Tests
                     }
                     GL.End();
                     GL.PopMatrix();
-                    SaveImage($"Logs/MergeValidation/{label}-{view}-outlines.png");
+                    SaveImage($"Logs/Reports/MergeValidation/{label}-{view}-outlines.png");
                 }
             }
             finally

@@ -28,7 +28,7 @@ namespace TowerDefense.Tests
             var checks = timingOnly
                 ? new[] { test.HardwareFrameTiming_Probe() }
                 : new[] { test.HardwareFrameTiming_Probe(), test.ActualTenThousand_ThroughMergeAndTail() };
-            Directory.CreateDirectory("Logs/MergeValidation");
+            Directory.CreateDirectory("Logs/Reports/MergeValidation");
             foreach (var check in checks)
             {
                 while (true)
@@ -38,7 +38,7 @@ namespace TowerDefense.Tests
                     catch (Exception exception)
                     {
                         Debug.LogException(exception);
-                        File.WriteAllText("Logs/MergeValidation/player-result.txt", "FAILED\n" + exception);
+                        File.WriteAllText("Logs/Reports/MergeValidation/player-result.txt", "FAILED\n" + exception);
                         (check as IDisposable)?.Dispose();
                         Application.Quit(1);
                         yield break;
@@ -48,7 +48,7 @@ namespace TowerDefense.Tests
                 }
                 (check as IDisposable)?.Dispose();
             }
-            File.WriteAllText("Logs/MergeValidation/player-result.txt", "PASSED");
+            File.WriteAllText("Logs/Reports/MergeValidation/player-result.txt", "PASSED");
             Application.Quit(0);
         }
     }

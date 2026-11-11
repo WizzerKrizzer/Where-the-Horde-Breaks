@@ -60,7 +60,7 @@ namespace TowerDefense.Tests
             var target = new RenderTexture(1600, 1000, 24);
             var previousTarget = camera.targetTexture;
             camera.targetTexture = target;
-            Directory.CreateDirectory("Logs/RoadReview");
+            Directory.CreateDirectory("Logs/Captures/RoadReview");
             try
             {
                 foreach (var levelIndex in new[] { 1, 5 })
@@ -96,7 +96,7 @@ namespace TowerDefense.Tests
                         checkedPoints++;
                     }
                     var info = $"Level {levelIndex+1}: road build {buildSeconds:F3}s; 1 renderer; {checkedPoints} navigation samples agree.";
-                    File.AppendAllText("Logs/RoadReview/validation.txt", info + "\n");
+                    File.AppendAllText("Logs/Captures/RoadReview/validation.txt", info + "\n");
                     var focuses = levelIndex == 1
                         ? new[] { Vector3.zero, new Vector3(40,0,0), new Vector3(0,0,22) }
                         : new[] { Vector3.zero, route.Waypoints[2] };
@@ -112,7 +112,7 @@ namespace TowerDefense.Tests
                         var image = new Texture2D(target.width,target.height,TextureFormat.RGB24,false);
                         image.ReadPixels(new Rect(0,0,target.width,target.height),0,0);
                         image.Apply();
-                        File.WriteAllBytes($"Logs/RoadReview/level-{levelIndex+1}-view-{i}.png",image.EncodeToPNG());
+                        File.WriteAllBytes($"Logs/Captures/RoadReview/level-{levelIndex+1}-view-{i}.png",image.EncodeToPNG());
                         Object.Destroy(image);
                         RenderTexture.active = previous;
                     }

@@ -77,9 +77,9 @@ namespace TowerDefense.Tests
                 simulation.ReadStatesSynchronous(snapshot, snapshot.Length);
                 var deepestPair = DescribeDeepestPair(snapshot, 0.58f * level.wave.enemyScaleMultiplier *
                     HordePreviewSettings.ContactRadiusPerScale);
-                Directory.CreateDirectory("Logs/CrowdSmooth");
+                Directory.CreateDirectory("Logs/Reports/CrowdSmooth");
                 var report = $"10K spawn duration: {duration:F2}s\nSpawning frames: {Summarize(frames)}\nSpawn CPU: {Summarize(spawningCpu)}\nAfter spawning: {Summarize(settled)}\nGrid: max={diagnostics[2]}, overflow={diagnostics[0]}, dropped={diagnostics[1]}\nCollision pairs: {diagnostics[5]}, deepest: {diagnostics[6] / 10000f:F2}%\n{deepestPair}\n";
-                File.WriteAllText("Logs/CrowdSmooth/spawning-metrics.txt", report);
+                File.WriteAllText("Logs/Reports/CrowdSmooth/spawning-metrics.txt", report);
                 LogAssert.Expect(LogType.Log, report);
                 Debug.Log(report);
                 Assert.That(diagnostics[5], Is.Zero,

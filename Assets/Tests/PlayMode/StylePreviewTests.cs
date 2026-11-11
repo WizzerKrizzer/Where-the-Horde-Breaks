@@ -11,7 +11,7 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Renders a small comparison of the plain greybox horde against a silhouette
     /// style (class shapes, vertical gradient, dark outline). Throwaway preview for
-    /// choosing a direction; writes PNGs to Logs/StylePreview.
+    /// choosing a direction; writes PNGs to Logs/Captures/StylePreview.
     /// </summary>
     public sealed class StylePreviewTests
     {
@@ -25,7 +25,7 @@ namespace TowerDefense.Tests
         [Category("Performance")]
         public IEnumerator RenderStyleComparison()
         {
-            Directory.CreateDirectory("Logs/StylePreview");
+            Directory.CreateDirectory("Logs/Captures/StylePreview");
             var shader = Shader.Find("TowerDefense/StylePreview");
             Assert.That(shader, Is.Not.Null, "StylePreview shader not found.");
 
@@ -112,7 +112,7 @@ namespace TowerDefense.Tests
                     Draw(styledMeshes[i], styled, styledList[i]);
                 }
 
-                yield return Capture(camera, target, texture, "Logs/StylePreview/lineup.png");
+                yield return Capture(camera, target, texture, "Logs/Captures/StylePreview/lineup.png");
             }
 
             // Crowds at three zoom heights, same jittered layout for both styles.
@@ -129,7 +129,7 @@ namespace TowerDefense.Tests
                         else Draw(styledMeshes[type], styled, matricesByClass[type]);
                     }
 
-                    yield return Capture(camera, target, texture, $"Logs/StylePreview/crowd-{height:F0}m-{style}.png");
+                    yield return Capture(camera, target, texture, $"Logs/Captures/StylePreview/crowd-{height:F0}m-{style}.png");
                 }
             }
 

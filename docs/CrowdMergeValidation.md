@@ -29,7 +29,7 @@ expensive. Enlarging simulation steps during slow frames aggravates this path.
 
 The movement observer synchronizes GPU state for a few audited ticks. Its timings
 include submission/readback overhead and are stage comparisons, not GPU hardware
-timer measurements. Raw original audit: `Logs/MergeValidation/baseline-metrics.txt`.
+timer measurements. Raw original audit: `Logs/Reports/MergeValidation/baseline-metrics.txt`.
 
 ## Motion pipeline
 
@@ -132,7 +132,7 @@ A held 96-body queue remains separated, with a maximum settled step of 1.99 mm
 and mean final-second gait travel of 7.4 mm. The phase of the gait does not progress
 from retained drive intent while stationary.
 
-Raw evidence: `Logs/MergeValidation/actual.csv`, `actual.txt`, `short.txt`,
+Raw evidence: `Logs/Reports/MergeValidation/actual.csv`, `actual.txt`, `short.txt`,
 `sustained-rendered.xml`, `sustained-rendered.log`, `actual-0.png` (merge), and
 `actual-1.png` (tail). The earlier non-rendered 10K run was discarded as frame-time
 evidence, despite passing its movement assertions.

@@ -14,11 +14,11 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Plays the rock in the real game (the Main scene, Level 2) with simulated mouse input: a click
     /// where it should fall, the pointer moved the way it should roll, a second click. Records it to
-    /// Logs/GameRock. The player's profile is copied first and put back afterwards, byte for byte.
+    /// Logs/Captures/GameRock. The player's profile is copied first and put back afterwards, byte for byte.
     /// </summary>
     public sealed class GameRockTests
     {
-        private const string Output = "Logs/GameRock";
+        private const string Output = "Logs/Captures/GameRock";
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
         private string profilePath;
         private byte[] profileBackup;
@@ -47,7 +47,7 @@ namespace TowerDefense.Tests
             }
         }
 
-        [UnityTest, Explicit("Plays the rock on Level 2 with simulated clicks and records it to Logs/GameRock.")]
+        [UnityTest, Explicit("Plays the rock on Level 2 with simulated clicks and records it to Logs/Captures/GameRock.")]
         public IEnumerator Rock_ClickThenClickAgain_RollsTheChosenWay()
         {
             PrehistoricTowerTests.RequireComputeShaders();
@@ -198,18 +198,18 @@ namespace TowerDefense.Tests
         // User, 2026-11-09: in a very big crowd the rock pushed nothing. Waits for the Level 2 horde
         // to pack, drops the rock on the densest spot and rolls it against the flow, then measures
         // how far the goblins under it were pushed and how many are left in its path.
-        [UnityTest, Explicit("Drops the rock into the packed Level 2 horde and records it to Logs/GameRockDense.")]
+        [UnityTest, Explicit("Drops the rock into the packed Level 2 horde and records it to Logs/Captures/GameRockDense.")]
         public IEnumerator Rock_InAPackedCrowd_PushesAndClearsAChannel()
         {
-            return PackedCrowd(false, "Logs/GameRockDense");
+            return PackedCrowd(false, "Logs/Captures/GameRockDense");
         }
 
         // User, 2026-11-09: the same, but in the middle of a big crowd and rolled the way with the
         // most goblins ahead and beside it, so the thrown goblins land among others, not in the open.
-        [UnityTest, Explicit("Rolls the rock through the thick of the Level 2 horde and records it to Logs/GameRockThick.")]
+        [UnityTest, Explicit("Rolls the rock through the thick of the Level 2 horde and records it to Logs/Captures/GameRockThick.")]
         public IEnumerator Rock_ThroughTheThickOfTheCrowd()
         {
-            return PackedCrowd(true, "Logs/GameRockThick");
+            return PackedCrowd(true, "Logs/Captures/GameRockThick");
         }
 
         private IEnumerator PackedCrowd(bool intoTheThick, string folder)

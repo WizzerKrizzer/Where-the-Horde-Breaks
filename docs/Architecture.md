@@ -89,7 +89,7 @@ These results do not imply that every legacy gameplay test passes.
 The rollout additionally audits the actual solver configuration of every horde
 level and tests individual-actor equal/mixed/small-scale contact envelopes.
 See `docs/CrowdRebuildProgress.md` for current results and local evidence paths.
-Generated logs and images stay under `Logs/CrowdRebuild/` and are ignored by Git.
+Generated logs and images stay under `Logs/Reports/CrowdRebuild/` and are ignored by Git.
 
 ## MVP Acceptance
 

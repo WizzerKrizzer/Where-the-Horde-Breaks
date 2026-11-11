@@ -4,13 +4,13 @@ Last updated: 2026-10-04
 
 This is the durable checklist for the XPBD crowd rebuild. A checked validation
 item means the stated criterion passed and its evidence was saved locally under
-`Logs/CrowdRebuild/`. Generated logs are intentionally ignored by Git; the test
+`Logs/Reports/CrowdRebuild/`. Generated logs are intentionally ignored by Git; the test
 and acceptance criteria remain tracked in the repository.
 
 ## Baseline and infrastructure
 
 - [x] Preserve the original dirty crowd tuning as
-  `Logs/CrowdRebuild/baseline-current-dirty.patch`.
+  `Logs/Reports/CrowdRebuild/baseline-current-dirty.patch`.
 - [x] Add the shared 60 Hz, eight-iteration `CrowdSolverProfile`.
 - [x] Add the fixed-tick `CrowdLabRunner` backed by the production GPU solver.
 - [x] Add the interactive `Assets/Scenes/CrowdLab.unity` preview with scenario,
@@ -136,7 +136,7 @@ and acceptance criteria remain tracked in the repository.
   0.819 ms, and GPU timestamp p95 is 0.108 ms. Transient deep disk contacts peaked
   at 20; blocker and wall deep-contact counts stayed zero.
 
-Current packing evidence is in `Logs/CrowdRebuild/TorsoPacking-20261004/`:
+Current packing evidence is in `Logs/Reports/CrowdRebuild/TorsoPacking-20261004/`:
 `Focused-results.xml`, `Replay-results.xml`, `Level2-results.xml`, and
 `Level2-final/actual.txt` plus `Level2-final/actual-1-1.png`. The separate `Level2/`
 folder contains debugging history; use `Level2-final/` for current results.
@@ -173,62 +173,62 @@ new focused results and Windows build.
   rendered p95 excluding observation/capture stalls is 0.811 ms and GPU timestamp
   p95 is 0.108 ms. `Level2-results.xml` and `Level2-final/` now contain this run.
 
-Official evidence: `Logs/CrowdRebuild/TorsoPacking-20261004/Official-results.xml`
+Official evidence: `Logs/Reports/CrowdRebuild/TorsoPacking-20261004/Official-results.xml`
 and `Official.log`. The first audit failed at Level 5; the results listed here
 are the post-fix passing run. The complete broad PlayMode suite was not rerun
 in this rollout; its pre-existing failures remain documented above.
 
 ## Latest local evidence
 
-- `Logs/CrowdRebuild/PlayMode-legacy-retired-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-legacy-retired-final.log`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-legacy-retired-results.xml`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-legacy-retired.log`
-- `Logs/CrowdRebuild/Level2-10000-legacy-retired-20261004/`
-- `Logs/CrowdRebuild/CrowdLab-legacy-retired-final-results.xml`
-- `Logs/CrowdRebuild/CrowdLab-legacy-retired-final.log`
-- `Logs/CrowdRebuild/Build-Windows-Development-legacy-retired.log`
-- `Logs/CrowdRebuild/PlayMode-shockwave-blocked-row-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-shockwave-return-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-explosion-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-production-xpbd-backend-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-production-xpbd-backend-final.log`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-backend-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-backend-final.log`
-- `Logs/CrowdRebuild/Level2-10000-backend-final-20261003/`
-- `Logs/CrowdRebuild/Build-Windows-Development-backend-final.log`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-shockwave-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-xpbd-area-knockback-final-results.xml`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-final-20261003-results.xml`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-final-20261003.log`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-passed-20261003-results.xml`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-passed-20261003.log`
-- `Logs/CrowdRebuild/Level2-10000-passed-20261003/`
-- `Logs/CrowdRebuild/PlayMode-production-xpbd-regression-results.xml`
-- `Logs/CrowdRebuild/PlayMode-production-xpbd-regression.log`
-- `Logs/CrowdRebuild/Build-Windows-Development-production-xpbd.log`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-retained-20261002-results.xml`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-retained-20261002.log`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-postforensic-20261002-results.xml`
-- `Logs/CrowdRebuild/PlayMode-crowdlab-blockerfix-results.xml`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-best-20261002-results.xml`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-best-20261002.log`
-- `Logs/CrowdRebuild/PlayMode-level2-10000-forensic-20261002-results.xml`
-- `Logs/CrowdRebuild/PlayMode-persistent-replay-20261002-results.xml`
-- `Logs/CrowdRebuild/Level2-10000-forensic-20261002/`
-- `Logs/CrowdRebuild/PlayMode-current-baseline-results.xml`
-- `Logs/CrowdRebuild/PlayMode-xpbd-regression-blockerfix-results.xml`
-- `Logs/CrowdRebuild/PlayMode-xpbd-barricade-stop-warm-results.xml`
-- `Logs/CrowdRebuild/EditMode-current-results.xml`
-- `Logs/CrowdRebuild/Build-Windows-Development.log`
-- `Logs/CrowdRebuild/CrowdLab-preview-smoke-20261002.png`
-- `Logs/CrowdRebuild/RightAngleBend-1451.json`
-- `Logs/CrowdRebuild/ThreeWayMerge-761905.json`
-- `Logs/CrowdRebuild/BlockedExit-8201.json`
-- `Logs/CrowdRebuild/ExplosionRecovery-9101.json`
-- `Logs/CrowdRebuild/StressTenThousand-10001.json`
-- `Logs/CrowdRebuild/StressFiftyThousand-50001.json`
-- `Logs/CrowdRebuild/WallImpact-1701.json`
+- `Logs/Reports/CrowdRebuild/PlayMode-legacy-retired-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-legacy-retired-final.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-legacy-retired-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-legacy-retired.log`
+- `Logs/Reports/CrowdRebuild/Level2-10000-legacy-retired-20261004/`
+- `Logs/Reports/CrowdRebuild/CrowdLab-legacy-retired-final-results.xml`
+- `Logs/Reports/CrowdRebuild/CrowdLab-legacy-retired-final.log`
+- `Logs/Reports/CrowdRebuild/Build-Windows-Development-legacy-retired.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-shockwave-blocked-row-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-shockwave-return-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-explosion-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-production-xpbd-backend-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-production-xpbd-backend-final.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-backend-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-backend-final.log`
+- `Logs/Reports/CrowdRebuild/Level2-10000-backend-final-20261003/`
+- `Logs/Reports/CrowdRebuild/Build-Windows-Development-backend-final.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-shockwave-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-xpbd-area-knockback-final-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-final-20261003-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-final-20261003.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-passed-20261003-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-passed-20261003.log`
+- `Logs/Reports/CrowdRebuild/Level2-10000-passed-20261003/`
+- `Logs/Reports/CrowdRebuild/PlayMode-production-xpbd-regression-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-production-xpbd-regression.log`
+- `Logs/Reports/CrowdRebuild/Build-Windows-Development-production-xpbd.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-retained-20261002-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-retained-20261002.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-postforensic-20261002-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-crowdlab-blockerfix-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-best-20261002-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-best-20261002.log`
+- `Logs/Reports/CrowdRebuild/PlayMode-level2-10000-forensic-20261002-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-persistent-replay-20261002-results.xml`
+- `Logs/Reports/CrowdRebuild/Level2-10000-forensic-20261002/`
+- `Logs/Reports/CrowdRebuild/PlayMode-current-baseline-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-xpbd-regression-blockerfix-results.xml`
+- `Logs/Reports/CrowdRebuild/PlayMode-xpbd-barricade-stop-warm-results.xml`
+- `Logs/Reports/CrowdRebuild/EditMode-current-results.xml`
+- `Logs/Reports/CrowdRebuild/Build-Windows-Development.log`
+- `Logs/Reports/CrowdRebuild/CrowdLab-preview-smoke-20261002.png`
+- `Logs/Reports/CrowdRebuild/RightAngleBend-1451.json`
+- `Logs/Reports/CrowdRebuild/ThreeWayMerge-761905.json`
+- `Logs/Reports/CrowdRebuild/BlockedExit-8201.json`
+- `Logs/Reports/CrowdRebuild/ExplosionRecovery-9101.json`
+- `Logs/Reports/CrowdRebuild/StressTenThousand-10001.json`
+- `Logs/Reports/CrowdRebuild/StressFiftyThousand-50001.json`
+- `Logs/Reports/CrowdRebuild/WallImpact-1701.json`
 
 The final 2026-10-04 CrowdLab result is the complete passing 12/12 class,
 including every scenario at all six FPS/game-speed schedules. The post-removal

@@ -15,7 +15,7 @@ namespace TowerDefense.Tests
     /// horde through the real GPU draw path at several zoom heights and records how
     /// many pixels each enemy size covers and how its brightness separates from the
     /// road. The numbers are the minimum silhouette size and contrast any art style
-    /// must keep. Writes Logs/Readability/report.md and sample screenshots.
+    /// must keep. Writes Logs/Captures/Readability/report.md and sample screenshots.
     /// </summary>
     public sealed class GpuHordeReadabilityTests
     {
@@ -35,7 +35,7 @@ namespace TowerDefense.Tests
         public IEnumerator MeasureEnemyReadability()
         {
             Assert.That(SystemInfo.supportsComputeShaders, Is.True);
-            Directory.CreateDirectory("Logs/Readability");
+            Directory.CreateDirectory("Logs/Captures/Readability");
             var report = new StringBuilder();
             report.AppendLine("# Greybox readability measurement");
             report.AppendLine();
@@ -139,7 +139,7 @@ namespace TowerDefense.Tests
 
                 report.AppendLine($"| {height:F0} m | {pixelsPerMetre:F1} | " + string.Join(" | ", cells) + " |");
                 brightnessReport.AppendLine($"| {height:F0} m | " + string.Join(", ", contrasts) + " |");
-                File.WriteAllBytes($"Logs/Readability/isolated-{height:F0}m.png", texture.EncodeToPNG());
+                File.WriteAllBytes($"Logs/Captures/Readability/isolated-{height:F0}m.png", texture.EncodeToPNG());
                 simulation.Dispose();
                 yield return null;
             }
@@ -174,7 +174,7 @@ namespace TowerDefense.Tests
                 {
                     PlaceCamera(camera, height);
                     yield return Render(simulation, mesh, camera, renderTarget, texture);
-                    File.WriteAllBytes($"Logs/Readability/crowd-{count}-{height:F0}m.png", texture.EncodeToPNG());
+                    File.WriteAllBytes($"Logs/Captures/Readability/crowd-{count}-{height:F0}m.png", texture.EncodeToPNG());
                 }
 
                 simulation.Dispose();
@@ -186,8 +186,8 @@ namespace TowerDefense.Tests
             report.AppendLine("- A class is only recognisable once its silhouette is at least 6 px wide.");
             report.AppendLine("- Two classes need a size ratio of at least 1.4 to be told apart by size alone.");
             report.AppendLine("- Brightness is a secondary channel; keep a contrast of at least 1.3:1 against the road.");
-            report.AppendLine("- Crowd samples are in Logs/Readability/crowd-*.png.");
-            File.WriteAllText("Logs/Readability/report.md", report.ToString());
+            report.AppendLine("- Crowd samples are in Logs/Captures/Readability/crowd-*.png.");
+            File.WriteAllText("Logs/Captures/Readability/report.md", report.ToString());
             Debug.Log(report.ToString());
 
             Object.DestroyImmediate(ground);

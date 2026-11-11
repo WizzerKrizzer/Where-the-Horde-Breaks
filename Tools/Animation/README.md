@@ -20,7 +20,7 @@ NO_INSTALL=1 Tools/Animation/build_slinger.sh
 The build needs Blender 5.2 and a Python with numpy, scipy and Pillow. By default it uses the
 TRELLIS venv at `C:/AI/trellis/.venv`. Set the `BLENDER` and `PYTHON` environment variables to
 use others. To see the result, run the Unity PlayMode test `RenderMeshyWarrior`. Its renders go
-to `Logs/StyleDefenders/meshy-warrior`.
+to `Logs/Captures/StyleDefenders/meshy-warrior`.
 
 ## Source files
 
@@ -50,7 +50,7 @@ The clips go in `Art/Characters/Slinger/Mixamo/`:
 
 `build_spear_hunter.sh` runs `meshy/build_hunter.py` and installs `Resources/Mixamo/spearhunter.fbx`,
 its texture and the rock. The test `SpearHunterCaptureTests.RecordSpearHunter` renders
-them to `Logs/SpearHunter`.
+them to `Logs/Captures/SpearHunter`.
 
 - The model is the Meshy hunter rigged in Mixamo (`Art/Characters/SpearHunter/Mixamo/Idle.fbx`,
   with skin). By default it is mirrored, so the spear bundle is over the right shoulder where the
@@ -71,6 +71,41 @@ them to `Logs/SpearHunter`.
 The Kevin Iglesias files are under the Unity Asset Store EULA: they may be used in the game but
 not redistributed, so `Art/Characters/SpearHunter/KevinIglesias/` is ignored by git and the built
 FBX is in a `Mixamo` folder.
+
+## The caveman
+
+`build_caveman.sh` runs `meshy/build_caveman.py` and installs `Resources/Mixamo/caveman.fbx`, its
+texture and the Meshy cave. The test `CavemanCaptureTests.RecordCaveman` renders them to
+`Logs/Captures/Caveman`.
+
+- The model is the Meshy "Bearclaw Berserker" rigged in Mixamo. The rigged model comes from
+  `Standing Melee Attack Downward` (with skin); `Horizontal` and `Backhand` came without skin for
+  the same character.
+- `Idle` is the spear hunter's Mixamo "Breathing Idle", retargeted by world rotation, because the
+  two characters' rest poses differ.
+- `Fight` loops idle, the downward swing, idle and the sideways swing, joined by crossfades. The
+  backhand steps forward about a third of his height, so it is a separate clip.
+- A `RightHandProp` bone sits in the right fist. The big bone he swings is built in the test and
+  held on it, pointing where the fist points in the bind pose.
+
+## The mammoth
+
+`build_mammoth.sh` runs `meshy/build_mammoth.py` and installs `Resources/mammoth.fbx` and its
+texture. The test `MammothCaptureTests.RecordMammoth` renders them to `Logs/Captures/Mammoth`. Mixamo
+cannot rig four-legged animals, so the rig and the clips are made in the script:
+
+- The Meshy "Crimson Mammoth" is widened 1.375 times across, because it was too narrow from above.
+- It gets a small skeleton: a spine, a neck and a head, a three-bone trunk, a tail, and three
+  bones per leg. Skin weights are set by region: the tusks ride on the head, the trunk is shared
+  out by height down its bones, and each leg's bones own the leg.
+- `Run` (16 frames at 30 fps) places the feet by IK on a stance and swing path and bakes them, so a
+  foot stays put while it is on the ground. It covers 0.65 model units per cycle.
+- `Scoop` is two scoops of 24 frames, matching `BeastCharge`'s 0.8 s stomp. The head dips, then
+  swings the tusks up and to one side; the blow lands at frames 6 and 30.
+- `Rage` (36 frames) is a head shake with the trunk up and two stamps. `Death` (54 frames) buckles
+  the front legs and rolls the mammoth onto its side.
+
+The Meshy model is not in git for now, so neither is the built FBX.
 
 ## How the throw is made
 

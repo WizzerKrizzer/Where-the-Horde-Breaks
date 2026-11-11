@@ -11,7 +11,7 @@ namespace TowerDefense.Tests
     /// Throwaway style test for the recommended direction: flat-shaded low-poly units with
     /// vertex colours only, hard drop shadows, a stepped walk cycle, one bold ground colour and
     /// a prehistoric tower and terrain. Renders close-ups, stills at 20 / 60 / 150 / 360 m and
-    /// two short frame sequences. Writes PNGs to Logs/StyleLowPoly.
+    /// two short frame sequences. Writes PNGs to Logs/Captures/StyleLowPoly.
     /// </summary>
     public sealed class StyleLowPolyTests
     {
@@ -23,7 +23,7 @@ namespace TowerDefense.Tests
         private const float RoadWavelength = 80f;
         private const float HordeHalfWidth = 12f;
         private const float CycleRate = 1.9f;
-        private const string Output = "Logs/StyleLowPoly";
+        private const string Output = "Logs/Captures/StyleLowPoly";
         internal static readonly Color Ground = new Color(0.40f, 0.29f, 0.22f);
         internal static readonly Vector3 Target = new Vector3(0f, 0f, 9f);
 
@@ -291,7 +291,7 @@ namespace TowerDefense.Tests
         {
             camera.Render();
             RenderTexture.active = target;
-            texture.ReadPixels(new Rect(0, 0, Width, Height), 0, 0);
+            texture.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0);
             texture.Apply();
             RenderTexture.active = null;
             File.WriteAllBytes(path, texture.EncodeToPNG());

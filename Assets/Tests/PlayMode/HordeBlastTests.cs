@@ -17,7 +17,7 @@ namespace TowerDefense.Tests
     /// </summary>
     public sealed class HordeBlastTests
     {
-        private const string Output = "Logs/HordeBlast";
+        private const string Output = "Logs/Captures/HordeBlast";
         // The barrier stands across the road below the top-left bend; the blast goes off in the
         // queue behind it.
         private static readonly Vector3 BarrierPosition = new(-13.2f, 0f, -4f);
@@ -84,7 +84,7 @@ namespace TowerDefense.Tests
             Assert.That(settled, Is.LessThan(before + 2f), "The crowd was still flying apart after the landing.");
         }
 
-        [UnityTest, Explicit("Records blasts in a jammed road to Logs/HordeBlast.")]
+        [UnityTest, Explicit("Records blasts in a jammed road to Logs/Captures/HordeBlast.")]
         public IEnumerator RecordBlastsInAJammedRoad()
         {
             RequireComputeShaders();

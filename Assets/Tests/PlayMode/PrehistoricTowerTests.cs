@@ -18,7 +18,7 @@ namespace TowerDefense.Tests
     /// </summary>
     public sealed class PrehistoricTowerTests
     {
-        private const string Output = "Logs/PrehistoricTowers";
+        private const string Output = "Logs/Captures/PrehistoricTowers";
         private readonly List<Object> cleanup = new();
 
         [UnityTearDown]
@@ -129,14 +129,14 @@ namespace TowerDefense.Tests
             Assert.That(overlapFrames, Is.LessThanOrEqualTo(outFrames / 10), "Goblins walk through the mammoth.");
         }
 
-        [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/PrehistoricTowers/normal.")]
+        [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/Captures/PrehistoricTowers/normal.")]
         public IEnumerator RecordPrehistoricTowers()
         {
             return Record("normal", 1, 1f);
         }
 
         // Ten times the Level 1 horde, and the mammoth charging twice as often (user, 2026-11-07).
-        [UnityTest, Explicit("Records the prehistoric towers against a ten times larger horde to Logs/PrehistoricTowers/dense.")]
+        [UnityTest, Explicit("Records the prehistoric towers against a ten times larger horde to Logs/Captures/PrehistoricTowers/dense.")]
         public IEnumerator RecordPrehistoricTowersDenseHorde()
         {
             return Record("dense", 10, 2f);

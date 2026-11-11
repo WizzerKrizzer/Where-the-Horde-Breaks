@@ -44,7 +44,7 @@ was read back, even though a body had moved into it since the query was issued.
 The targeting cache also rounded positions to quarter metres, which is acceptable
 for combat selection but not for a body-clearance decision. The recorded pair was
 at the entrance, 39.9% interpenetrating, and is retained in
-`Logs/CrowdEnvelope/spawn-overlap-run` as rejected evidence.
+`Logs/Reports/CrowdEnvelope/spawn-overlap-run` as rejected evidence.
 
 Spawn clearance now uses an exact query key, records its submission frame and
 the cumulative bounded predictive travel, and includes one such travel bound in
@@ -66,7 +66,7 @@ in the same render frame.
 
 The envelope-only real-wave run stopped with **2,508** bodies still alive and
 zero reported overlaps. It is rejected, retained in
-`Logs/CrowdEnvelope/stalled-run`, and is not used as successful acceptance.
+`Logs/Reports/CrowdEnvelope/stalled-run`, and is not used as successful acceptance.
 
 The old reservation step accepted only a fraction of a proposed movement ray.
 When its lateral component encountered a neighbour, it could cancel an available
@@ -105,7 +105,7 @@ is erroneous or that all ordering effects are eliminated.
 With the corrected solver, the ordinary and reversed release audit starts
 478/478 and 479/479 surviving bodies immediately, respectively, and sustains
 3.25 and 3.22 m/s over the final second, with zero pairs. Full per-tick traces and
-both control runs are retained in `Logs/CrowdEnvelope/final/order-*`.
+both control runs are retained in `Logs/Reports/CrowdEnvelope/final/order-*`.
 
 ## Animation and presentation
 
@@ -170,4 +170,4 @@ Completed GPU timestamp scope (simulation plus explicit camera render) measured
 observation and capture stalls measured 4.273 ms mean and 14.570 ms p95; the tail
 measured 4.135 ms mean and 11.382 ms p95. The unfiltered distribution records the
 expected capture/checkpoint outliers separately. Raw timing, state snapshots and
-close/overview collision-outline captures are in `Logs/CrowdEnvelope/MergeValidation`.
+close/overview collision-outline captures are in `Logs/Reports/CrowdEnvelope/MergeValidation`.

@@ -14,12 +14,12 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Balance runs: sets of prehistoric towers against the Level 1 wave (170 Goblin Runners and 45
     /// Orc Brutes, 10 lives) and a ten times larger one, on the GPU horde, sped up. Each run reports
-    /// kills, escapes and lives lost to Logs/Balance/report.txt. The active weapon is not used, and
+    /// kills, escapes and lives lost to Logs/Reports/Balance/report.txt. The active weapon is not used, and
     /// the per-type tower limits are lifted so larger sets can be measured.
     /// </summary>
     public sealed class BalanceTests
     {
-        private const string Output = "Logs/Balance";
+        private const string Output = "Logs/Reports/Balance";
         private const float Speed = 4f;
         private const float GameSecondsLimit = 180f;
 
@@ -64,7 +64,7 @@ namespace TowerDefense.Tests
             yield return Clean();
         }
 
-        [UnityTest, Timeout(1800000), Explicit("Plays tower sets against the Level 1 wave and writes Logs/Balance/report.txt.")]
+        [UnityTest, Timeout(1800000), Explicit("Plays tower sets against the Level 1 wave and writes Logs/Reports/Balance/report.txt.")]
         public IEnumerator PlayTowerSetsAgainstTheLevelOneWave()
         {
             RequireComputeShaders();

@@ -11,11 +11,11 @@ namespace TowerDefense.Tests
     /// <summary>
     /// Throwaway tower detail test: four prehistoric tower designs under 10K triangles each, in
     /// the low-poly style of StyleLowPolyTests. Renders a line-up at 14 m, a turntable per tower
-    /// and each tower placed in the level at 20 and 60 m. Writes PNGs to Logs/StyleTowers.
+    /// and each tower placed in the level at 20 and 60 m. Writes PNGs to Logs/Captures/StyleTowers.
     /// </summary>
     public sealed class StyleTowerTests
     {
-        private const string Output = "Logs/StyleTowers";
+        private const string Output = "Logs/Captures/StyleTowers";
         private const int TriangleLimit = 10000;
         private const int TurntableFrames = 48;
         private const string MeshyTipi = "Assets/Tests/PlayMode/StyleAssets/meshy-tipi.txt";

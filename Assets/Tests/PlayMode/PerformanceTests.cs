@@ -16,12 +16,12 @@ namespace TowerDefense.Tests
     /// Measures frame times in the real game (the Main scene, Level 2, its full horde) with the
     /// game camera drawing into a 1920x1080 target every frame: the horde walking, then with the
     /// corpse and stun-star layers switched off (their cost), then under a rock with every special
-    /// thrown each second (effects, corpses, stars). Writes Logs/Performance/report.txt. The
+    /// thrown each second (effects, corpses, stars). Writes Logs/Reports/Performance/report.txt. The
     /// player's profile is copied first and put back afterwards.
     /// </summary>
     public sealed class PerformanceTests
     {
-        private const string Output = "Logs/Performance";
+        private const string Output = "Logs/Reports/Performance";
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
         private string profilePath;
         private byte[] profileBackup;
@@ -60,7 +60,7 @@ namespace TowerDefense.Tests
             }
         }
 
-        [UnityTest, Explicit("Measures frame times on Level 2 and writes Logs/Performance/report.txt.")]
+        [UnityTest, Explicit("Measures frame times on Level 2 and writes Logs/Reports/Performance/report.txt.")]
         public IEnumerator Level2_FrameTimes()
         {
             PrehistoricTowerTests.RequireComputeShaders();

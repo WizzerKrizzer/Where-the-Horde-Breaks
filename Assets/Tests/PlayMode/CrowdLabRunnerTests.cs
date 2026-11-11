@@ -272,7 +272,7 @@ namespace TowerDefense.Tests
                     if (pixels[i].r > 30 || pixels[i].g > 30 || pixels[i].b > 35) visiblePixels++;
                 }
 
-                var reportDirectory = Path.Combine("Logs", "CrowdRebuild");
+                var reportDirectory = Path.Combine("Logs", "Reports", "CrowdRebuild");
                 Directory.CreateDirectory(reportDirectory);
                 File.WriteAllBytes(Path.Combine(reportDirectory, "CrowdLab-preview-smoke.png"),
                     capture.EncodeToPNG());
