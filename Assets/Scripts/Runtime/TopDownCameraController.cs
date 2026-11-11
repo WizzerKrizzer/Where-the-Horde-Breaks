@@ -114,6 +114,10 @@ namespace TowerDefense.Runtime
             }
 
             ApplyImpactFeedback();
+            // Taken back off with the impact shake at the start of the next frame.
+            var tremor = GroundTremor.Offset(controlledCamera.transform);
+            presentationOffset += tremor;
+            controlledCamera.transform.position += tremor;
         }
 
         public void PlayMeteorImpact(Vector3 worldPosition, float impactRadius)

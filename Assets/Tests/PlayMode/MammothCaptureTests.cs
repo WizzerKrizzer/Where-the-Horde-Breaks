@@ -28,13 +28,13 @@ namespace TowerDefense.Tests
             var unitShader = Shader.Find("TowerDefense/StyleLowPoly");
             var groundShader = Shader.Find("TowerDefense/StyleGround");
             Assert.That(skinnedShader, Is.Not.Null);
-            var prefab = Resources.Load<GameObject>("mammoth");
+            var prefab = Resources.Load<GameObject>("Meshy/mammoth");
             if (prefab == null) Assert.Ignore("mammoth.fbx is missing (a local Meshy model). Build it with Tools/Animation/build_mammoth.sh.");
             var clips = new Dictionary<string, AnimationClip>();
-            foreach (var clip in Resources.LoadAll<AnimationClip>("mammoth"))
+            foreach (var clip in Resources.LoadAll<AnimationClip>("Meshy/mammoth"))
             {
                 if (clip.name.StartsWith("__preview__")) continue;
-                foreach (var name in new[] { "Run", "Scoop", "Rage", "Death" })
+                foreach (var name in new[] { "Run", "Scoop", "Rage", "DeathL" })
                 {
                     if (clip.name.EndsWith(name)) clips[name] = clip;
                 }
@@ -95,7 +95,7 @@ namespace TowerDefense.Tests
             var runSpeed = RunGroundPerCycle * unitsPerModel / clips["Run"].length;
             File.WriteAllText(Directory.CreateDirectory(Output).FullName + "/report.txt",
                 $"height {maxY - minY:F3} -> scale {fit:F3}, facing offset {facingOffset:F0}, run {clips["Run"].length:F2} s at {runSpeed:F2} m/s, " +
-                $"scoop {clips["Scoop"].length:F2} s, rage {clips["Rage"].length:F2} s, death {clips["Death"].length:F2} s\n");
+                $"scoop {clips["Scoop"].length:F2} s, rage {clips["Rage"].length:F2} s, death {clips["DeathL"].length:F2} s\n");
 
             foreach (var other in Camera.allCameras) other.enabled = false;
             foreach (var renderer in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None)) renderer.enabled = false;
@@ -120,7 +120,7 @@ namespace TowerDefense.Tests
             var staticMaterial = new Material(unitShader) { enableInstancing = true };
             staticMaterial.SetFloat("_Animate", 0f);
             var bodyMaterial = new Material(skinnedShader);
-            bodyMaterial.SetTexture("_MainTex", Resources.Load<Texture2D>("mammoth-tex"));
+            bodyMaterial.SetTexture("_MainTex", Resources.Load<Texture2D>("Meshy/mammoth-tex"));
             bodyMaterial.SetFloat("_ShadowPlane", 0f);
 
             void DrawMammoth(AnimationClip clip, float time, Vector3 position, float yaw)
@@ -136,7 +136,7 @@ namespace TowerDefense.Tests
             // Runs past, stops, two scoops, a rage, and it dies.
             var sequence = new List<(string clip, float seconds)>
             {
-                ("Run", 1.4f), ("Scoop", clips["Scoop"].length * 2f), ("Rage", clips["Rage"].length), ("Death", clips["Death"].length + 0.6f)
+                ("Run", 1.4f), ("Scoop", clips["Scoop"].length * 2f), ("Rage", clips["Rage"].length), ("DeathL", clips["DeathL"].length + 0.6f)
             };
             // The same run from the side, low, and from high above at a slant (user, 2026-11-10).
             foreach (var (view, pitch, yawView, size) in new[] { ("side", 3f, 0f, 3.4f), ("high", 58f, -25f, 3.6f) })
@@ -157,7 +157,7 @@ namespace TowerDefense.Tests
                         Shader.SetGlobalFloat("_StyleTime", frame / Fps);
                         Graphics.DrawMesh(groundMesh, Matrix4x4.identity, groundMaterial, 0);
                         var clip = clips[name];
-                        var time = name == "Death" ? Mathf.Min(t, clip.length - 0.001f) : Mathf.Repeat(t, clip.length);
+                        var time = name == "DeathL" ? Mathf.Min(t, clip.length - 0.001f) : Mathf.Repeat(t, clip.length);
                         var position = name == "Run" ? start + Vector3.right * runSpeed * t : start + Vector3.right * runSpeed * 1.4f;
                         DrawMammoth(clip, time, position, 90f);
                         yield return StyleLowPolyTests.Capture(camera, target, texture, $"{folder}/frame_{frame++:D3}.png");

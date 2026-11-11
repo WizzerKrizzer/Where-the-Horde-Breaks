@@ -98,7 +98,9 @@ namespace TowerDefense.Tests
                 }
 
                 fought |= charge.IsFighting;
-                if (charge.IsOut)
+                // Alive only: with its model the dead mammoth lies a while before it sinks, and the
+                // horde walks over the body (2026-11-11).
+                if (charge.IsOut && !charge.IsFalling)
                 {
                     outFrames++;
                     if (AgentsWithin(world, charge.BeastPosition, 0.7f) > 0)
@@ -127,6 +129,106 @@ namespace TowerDefense.Tests
             Assert.That(thrown, Is.GreaterThan(0), "The charge threw no goblin into the air.");
             Debug.Log($"Mammoth: {overlapFrames} of {outFrames} frames out of the pen had a goblin inside its body.");
             Assert.That(overlapFrames, Is.LessThanOrEqualTo(outFrames / 10), "Goblins walk through the mammoth.");
+        }
+
+        // Ready, with no goblins near, it goes out onto the road and waits there; it charges once they
+        // come (user, 2026-11-11).
+        [UnityTest]
+        public IEnumerator Mammoth_WaitsOnTheRoadUntilGoblinsCome()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld();
+            Assert.That(world.Towers.TryPlace(world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
+            var charge = world.Towers.Towers[0].GetComponent<BeastCharge>();
+            var deadline = Time.realtimeSinceStartup + 15f;
+            while (!charge.IsWaiting && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(charge.IsWaiting, Is.True, "The mammoth did not go out to wait on the road.");
+            Assert.That(world.Route.IsInsideCorridor(charge.BeastPosition, 0.5f), Is.True, "The mammoth waits off the road.");
+            var waitingAt = charge.BeastPosition;
+            yield return new WaitForSeconds(2f);
+            Assert.That(charge.IsWaiting, Is.True, "The mammoth did not keep waiting with no goblins near.");
+            Assert.That(Vector3.Distance(charge.BeastPosition, waitingAt), Is.LessThan(0.05f), "The waiting mammoth wandered.");
+
+            world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
+            deadline = Time.realtimeSinceStartup + 40f;
+            while (!charge.IsCharging && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(charge.IsCharging, Is.True, "The waiting mammoth never charged the goblins.");
+        }
+
+        // As the rage comes over it, it roars 1.8 s and takes no damage meanwhile, but still holds the
+        // horde off its body (user, 2026-11-11).
+        [UnityTest]
+        public IEnumerator Mammoth_TakesNoDamageWhileItRoars()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld();
+            // Raging from full health: it roars as soon as it stops to fight.
+            world.Mammoth.rageThreshold = 1f;
+            Assert.That(world.Towers.TryPlace(world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
+            var charge = world.Towers.Towers[0].GetComponent<BeastCharge>();
+            world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
+
+            var deadline = Time.realtimeSinceStartup + 60f;
+            while (!charge.IsRoaring && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(charge.IsRoaring, Is.True, "The mammoth never roared.");
+            var roarStart = Time.time;
+            var frames = 0;
+            var overlapFrames = 0;
+            var healthAtRoar = -1f;
+            var lowestDuringRoar = float.MaxValue;
+            while (charge.IsRoaring && Time.realtimeSinceStartup < deadline)
+            {
+                // A few frames' grace for damage already on its way back from the GPU.
+                if (Time.time - roarStart > 0.15f)
+                {
+                    if (healthAtRoar < 0f)
+                    {
+                        healthAtRoar = charge.CurrentHealth;
+                    }
+
+                    lowestDuringRoar = Mathf.Min(lowestDuringRoar, charge.CurrentHealth);
+                    frames++;
+                    if (AgentsWithin(world, charge.BeastPosition, 0.7f) > 0)
+                    {
+                        overlapFrames++;
+                    }
+                }
+
+                yield return null;
+            }
+
+            var roared = Time.time - roarStart;
+            // After the roar the horde hurts it again: the goblins were at it all along.
+            // (Its health also drains as it tires; that part is taken out.)
+            var tiredness = typeof(BeastCharge).GetField("tiredness", BindingFlags.Instance | BindingFlags.NonPublic);
+            var healthAfterRoar = charge.CurrentHealth;
+            var tiredAfterRoar = (float)tiredness.GetValue(charge);
+            var after = Time.time;
+            var hordeDamage = 0f;
+            while (charge.IsFighting && Time.time - after < 3f)
+            {
+                hordeDamage = healthAfterRoar - charge.CurrentHealth - ((float)tiredness.GetValue(charge) - tiredAfterRoar);
+                yield return null;
+            }
+
+            Debug.Log($"Mammoth roar: {roared:F2} s, health {healthAtRoar:F1} -> {lowestDuringRoar:F1} during it; " +
+                      $"the horde did {hordeDamage:F1} damage in the {Time.time - after:F1} s after; goblin inside its body in {overlapFrames} of {frames} frames.");
+            Assert.That(roared, Is.EqualTo(1.8f).Within(0.15f), "The roar is not 1.8 s long.");
+            Assert.That(lowestDuringRoar, Is.EqualTo(healthAtRoar).Within(0.01f), "The mammoth took damage while it roared.");
+            Assert.That(hordeDamage, Is.GreaterThan(0f), "The horde did not hurt the mammoth after its roar.");
+            Assert.That(overlapFrames, Is.LessThanOrEqualTo(frames / 10), "Goblins walk through the roaring mammoth.");
         }
 
         [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/Captures/PrehistoricTowers/normal.")]

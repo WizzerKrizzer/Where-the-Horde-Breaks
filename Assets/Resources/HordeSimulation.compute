@@ -837,6 +837,8 @@ void ApplyDynamicTargetCommands(uint3 id : SV_DispatchThreadID)
         state.segmentHalfLength = command.segmentHalfLength;
         state.halfDepth = command.halfDepth;
         state.blockCapacity = command.blockCapacity;
+        // Armor can change while it stands (a roaring mammoth takes no damage).
+        state.armor = command.armor;
     }
     else if (state.generation == command.generation && command.operation == 3u)
     {

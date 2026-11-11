@@ -106,6 +106,8 @@ namespace TowerDefense.Data
         public float alliedUnitDamage = 3f;
         public float alliedUnitDefense;
         public float alliedUnitAttackInterval = 0.8f;
+        // How many goblins one melee blow hurts: the one struck and the nearest beside it (1 = only the one struck).
+        public int alliedUnitSplashTargets = 1;
         public float alliedUnitRange = 1.4f;
         public float alliedUnitMoveSpeed = 3.2f;
         public float alliedUnitAggroRange = 5.5f;

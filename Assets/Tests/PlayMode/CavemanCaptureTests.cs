@@ -139,7 +139,7 @@ namespace TowerDefense.Tests
                 return material;
             }
 
-            var bodyMaterial = Textured("caveman-tex");
+            var bodyMaterial = Textured("Mixamo/caveman-tex");
             var caveMaterial = Textured("cave-tex");
             var boneMaterial = new Material(skinnedShader);
             boneMaterial.SetFloat("_VertexColor", 1f);

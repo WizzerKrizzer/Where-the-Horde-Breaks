@@ -12,7 +12,11 @@ Clips (30 fps):
 - Scoop: two scoops, 24 frames each (StompSeconds 0.8 in BeastCharge): dip the head, then swing
   the tusks up and to one side; the blow lands at frame 6 (ScoopHitSeconds 0.2). Left, then right.
 - Rage: 36 frames: shakes its head, trunk up, stamps its front feet.
-- Death: 54 frames, not looping: the front legs buckle and it rolls onto its side.
+- Idle: 150 frames, looping (user, 2026-11-11): waiting in its pen it breathes, lowers its head
+  to graze, swings its trunk to the ground and back, lifts its head again and looks about.
+- DeathL, DeathR: 96 frames, not looping (user, 2026-11-11): it rears up on its hind legs, paddles
+  its front legs, throws its head and trunk about, then comes down and crashes over onto its left
+  (DeathL) or right side (DeathR), a little diagonally. The game turns it a little at random too.
 """
 import bpy, bmesh, sys, os, json, math
 import numpy as np
@@ -392,38 +396,133 @@ def rage_frames():
     return frames
 
 
+# ---------------------------------------------------------------- Idle
+IDLE_N = 150
+
+
+def idle_frames():
+    frames = []
+    for f in range(IDLE_N):
+        t = f / IDLE_N
+        breath = math.sin(2 * math.pi * 3 * t)  # three slow breaths a loop
+        # Head down to graze from 0.15 to 0.6 of the loop, up and looking about after.
+        graze = smooth((t - 0.1) / 0.12) * (1 - smooth((t - 0.58) / 0.12))
+        look = math.sin(2 * math.pi * (t - 0.7) / 0.3) * smooth((t - 0.68) / 0.06) * (1 - smooth((t - 0.94) / 0.06))
+        # The trunk sweeps the ground while it grazes, and swings idly otherwise.
+        sweep = math.sin(2 * math.pi * 4 * t) * graze
+        idle_swing = math.sin(2 * math.pi * 2 * t) * (1 - graze)
+        pose = {
+            "RootLoc": root_loc((0.0, 0.0, 0.002 * breath - 0.006 * graze)),
+            "Root": world_rot("Root", (X, 4.0 * graze)),
+            "Chest": world_rot("Chest", (X, 1.0 * breath + 4.0 * graze)),
+            "Neck": world_rot("Neck", (X, 24 * graze), (Z, 8 * look)),
+            "Head": world_rot("Head", (X, 26 * graze - 3 * (1 - graze) * breath), (Z, 10 * look + 4 * sweep)),
+            "Trunk1": world_rot("Trunk1", (X, 6 * graze), (Y, 8 * sweep + 6 * idle_swing)),
+            "Trunk2": world_rot("Trunk2", (X, 10 * graze), (Y, 12 * sweep + 9 * idle_swing)),
+            "Trunk3": world_rot("Trunk3", (X, 14 * graze - 10 * (1 - graze) * max(0.0, idle_swing)), (Y, 16 * sweep + 12 * idle_swing)),
+            "Tail1": world_rot("Tail1", (X, -15.0), (Y, 18 * math.sin(2 * math.pi * 5 * t))),
+            "Tail2": world_rot("Tail2", (X, -8.0), (Y, 22 * math.sin(2 * math.pi * 5 * t - 0.8))),
+        }
+        frames.append((pose, {}))
+    return frames
+
+
 # ---------------------------------------------------------------- Death (FK, the IK is off)
-DEATH_N = 54
+DEATH_N = 96
+DEATH_IMPACT = 70  # the frame it hits the ground (the game finds it again from the clip)
+HIND_PIVOT = Vector((0.0, 0.29, GROUND))  # it rears up about its hind feet
+SIDE_EDGE = 0.2  # half its width: it tips over its own side
 
 
-def death_frames():
+def pivoted(rotation, pivot, then=None, then_pivot=None):
+    """Root location and rotation that turn the body by `rotation` about `pivot` (armature space),
+    then by `then` about `then_pivot`: the Root bone itself turns about its head."""
+    head = arm_data.bones["Root"].head_local
+    q = rotation if then is None else then @ rotation
+    # p -> P2 + R2 (P1 + R1 (p - P1) - P2), written as head + q (p - head) + t.
+    if then is None:
+        t = pivot - rotation @ pivot - head + q @ head
+    else:
+        t = then_pivot - then @ then_pivot + then @ pivot - q @ pivot - head + q @ head
+    return q, root_loc(t)
+
+
+def death_frames(side):
+    """side +1: it falls onto its left (+X), -1: onto its right."""
     frames = []
     for f in range(DEATH_N):
-        kneel = smooth(f / 16)  # the front legs buckle
-        roll = smooth((f - 12) / 28)  # it rolls onto its left side
-        settle = smooth((f - 40) / 14)
+        rear = smooth(f / 22) * (1 - smooth((f - 54) / 16))
+        flail = smooth((f - 12) / 10) * (1 - smooth((f - 52) / 10))
+        fall = smooth((f - 54) / (DEATH_IMPACT - 54))
+        settle = smooth((f - DEATH_IMPACT) / (DEATH_N - DEATH_IMPACT - 8))
+        bounce = math.sin(math.pi * min(1.0, max(0.0, (f - DEATH_IMPACT) / 8))) * (1 - settle)
+        w = 2 * math.pi * f / 10  # the front legs paddle three times a second
+        h = 2 * math.pi * f / 16  # the head throws about twice a second
+        pitch = Quaternion(X, math.radians(-38 * rear + 2 * bounce))
+        roll = Quaternion(Z, math.radians(side * 22 * fall)) @ Quaternion(Y, math.radians(side * (88 * fall - 3 * bounce)))
+        edge = Vector((side * SIDE_EDGE, 0.0, GROUND))
+        q, loc = pivoted(pitch, HIND_PIVOT, roll, edge)
+        world_q = q
         pose = {
-            "RootLoc": root_loc((0.24 * roll, 0.0, -0.06 * kneel + 0.17 * roll - 0.015 * settle)),
-            "Root": world_rot("Root", (X, 9 * kneel * (1 - roll)), (Y, 84 * roll + 4 * settle)),
-            "Chest": world_rot("Chest", (X, 6 * kneel)),
-            "Neck": world_rot("Neck", (X, 12 * kneel + 6 * roll), (Z, -8 * roll)),
-            "Head": world_rot("Head", (X, 14 * kneel + 10 * roll), (Y, 10 * roll)),
-            "Trunk1": world_rot("Trunk1", (X, -8 * roll), (Y, 25 * roll)),
-            "Trunk2": world_rot("Trunk2", (X, -10 * roll), (Y, 25 * roll)),
-            "Trunk3": world_rot("Trunk3", (X, -10 * roll), (Y, 20 * roll)),
-            "Tail1": world_rot("Tail1", (X, -5.0)),
+            "RootLoc": loc,
+            "Root": REST["Root"].inverted() @ world_q @ REST["Root"],
+            "Chest": world_rot("Chest", (X, -6 * rear + 4 * fall)),
+            "Neck": world_rot("Neck", (X, -16 * rear + 10 * fall), (Z, 14 * flail * math.sin(h))),
+            "Head": world_rot("Head", (X, -14 * rear + 12 * fall), (Z, 20 * flail * math.sin(h - 0.6)),
+                              (Y, 10 * flail * math.sin(h + 0.9) + side * 12 * fall)),
+            # The trunk goes up and lashes about, then falls limp.
+            "Trunk1": world_rot("Trunk1", (X, -30 * rear + 6 * fall), (Y, 24 * flail * math.sin(h - 1.2) + side * 20 * fall)),
+            "Trunk2": world_rot("Trunk2", (X, -34 * rear + 4 * fall), (Y, 28 * flail * math.sin(h - 1.8) + side * 20 * fall)),
+            "Trunk3": world_rot("Trunk3", (X, -38 * rear), (Y, 32 * flail * math.sin(h - 2.4) + side * 15 * fall)),
+            "Tail1": world_rot("Tail1", (X, -30 * rear - 5 * fall)),
+            "Tail2": world_rot("Tail2", (X, -15 * rear)),
         }
         for leg in LEGS:
             front = leg.startswith("Front")
             left = leg.endswith("L")
-            fold = kneel if front else smooth((f - 6) / 20)
-            # Legs fold (upper forward, lower back), then go limp and splay a little as it lies.
-            pose[leg + "Upper"] = world_rot(leg + "Upper", (X, (-35 if front else -20) * fold * (1 - 0.5 * roll)),
-                                            (Y, (6 if left else -6) * roll))
-            pose[leg + "Lower"] = world_rot(leg + "Lower", (X, (70 if front else 45) * fold * (1 - 0.6 * roll)))
-            pose[leg + "Foot"] = world_rot(leg + "Foot", (X, 20 * fold))
+            if front:
+                # Lifted and paddling back and forth, the two out of step; limp once down.
+                phase = 0.0 if left else math.pi
+                swing = math.sin(w + phase)
+                upper = -40 * rear - 30 * flail * swing
+                lower = 55 * rear + 35 * flail * (0.5 + 0.5 * math.sin(w + phase - 1.2))
+            else:
+                # Hind legs crouch a little under the weight.
+                upper = -10 * rear
+                lower = 18 * rear
+            limp = fall
+            pose[leg + "Upper"] = world_rot(leg + "Upper", (X, upper * (1 - limp) + (-15 if front else -8) * limp),
+                                            (Y, (8 if left else -8) * limp))
+            pose[leg + "Lower"] = world_rot(leg + "Lower", (X, lower * (1 - limp) + 20 * limp))
+            pose[leg + "Foot"] = world_rot(leg + "Foot", (X, 15 * rear * (1 - limp) + 10 * limp))
         frames.append((pose, {}))
     return frames
+
+
+def render_preview(directory, clip_names):
+    """Side and three-quarter stills of each clip every 6 frames, to check a clip by eye."""
+    os.makedirs(directory, exist_ok=True)
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.render.resolution_x, scene.render.resolution_y = 480, 360
+    cam_data = bpy.data.cameras.new("PreviewCam")
+    cam_data.type = "ORTHO"
+    cam_data.ortho_scale = 1.6
+    cam = bpy.data.objects.new("PreviewCam", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    for name in clip_names:
+        arm.animation_data.action = bpy.data.actions[name]
+        arm.animation_data.action_slot = bpy.data.actions[name].slots[0]
+        n = int(bpy.data.actions[name].frame_range[1]) + 1
+        for view, location in (("side", (2.0, 0.0, 0.2)), ("front", (1.3, -1.6, 0.6))):
+            cam.location = location
+            direction = Vector((0.0, 0.05, -0.05)) - Vector(location)
+            cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+            for f in range(0, n, 6):
+                scene.frame_set(f)
+                scene.render.filepath = os.path.join(directory, f"{name}_{view}_{f:03d}.png")
+                bpy.ops.render.render(write_still=True)
+    arm.animation_data.action = None
 
 
 def write_action(name, frames):
@@ -466,7 +565,9 @@ clips = {
     "Run": loop(bake(run_frames())),
     "Scoop": loop(bake(scoop_frames())),
     "Rage": loop(bake(rage_frames())),
-    "Death": bake(death_frames(), ik=False),
+    "Idle": loop(bake(idle_frames())),
+    "DeathL": bake(death_frames(1), ik=False),
+    "DeathR": bake(death_frames(-1), ik=False),
 }
 
 # Remove the IK setup before writing the baked clips.
@@ -481,7 +582,10 @@ for name, frames in clips.items():
     write_action(name, frames)
     report[name + "_frames"] = len(frames)
 arm.animation_data.action = None
+if os.environ.get("MAMMOTH_PREVIEW"):
+    render_preview(os.environ["MAMMOTH_PREVIEW"], os.environ.get("MAMMOTH_PREVIEW_CLIPS", "DeathL,DeathR").split(","))
 
+report["death_impact_frame"] = DEATH_IMPACT
 report["run_cycle_seconds"] = RUN_N / FPS
 report["run_ground_per_cycle"] = STRIDE / DUTY
 report["run_ground_speed"] = STRIDE / DUTY / (RUN_N / FPS)

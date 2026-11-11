@@ -27,6 +27,7 @@ Shader "TowerDefense/HordeStatusMark"
             #pragma vertex Vert
             #pragma fragment Frag
             #include "UnityCG.cginc"
+            #include "HordeMounds.cginc"
 
             struct AgentState
             {
@@ -128,7 +129,7 @@ Shader "TowerDefense/HordeStatusMark"
                 float size = state.scale * _VisualScaleMultiplier;
                 float2 rendered = lerp(state.stepStartPosition, state.position, _PresentationAlpha);
                 float3 world = turned * (_RingRadius * size) +
-                    float3(rendered.x, state.airHeight + (_HeadHeight + 0.35) * size, rendered.y);
+                    float3(rendered.x, state.airHeight + HordeMoundLift(rendered) + (_HeadHeight + 0.35) * size, rendered.y);
                 // The ring closes in over the last quarter second as the stun wears off.
                 float remaining = saturate(state.slowTimer / 0.25);
                 world = lerp(float3(rendered.x, world.y, rendered.y), world, remaining);

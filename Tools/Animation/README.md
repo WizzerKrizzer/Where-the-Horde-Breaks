@@ -72,21 +72,36 @@ The Kevin Iglesias files are under the Unity Asset Store EULA: they may be used 
 not redistributed, so `Art/Characters/SpearHunter/KevinIglesias/` is ignored by git and the built
 FBX is in a `Mixamo` folder.
 
-## The caveman
+## The cavemen and their chief
 
-`build_caveman.sh` runs `meshy/build_caveman.py` and installs `Resources/Mixamo/caveman.fbx`, its
-texture and the Meshy cave. The test `CavemanCaptureTests.RecordCaveman` renders them to
-`Logs/Captures/Caveman`.
+`build_caveman.sh` runs `meshy/build_mixamo_unit.py` twice and installs the game's models,
+`Assets/Resources/Mixamo/caveman.fbx` and `caveman-chief.fbx` with their textures (not in git), and
+the Meshy cave for `CavemanCaptureTests`. In the game, `CavemanVisual` replaces a caveman's block
+with the model; without the files the block stays. `SpecialEffectsCaptureTests.RecordCavemenInGame`
+records them in the game at 4, 11 and 40 m.
 
-- The model is the Meshy "Bearclaw Berserker" rigged in Mixamo. The rigged model comes from
-  `Standing Melee Attack Downward` (with skin); `Horizontal` and `Backhand` came without skin for
-  the same character.
-- `Idle` is the spear hunter's Mixamo "Breathing Idle", retargeted by world rotation, because the
-  two characters' rest poses differ.
-- `Fight` loops idle, the downward swing, idle and the sideways swing, joined by crossfades. The
-  backhand steps forward about a third of his height, so it is a separate clip.
-- A `RightHandProp` bone sits in the right fist. The big bone he swings is built in the test and
-  held on it, pointing where the fist points in the bind pose.
+- The models are the Meshy "Bearclaw Berserker" (caveman) and "Fanghide Chieftain" (chief), rigged
+  in Mixamo. Each comes from one clip downloaded with skin.
+- Every clip is retargeted by world rotation change, whichever of the two (or the spear hunter) it
+  was downloaded for. The hips stay over the spot; walks report their ground speed, and the game
+  plays them at the rate that matches how fast the unit moves.
+- Weight that hides, the bear pelt and the chief's cloak took from the upper arm or the thigh moves to
+  the shoulder or the hips, so they no longer stretch when a limb swings.
+- Clips: Idle (the spear hunter's breathing), AttackDown, AttackSide, AttackBack, Walk, WalkB,
+  WalkHeavy, Hit, Death; the caveman also has ShieldIdle, ShieldBlock and PowerUp, the chief
+  Battlecry. `Fight` is a loop for the capture test.
+- The props are built in code (`UnitProps`): the big bone, the chief's tusk, the hide shield on the
+  left forearm and, with the torches, a torch lashed to the shield. The flame is
+  `StyleFlame.shader` (`FlameVisual`).
+- In the game a swing is timed so the blow lands when the unit deals its damage; with the torch every
+  other blow is the shield thrust. Hurt, a caveman flinches, or blocks with the shield. The chief roars
+  when a fight starts. A dead caveman plays his death, then sinks away.
+
+## The cave
+
+`install_cave.sh` copies the Meshy "Primal Cave Dwelling" as it comes into `Resources/Meshy/cave.fbx`
+and its texture. `CaveVisual` puts it beside the road in place of the cave tower's greybox, with its
+mouth to the road, and the cavemen come out of its mouth.
 
 ## The mammoth
 

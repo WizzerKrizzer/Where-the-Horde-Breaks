@@ -224,6 +224,67 @@ namespace TowerDefense.Tests
             yield return Record(world, camera, "cave", 30 * 5);
         }
 
+        // User, 2026-11-11: the cavemen's model in the game itself, with all three of the cave's
+        // specials: shields, torches on the shields and the chief with his tusk. The camera starts
+        // close (4 m), then rises to 11 m and 40 m.
+        [UnityTest, Explicit("Records the cavemen's model in the game to Logs/Captures/SpecialEffects/cavemen_game.")]
+        public IEnumerator RecordCavemenInGame()
+        {
+            RequireComputeShaders();
+            if (Resources.Load<GameObject>("Mixamo/caveman") == null)
+            {
+                Assert.Ignore("The cavemen's model is not installed. Build it with Tools/Animation/build_caveman.sh.");
+            }
+
+            var world = CreateWorld(cleanup);
+            var cave = FindTower("cave");
+            cave.barracksCapacity = 4;
+            cave.barracksRespawnSeconds = 1.5f;
+            cave.alliedUnitDamageReduction = 0.25f;
+            cave.chiefAuraBonus = 0.25f;
+            cave.chiefHealthBonus = 1f;
+            cave.torchBurnDamagePerSecond = 1f;
+            cave.torchBurnSeconds = 5f;
+            world.Towers.SetAvailableTowers(new[] { cave });
+            Assert.That(world.Towers.TryPlace(cave, TowerSpot), Is.True);
+            var wave = OnlyEnemy(world, "runner", 400, 40f);
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            var tower = world.Towers.Towers[0];
+            yield return WaitUntil(() => tower.DamageDealt > 0f, 30f);
+            var units = tower.GetComponentsInChildren<AlliedUnitActor>();
+            Assert.That(units.Length, Is.GreaterThan(0), "No cavemen came out.");
+            Assert.That(Object.FindObjectsByType<CavemanVisual>(FindObjectsSortMode.None).Length, Is.GreaterThan(0), "The cavemen have no model.");
+            var middle = Vector3.zero;
+            foreach (var unit in units)
+            {
+                middle += unit.Position / units.Length;
+            }
+
+            middle.y = 0f;
+            var camera = Scene(middle + new Vector3(0f, 4f, -3f), middle);
+            const int framesPerHeight = 30 * 4;
+            yield return Record(world, camera, "cavemen_game", framesPerHeight * 3, frame =>
+            {
+                // Follow the cavemen as they move.
+                var alive = tower.GetComponentsInChildren<AlliedUnitActor>();
+                if (alive.Length > 0)
+                {
+                    var now = Vector3.zero;
+                    foreach (var unit in alive)
+                    {
+                        now += unit.Position / alive.Length;
+                    }
+
+                    now.y = 0f;
+                    middle = Vector3.Lerp(middle, now, 0.1f);
+                }
+
+                var height = frame < framesPerHeight ? 4f : frame < framesPerHeight * 2 ? 11f : 40f;
+                camera.transform.position = middle + new Vector3(0f, height, -height * 0.75f);
+                camera.transform.LookAt(middle);
+            });
+        }
+
         private Camera Scene(Vector3 position, Vector3 lookAt)
         {
             var light = new GameObject("Test Sun").AddComponent<Light>();

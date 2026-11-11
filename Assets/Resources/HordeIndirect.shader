@@ -31,6 +31,7 @@ Shader "TowerDefense/HordeIndirect"
             #pragma fragment Frag
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
+            #include "HordeMounds.cginc"
 
             struct AgentState
             {
@@ -131,6 +132,8 @@ Shader "TowerDefense/HordeIndirect"
                 float3 world = localVertex * (state.scale * _VisualScaleMultiplier * airScale) +
                     float3(renderedPosition.x, 0.0, renderedPosition.y);
                 world.y += state.airHeight;
+                // Climbing over a fallen mammoth.
+                world.y += HordeMoundLift(renderedPosition);
                 world.y += (1.0 - active) * -100000.0;
 
                 output.position = UnityWorldToClipPos(world);

@@ -662,7 +662,8 @@ namespace TowerDefense.Tests
             RequireComputeShaders();
             var world = CreateWorld(cleanup);
             var cave = FindTower("cave");
-            cave.barracksCapacity = 3;
+            // Five cavemen at once: the fifth out is the chief (user, 2026-11-11).
+            cave.barracksCapacity = 5;
             cave.barracksRespawnSeconds = 0.5f;
             cave.alliedUnitDamageReduction = 0.25f;
             cave.chiefAuraBonus = 0.25f;
@@ -680,9 +681,17 @@ namespace TowerDefense.Tests
                 chiefs += unit.IsChief ? 1 : 0;
                 Assert.That(unit.PhysicalResistance, Is.EqualTo(0.25f), "The cavemen carry no shields.");
                 Assert.That(unit.MaximumHealth, Is.EqualTo(unit.IsChief ? cave.alliedUnitHealth * 2f : cave.alliedUnitHealth), "Wrong health.");
+                // Each caveman holds five goblins, the chief ten (user, 2026-11-11).
+                Assert.That(unit.BlockCapacity, Is.EqualTo(unit.IsChief ? 10f : 5f), "Wrong number of goblins held.");
             }
 
-            Assert.That(units.Length, Is.EqualTo(3), "The cavemen did not come out.");
+            // With the cave's model installed it stands in for the greybox (user, 2026-11-11).
+            if (Resources.Load<GameObject>("Meshy/cave") != null)
+            {
+                Assert.That(GameObject.Find("Cave"), Is.Not.Null, "The cave's model is missing.");
+            }
+
+            Assert.That(units.Length, Is.EqualTo(5), "The cavemen did not come out.");
             Assert.That(chiefs, Is.EqualTo(1), "There must be exactly one chief.");
 
             var wave = OnlyEnemy(world, "runner", 60, out var runner);

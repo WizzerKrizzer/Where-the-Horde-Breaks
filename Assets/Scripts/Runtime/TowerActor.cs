@@ -91,6 +91,7 @@ namespace TowerDefense.Runtime
             }
             else if (towerDefinition.behavior == TowerBehavior.Barracks)
             {
+                CreateCave();
                 FillBarracksImmediately();
             }
             else if (towerDefinition.behavior == TowerBehavior.Charge)
@@ -104,8 +105,43 @@ namespace TowerDefense.Runtime
             UpdateAuraVisual();
         }
 
+        // The cavemen's cave model, when installed: it replaces the greybox, its mouth to the road, and
+        // the cavemen come out of its mouth (user, 2026-11-11).
+        private GameObject cave;
+        private Vector3 caveMouth;
+        private Vector3 caveInside;
+        // Cavemen out of this cave so far: with the Chief bought, every fifth is a chief (user, 2026-11-11).
+        private int spawnCount;
+        private const int ChiefEvery = 5;
+
+        private void CreateCave()
+        {
+            if (cave != null || definition.barracksUnitType != AlliedUnitType.Caveman)
+            {
+                return;
+            }
+
+            var outward = Vector3.forward;
+            var route = enemies != null ? enemies.Route : null;
+            if (route != null && route.TotalLength > 0f)
+            {
+                outward = route.GetNearestRoadPoint(transform.position, out _) - transform.position;
+            }
+
+            cave = CaveVisual.TryCreate(transform.parent, transform.position, outward, out caveMouth, out caveInside);
+            if (cave != null && GetComponent<Renderer>() != null)
+            {
+                GetComponent<Renderer>().enabled = false;
+            }
+        }
+
         private void OnDestroy()
         {
+            if (cave != null)
+            {
+                Destroy(cave);
+            }
+
             if (definition != null && definition.behavior == TowerBehavior.Barrier)
             {
                 enemies?.UnregisterCombatTarget(this);
@@ -619,26 +655,33 @@ namespace TowerDefense.Runtime
 
         private void SpawnAlliedUnit(int index)
         {
+            // The first free post: a fallen unit's post goes to the one who replaces him.
+            index = 0;
+            while (alliedUnits.Exists(other => other != null && other.Slot == index))
+            {
+                index++;
+            }
+
             var go = GameObject.CreatePrimitive(definition.barracksUnitType == AlliedUnitType.Paladin ? PrimitiveType.Capsule : PrimitiveType.Cube);
             go.name = $"Allied_{definition.barracksUnitType}";
             go.transform.SetParent(transform, worldPositionStays: true);
             var angle = index * 75f * Mathf.Deg2Rad;
             var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.9f;
+            // From deep inside the cave, when the cave's model stands there: he walks out through its
+            // mouth (user, 2026-11-11).
+            var spawn = cave != null ? caveInside + offset * 0.2f : transform.position + offset;
             var unit = go.AddComponent<AlliedUnitActor>();
-            unit.Initialize(this, definition, enemies, transform.position + offset, index);
-            // With the Chief bought, the first caveman out while no chief lives leads the others.
-            if (definition.chiefAuraBonus > 0f || definition.chiefHealthBonus > 0f)
+            unit.Initialize(this, definition, enemies, spawn, index);
+            if (cave != null)
             {
-                var hasChief = false;
-                foreach (var other in alliedUnits)
-                {
-                    hasChief |= other != null && other.IsAlive && other.IsChief;
-                }
+                unit.ComeOutThrough(caveMouth + offset * 0.3f);
+            }
 
-                if (!hasChief)
-                {
-                    unit.MakeChief();
-                }
+            // With the Chief bought, every fifth caveman out of the cave is a chief (user, 2026-11-11).
+            spawnCount++;
+            if ((definition.chiefAuraBonus > 0f || definition.chiefHealthBonus > 0f) && spawnCount % ChiefEvery == 0)
+            {
+                unit.MakeChief();
             }
 
             alliedUnits.Add(unit);

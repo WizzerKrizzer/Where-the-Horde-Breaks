@@ -24,6 +24,8 @@ namespace TowerDefense.Runtime
         {
             Resting,
             ToRoad,
+            // Out on the road, ready, waiting for goblins to come (user, 2026-11-11).
+            Waiting,
             Charging,
             Fighting,
             Falling
@@ -43,6 +45,9 @@ namespace TowerDefense.Runtime
         // The body as a blocker: a capsule along the beast, 2.8 m long and 1.7 m wide.
         private const float BodyHalfLength = 1.4f;
         private const float BodyHalfWidth = 0.85f;
+        // The model's rump reaches further back than the capsule: it is lengthened backwards by this
+        // much, so goblins do not stand inside its hindquarters (user, 2026-11-11). TEMPORARY.
+        private const float BodyBackExtra = 0.6f;
         // The charge slows down over its last metres instead of stopping dead.
         private const float SlowDownDistance = 4f;
         private const float SlowestChargeFraction = 0.3f;
@@ -52,7 +57,24 @@ namespace TowerDefense.Runtime
         // tusks, hitting the goblins in front of it and tossing them up and away ahead and to the
         // sides. It used to stomp in a circle around itself, which showed no movement at all.
         // The blow lands ScoopHitSeconds into the swing. Sizes TEMPORARY until balancing.
-        private const float StompSeconds = 0.8f;
+        // Half as often as before, and the scoop itself played a little slower, heavier (user,
+        // 2026-11-11). TEMPORARY.
+        // Then 30% slower again, swing and all (user, 2026-11-11).
+        private const float StompSeconds = 2.1f;
+        private const float ScoopPlaySpeed = 0.58f;
+        // Rage of its own (user, 2026-11-11): wounded to 30% it turns red, steams and scoops 20%
+        // faster. The Rage special adds to it: a higher threshold, faster and harder scoops. TEMPORARY.
+        private const float InnateRageThreshold = 0.3f;
+        private const float InnateRageTempo = 0.2f;
+        // As the rage comes over it, it stops and roars before it scoops on (user, 2026-11-11): the
+        // model's 1.2 s Rage clip played 50% longer. It takes no damage while it roars, but still
+        // blocks the horde.
+        public const float RoarStretch = 1.5f;
+        private const float RoarSeconds = 1.2f * RoarStretch;
+        private const float RoarArmor = 1e6f;
+        // Its body crushes the goblins it falls on (user, 2026-11-11): this many times the tower's
+        // damage to each. TEMPORARY.
+        private const float CrushDamageFactor = 2f;
         private const float StompDamageFraction = 0.6f;
         private const int MaxStompedPerStep = 30;
         private const float ScoopReach = 1.8f;
@@ -107,20 +129,34 @@ namespace TowerDefense.Runtime
         private readonly List<EnemyActor> blockers = new();
 
         public bool IsCharging => state == State.Charging;
+        public bool IsWaiting => state == State.Waiting;
         public bool IsFighting => state == State.Fighting;
+        public bool IsFalling => state == State.Falling;
+        public bool IsRoaring => state == State.Fighting && roarTimer > 0f;
+        private float roarTimer;
+        private bool roared;
+        private bool crushed;
+        // How fast it scoops: faster while raging.
+        public float FightTempo => IsRaging ? 1f + InnateRageTempo + definition.rageBonus : 1f;
+        // How fast the scoop plays (the model's clip keeps to it).
+        public float ScoopClipSpeed => FightTempo * ScoopPlaySpeed;
         // Out of the pen: running to the road, charging, fighting or falling.
         public bool IsOut => state != State.Resting;
         public int ChargeCount { get; private set; }
         public int FallCount { get; private set; }
         public int RiderVolleys { get; private set; }
-        // Rage (a special): wounded below the threshold, it scoops faster and harder.
-        public bool IsRaging => state == State.Fighting && definition != null && definition.rageBonus > 0f &&
-                                RemainingHealth <= MaximumHealth * definition.rageThreshold;
+        // Rage: wounded below the threshold, it scoops faster (and harder with the special).
+        public bool IsRaging => state == State.Fighting && definition != null &&
+                                RemainingHealth <= MaximumHealth * Mathf.Max(InnateRageThreshold, definition.rageThreshold);
         // How far along the road the last charge ran before it stopped.
         public float LastRunDistance { get; private set; }
         public Vector3 BeastPosition => beast != null ? beast.position : transform.position;
+        public PathRoute Route => enemies != null ? enemies.Route : null;
+        // Testing only: the recordings give the mammoth this many times its health.
+        internal static float TestHealthMultiplier = 1f;
 
-        public Vector3 Position => BeastPosition;
+        // The middle of the blocking capsule: behind the beast's middle by half the rump's extra length.
+        public Vector3 Position => BeastPosition - CombatAxis * (BodyBackExtra * 0.5f);
         public bool IsAlive => state == State.Fighting && RemainingHealth > 0f;
         public CombatTargetKind TargetKind => CombatTargetKind.AlliedUnit;
         public float CombatRadius => BodyHalfWidth;
@@ -142,16 +178,16 @@ namespace TowerDefense.Runtime
         public float CurrentHealth => RemainingHealth;
         // Its own health plus the armour (a special), which is lost first.
         public float MaximumHealth => definition != null
-            ? Mathf.Max(1f, definition.beastHealth + definition.beastExtraHealth + definition.beastArmor)
+            ? Mathf.Max(1f, (definition.beastHealth + definition.beastExtraHealth) * Mathf.Max(0.01f, TestHealthMultiplier) + definition.beastArmor)
             : 1f;
         private float OwnHealth => Mathf.Max(1f, MaximumHealth - definition.beastArmor);
-        public float Armor => 0f;
+        public float Armor => IsRoaring ? RoarArmor : 0f;
         public float PhysicalResistance => 0f;
         public float FireResistance => 0f;
         public float SlowResistance => 0f;
         public float ThornsDamage => 0f;
         public Vector3 CombatAxis => beast != null ? beast.forward : Vector3.forward;
-        public float CombatHalfLength => BodyHalfLength;
+        public float CombatHalfLength => BodyHalfLength + BodyBackExtra * 0.5f;
         public float CombatHalfDepth => BodyHalfWidth;
         private float RemainingHealth => Mathf.Max(0f, health - tiredness);
 
@@ -165,6 +201,14 @@ namespace TowerDefense.Runtime
             {
                 beast = CreateBeast(transform.parent).transform;
                 CreateHealthBar();
+                // The mammoth's and the pen's models, when installed, replace the greybox. The pen
+                // stands back from the tower's spot with its gate on it, facing the road.
+                visual = MammothVisual.TryCreate(this, beast);
+                pen = MammothVisual.TryCreatePen(transform.parent, restPosition + PenOutward(enemies.Route) * PenGateAhead, PenOutward(enemies.Route));
+                if (pen != null && GetComponent<Renderer>() != null)
+                {
+                    GetComponent<Renderer>().enabled = false;
+                }
             }
 
             reportId = enemies.CreateAreaReport();
@@ -176,6 +220,8 @@ namespace TowerDefense.Runtime
 
         private void OnDestroy()
         {
+            ReleaseCorpse();
+            HordeMounds.Clear(this);
             enemies?.UnregisterCombatTarget(this);
             if (beast != null)
             {
@@ -186,7 +232,28 @@ namespace TowerDefense.Runtime
             {
                 Destroy(healthBar.gameObject);
             }
+
+            if (pen != null)
+            {
+                Destroy(pen);
+            }
         }
+
+        private MammothVisual visual;
+        private GameObject pen;
+        // With the pen's model: its gate this far out from the tower's spot towards the road, and the
+        // waiting mammoth's middle this far behind the tower's spot: at the back, and at the gate when ready
+        // (its head just out of the gate). TEMPORARY.
+        private const float PenGateAhead = 0.3f;
+        private const float ModelPenBack = MammothVisual.PenWidth * 0.5f - PenGateAhead + 0.3f;
+        private const float ModelPenFront = MammothVisual.PenWidth * 0.5f - PenGateAhead - 0.6f;
+        // With the model it lies dead this long (its fall) before it sinks; the next mammoth's wait
+        // is shortened to match, so the cycle stays as long as before.
+        private float FallLieSeconds => visual != null ? visual.LieSeconds : 0f;
+        // With the model the horde climbs over the body as it sinks, so it sinks slowly and evenly. TEMPORARY.
+        private float SinkSeconds => visual != null ? 6f : FallSeconds;
+        // Lying across the whole road, it is pushed on down the road by the crowd behind it. TEMPORARY.
+        private const float CorpsePushSpeed = 0.4f;
 
         private void Update()
         {
@@ -206,7 +273,9 @@ namespace TowerDefense.Runtime
                         break;
                     }
 
-                    if (route != null && route.TotalLength > 0f && EnemiesOnStretch(route))
+                    // Ready, it goes out onto the road whether goblins are coming or not, and waits
+                    // there for them (user, 2026-11-11).
+                    if (route != null && route.TotalLength > 0f)
                     {
                         BeginCharge(route);
                     }
@@ -215,11 +284,26 @@ namespace TowerDefense.Runtime
                 case State.ToRoad:
                     if (MoveTowards(roadStart, definition.chargeSpeed * ToRoadSpeedFraction))
                     {
-                        state = State.Charging;
-                        runSpeed = definition.chargeSpeed;
-                        hitTimer = 0f;
-                        enemies.TakeAreaReport(reportId);
-                        enemies.TakeBlockedReport(reportId);
+                        if (route != null && EnemiesOnStretch(route))
+                        {
+                            BeginRun();
+                        }
+                        else
+                        {
+                            state = State.Waiting;
+                        }
+                    }
+
+                    break;
+                case State.Waiting:
+                    // Facing up the road, the way the goblins come; it runs at them once they are near.
+                    if (route != null)
+                    {
+                        Face(route.Sample(Mathf.Max(0f, chargeStart - 1f)) - beast.position, 90f);
+                        if (EnemiesOnStretch(route))
+                        {
+                            BeginRun();
+                        }
                     }
 
                     break;
@@ -287,8 +371,20 @@ namespace TowerDefense.Runtime
             roadStart = route.Sample(chargeStart);
             health = MaximumHealth;
             tiredness = 0f;
+            roared = false;
+            roarTimer = 0f;
             state = State.ToRoad;
+        }
+
+        // It runs at the goblins: a charge (going out to wait on the road is not one).
+        private void BeginRun()
+        {
             ChargeCount++;
+            state = State.Charging;
+            runSpeed = definition.chargeSpeed;
+            hitTimer = 0f;
+            enemies.TakeAreaReport(reportId);
+            enemies.TakeBlockedReport(reportId);
         }
 
         private void UpdateCharge(PathRoute route)
@@ -362,7 +458,12 @@ namespace TowerDefense.Runtime
 
         private void UpdateFight()
         {
-            tiredness += MaximumHealth * TiringPerSecond * Time.deltaTime;
+            // It does not tire while it roars either: it loses no health at all.
+            if (!IsRoaring)
+            {
+                tiredness += MaximumHealth * TiringPerSecond * Time.deltaTime;
+            }
+
             if (RemainingHealth <= 0f)
             {
                 BeginFall();
@@ -382,11 +483,24 @@ namespace TowerDefense.Runtime
                 }
             }
 
+            // The rage comes over it: it roars first (once a scoop in progress is done).
+            if (IsRaging && !roared && scoopAge < 0f)
+            {
+                roared = true;
+                roarTimer = RoarSeconds;
+            }
+
+            if (roarTimer > 0f)
+            {
+                roarTimer -= Time.deltaTime;
+                stompTimer = 0f;
+                return;
+            }
+
             stompTimer -= Time.deltaTime;
             if (stompTimer <= 0f && scoopAge < 0f)
             {
-                var rage = IsRaging ? 1f + definition.rageBonus : 1f;
-                stompTimer += StompSeconds / rage;
+                stompTimer += StompSeconds / FightTempo;
                 scoopAge = 0f;
                 scoopLanded = false;
             }
@@ -396,7 +510,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            scoopAge += Time.deltaTime * (IsRaging ? 1f + definition.rageBonus : 1f);
+            scoopAge += Time.deltaTime * ScoopClipSpeed;
             if (!scoopLanded && scoopAge >= ScoopHitSeconds)
             {
                 scoopLanded = true;
@@ -557,6 +671,8 @@ namespace TowerDefense.Runtime
             state = State.Falling;
             health = 0f;
             fallTimer = 0f;
+            crushed = false;
+            roarTimer = 0f;
             fallStart = beast.position;
             blockers.Clear();
             enemies.UnregisterCombatTarget(this);
@@ -567,15 +683,22 @@ namespace TowerDefense.Runtime
         private void UpdateFall()
         {
             fallTimer += Time.deltaTime;
-            var t = Mathf.Clamp01(fallTimer / FallSeconds);
-            beast.position = fallStart + Vector3.down * (FallDepth * t * t);
+            KeepHordeOffBody();
+            var t = Mathf.Clamp01((fallTimer - FallLieSeconds) / SinkSeconds);
+            // The model sinks evenly while the horde climbs over it; the greybox drops away.
+            var depth = visual != null ? (visual.BackHeight + 0.4f) * t : FallDepth * t * t;
+            PushCorpseDownRoad(depth);
+            beast.position = fallStart + Vector3.down * depth;
+            UpdateMound(depth);
             if (t < 1f)
             {
                 return;
             }
 
+            ReleaseCorpse();
+            HordeMounds.Clear(this);
             state = State.Resting;
-            cooldown = definition.fireInterval / Mathf.Max(0.05f, tower.FireRateMultiplier);
+            cooldown = Mathf.Max(0.5f, definition.fireInterval / Mathf.Max(0.05f, tower.FireRateMultiplier) - FallLieSeconds - (SinkSeconds - FallSeconds));
             penWaitSeconds = cooldown;
             // The next mammoth is already in the pen, at the back, and walks to the gate while it
             // gets ready (user, 2026-11-09): the player sees when it comes without a timer.
@@ -604,9 +727,9 @@ namespace TowerDefense.Runtime
             return outward.sqrMagnitude > 0.0001f ? outward.normalized : Vector3.forward;
         }
 
-        private Vector3 PenBack(PathRoute route) => restPosition - PenOutward(route) * PenHalfDepth;
+        private Vector3 PenBack(PathRoute route) => restPosition - PenOutward(route) * (pen != null ? ModelPenBack : PenHalfDepth);
 
-        private Vector3 PenGate(PathRoute route) => restPosition + PenOutward(route) * PenHalfDepth;
+        private Vector3 PenGate(PathRoute route) => restPosition + PenOutward(route) * (pen != null ? -ModelPenFront : PenHalfDepth);
 
         // The waiting mammoth grazes at the back of the pen and walks slowly to the gate as it
         // gets ready; ready, it stands at the gate until goblins come.
@@ -647,7 +770,7 @@ namespace TowerDefense.Runtime
 
         public void TakeDamage(float damage, EnemyActor source)
         {
-            if (!IsAlive)
+            if (!IsAlive || IsRoaring)
             {
                 return;
             }
@@ -671,6 +794,165 @@ namespace TowerDefense.Runtime
             {
                 BeginFall();
             }
+        }
+
+        // Its body comes down on the road, not on the crowd: the goblins under it are pushed out as it
+        // lands, and the horde goes round it for a while; then they walk over it as it sinks (user,
+        // 2026-11-11). It shoves, it does not hurt.
+        private void KeepHordeOffBody()
+        {
+            if (visual == null || !visual.TryGetFootprint(out var a, out var b, out var radius, out var landing) ||
+                visual.SinceImpact > MammothVisual.HoldSeconds)
+            {
+                ReleaseCorpse();
+                return;
+            }
+
+            // The body is a solid obstacle for the horde while it is held off: the crowd presses
+            // round it instead of walking through it, and does not stop to fight it.
+            corpse ??= new Corpse();
+            corpse.Set(a, b, radius - 0.25f);
+            if (!corpseRegistered)
+            {
+                enemies.RegisterCombatTarget(corpse);
+                corpseRegistered = true;
+            }
+
+            shoveTimer -= Time.deltaTime;
+            if (shoveTimer > 0f)
+            {
+                return;
+            }
+
+            shoveTimer += ShoveStepSeconds;
+            var circles = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a, b) / Mathf.Max(0.3f, radius * 0.9f))) + 1;
+            // As it hits the ground it crushes the goblins under it, once.
+            if (!crushed && visual.SinceImpact >= 0f)
+            {
+                crushed = true;
+                var crush = definition.damage * tower.DamageMultiplier * CrushDamageFactor;
+                for (var i = 0; i < circles; i++)
+                {
+                    var at = circles == 1 ? a : Vector3.Lerp(a, b, i / (circles - 1f));
+                    tower.RecordDamage(enemies.DamageAndKnockbackInRadius(at, radius - 0.35f, crush, 0f, MaxStompedPerStep, out _));
+                }
+            }
+
+            for (var i = 0; i < circles; i++)
+            {
+                var at = circles == 1 ? a : Vector3.Lerp(a, b, i / (circles - 1f));
+                enemies.DamageAndKnockbackInRadius(at, radius, 0f, BodyKnockback * (landing ? 2f : 1f), 0, out _,
+                    maxPushMass: PushLimit);
+            }
+        }
+
+        private Corpse corpse;
+        private bool corpseRegistered;
+
+        // After the hold the goblins climb onto the body, drawn lifted over it, as it sinks.
+        private void UpdateMound(float depth)
+        {
+            if (visual == null || visual.SinceImpact < MammothVisual.HoldSeconds ||
+                !visual.TryGetFootprint(out var a, out var b, out var radius, out _))
+            {
+                HordeMounds.Clear(this);
+                return;
+            }
+
+            var height = visual.BackHeight - depth;
+            if (height <= 0.02f)
+            {
+                HordeMounds.Clear(this);
+                return;
+            }
+
+            HordeMounds.Set(this, a, b, radius, height);
+        }
+
+        // Lying across the whole road, the body is shoved slowly on down the road while goblins press
+        // against it from behind (until it has sunk halfway). With room to get round it, it stays put.
+        private void PushCorpseDownRoad(float depth)
+        {
+            if (visual == null || !visual.FillsRoad || visual.SinceImpact < 0f || depth > visual.BackHeight * 0.5f)
+            {
+                return;
+            }
+
+            var route = enemies.Route;
+            if (route == null || route.TotalLength <= 0f || !visual.TryGetFootprint(out var a, out var b, out var radius, out _))
+            {
+                return;
+            }
+
+            var here = enemies.EstimatePathDistance(fallStart);
+            var down = route.Sample(Mathf.Min(route.TotalLength, here + 1f)) - route.Sample(here);
+            down.y = 0f;
+            if (down.sqrMagnitude < 1e-6f)
+            {
+                return;
+            }
+
+            down.Normalize();
+            // The end of the body facing up the road, and just beyond it: are goblins pressing there?
+            var middle = (a + b) * 0.5f;
+            var reach = Mathf.Abs(Vector3.Dot(b - a, down)) * 0.5f + radius;
+            var behind = middle - down * (reach + 0.3f);
+            if (!enemies.TryGetHordeTargetSnapshot(behind, 0.8f, false, TowerTargetingMode.Closest, out _, out _, out _))
+            {
+                return;
+            }
+
+            fallStart += down * CorpsePushSpeed * Time.deltaTime;
+        }
+
+        private void ReleaseCorpse()
+        {
+            if (corpseRegistered)
+            {
+                enemies?.UnregisterCombatTarget(corpse);
+                corpseRegistered = false;
+            }
+        }
+
+        // The dead mammoth's body as an obstacle of the horde: a capsule on the ground that bodies
+        // cannot enter. Its blocking room is next to nothing, so no goblin stops to attack it.
+        private sealed class Corpse : ICombatTarget, IOrientedCombatTarget
+        {
+            private Vector3 middle;
+            private Vector3 axis = Vector3.forward;
+            private float halfLength;
+            private float halfDepth;
+
+            public void Set(Vector3 a, Vector3 b, float radius)
+            {
+                middle = (a + b) * 0.5f;
+                var along = b - a;
+                along.y = 0f;
+                axis = along.sqrMagnitude > 1e-6f ? along.normalized : Vector3.forward;
+                halfDepth = Mathf.Max(0.3f, radius);
+                halfLength = along.magnitude * 0.5f + halfDepth;
+            }
+
+            public Vector3 Position => middle;
+            public bool IsAlive => true;
+            public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
+            public float CombatRadius => halfDepth;
+            public float BlockCapacity => 0.001f;
+            public float CurrentBlockedMass => 0f;
+            public float CurrentHealth => 1e6f;
+            public float MaximumHealth => 1e6f;
+            public float Armor => 0f;
+            public float PhysicalResistance => 0f;
+            public float FireResistance => 0f;
+            public float SlowResistance => 0f;
+            public float ThornsDamage => 0f;
+            public Vector3 CombatAxis => axis;
+            public float CombatHalfLength => halfLength;
+            public float CombatHalfDepth => halfDepth;
+            public bool TryAddBlocker(EnemyActor enemy) => false;
+            public void RemoveBlocker(EnemyActor enemy) { }
+            public void TakeDamage(float damage, EnemyActor source) { }
+            public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition) { }
         }
 
         private void ShoveAwayFromBody()
@@ -760,7 +1042,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            healthBar.position = beast.position + new Vector3(0f, 2.9f, 0f);
+            healthBar.position = beast.position + new Vector3(0f, visual != null ? MammothVisual.Height + 0.5f : 2.9f, 0f);
             var normalized = Mathf.Clamp01(Mathf.Min(RemainingHealth, OwnHealth) / MaximumHealth);
             healthFill.localScale = new Vector3(2f * normalized, 0.09f, 0.24f);
             healthFill.localPosition = new Vector3(-1f + normalized, 0.01f, 0f);

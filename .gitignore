@@ -39,3 +39,17 @@ Assets/InitTestScene*.unity.meta
 # be redistributed, so they and anything built from them stay out of this public repository.
 **/KevinIglesias/
 **/KevinIglesias.meta
+
+# Models made with Meshy stay local for now (user, 2026-11-11): the mammoth and its pen.
+Assets/Resources/Meshy/
+Assets/Resources/Meshy.meta
+
+# Meshy models and Gemini images stay local for now (user, 2026-11-11): the sources in Art/ and the
+# copies the capture tests read.
+Art/**/Meshy/
+Art/**/Gemini/
+Assets/Tests/PlayMode/StyleAssets/Resources/cave.fbx*
+Assets/Tests/PlayMode/StyleAssets/Resources/cave-tex.png*
+Assets/Tests/PlayMode/StyleAssets/Resources/spearrock.fbx*
+Assets/Tests/PlayMode/StyleAssets/Resources/spearrock-tex.png*
+Assets/Tests/PlayMode/StyleAssets/Resources/spearhunter-tex.png*

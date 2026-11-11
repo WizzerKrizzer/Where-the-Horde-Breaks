@@ -1180,6 +1180,18 @@ namespace TowerDefense.Runtime
             return ApplyDamage(index, damage);
         }
 
+        public bool TryGetAgentPosition(int targetIndex, out Vector3 position)
+        {
+            position = Vector3.zero;
+            if (!CanTarget(targetIndex))
+            {
+                return false;
+            }
+
+            position = positions[targetIndex];
+            return true;
+        }
+
         public float DamageTarget(int targetIndex, float damage)
         {
             return ApplyDamage(targetIndex, damage);

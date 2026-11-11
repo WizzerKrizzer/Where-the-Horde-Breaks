@@ -412,11 +412,16 @@ namespace TowerDefense.Runtime
             cave.behavior = TowerBehavior.Barracks;
             cave.barracksUnitType = AlliedUnitType.Caveman;
             cave.barracksCapacity = 1;
-            cave.barracksRespawnSeconds = 8f;
+            // A new caveman 50% faster: every 5.3 s instead of 8 (user, 2026-11-11). TEMPORARY.
+            cave.barracksRespawnSeconds = 8f / 1.5f;
             cave.alliedUnitHealth = 26f;
             cave.alliedUnitDamage = 2f;
-            cave.alliedUnitBlockCapacity = 3f;
-            cave.alliedUnitMoveSpeed = 3f;
+            // Each caveman holds up to five goblins in front of him, the chief ten (user, 2026-11-11). TEMPORARY.
+            cave.alliedUnitBlockCapacity = 5f;
+            // Slower, heavier blows; the chief's hurt up to three goblins at once (user, 2026-11-11). TEMPORARY.
+            cave.alliedUnitAttackInterval = 1.1f;
+            cave.alliedUnitSplashTargets = 3;
+            cave.alliedUnitMoveSpeed = 2.2f;
             cave.alliedUnitAggroRange = 6f;
             var mammoth = CreateTower("mammoth", "Tamed Mammoth", TowerRole.ControlLine,
                 "A mammoth waits in its pen beside the road. When goblins come near, it charges along the road into them, trampling and throwing the horde aside until the crowd slows it to a halt. Then it fights where it stands until it falls, and a new mammoth takes its place.",
@@ -429,7 +434,8 @@ namespace TowerDefense.Runtime
             mammoth.knockbackLaunch = 0.8f;
             // The longest charge, on an empty road; a crowd stops it much sooner (user, 2026-11-07).
             mammoth.chargeDistance = 24f;
-            mammoth.chargeSpeed = 9f;
+            // 30% slower than the first 9 m/s (user, 2026-11-11). TEMPORARY.
+            mammoth.chargeSpeed = 6.3f;
             // Wide enough to reach the whole road: the horde hugs the inside of bends, and the beast
             // runs down the middle.
             mammoth.chargeRadius = 2.6f;

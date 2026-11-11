@@ -952,6 +952,13 @@ namespace TowerDefense.Runtime
                 : 0f;
         }
 
+        // Where a horde goblin was last seen, while it can still be hit.
+        public bool TryGetHordeAgentPosition(int targetIndex, out Vector3 position)
+        {
+            position = Vector3.zero;
+            return hordePrototype != null && hordePrototype.IsRunning && hordePrototype.TryGetAgentPosition(targetIndex, out position);
+        }
+
         public float DamageHordeTarget(int targetIndex, float damage)
         {
             return hordePrototype != null && hordePrototype.IsRunning

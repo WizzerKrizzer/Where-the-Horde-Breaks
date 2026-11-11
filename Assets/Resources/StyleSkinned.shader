@@ -8,6 +8,7 @@ Shader "TowerDefense/StyleSkinned"
     {
         _MainTex ("Texture", 2D) = "white" {}
         _VertexColor ("Use vertex colour", Float) = 0
+        _Color ("Tint (the mammoth's rage)", Color) = (1, 1, 1, 1)
         _ShadowStrength ("Shadow strength", Range(0, 1)) = 0.42
         _ShadowPlane ("Shadow plane height", Float) = 0
     }
@@ -17,6 +18,7 @@ Shader "TowerDefense/StyleSkinned"
 
     sampler2D _MainTex;
     float _VertexColor;
+    float4 _Color;
     float _ShadowStrength;
     float _ShadowPlane;
     static const float3 LightDirection = float3(-0.533, 0.775, 0.339);
@@ -86,7 +88,7 @@ Shader "TowerDefense/StyleSkinned"
                 float lighting = saturate(dot(normal, LightDirection));
                 float band = lighting > 0.72 ? 1.0 : (lighting > 0.35 ? 0.8 : 0.58);
                 float3 albedo = _VertexColor > 0.5 ? input.color.rgb : tex2D(_MainTex, input.uv).rgb;
-                return float4(albedo * band, 1.0);
+                return float4(albedo * _Color.rgb * band, 1.0);
             }
             ENDCG
         }
