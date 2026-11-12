@@ -26,8 +26,12 @@ unzip -o -q "$ART/Buildings/SpearRock/Meshy/"*.zip -d "$HERE/work/spearhunter/ro
 
 RES="$ROOT/Assets/Tests/PlayMode/StyleAssets/Resources"
 mkdir -p "$RES/Mixamo"
-cp "$HERE/work/spearhunter/spearhunter.fbx" "$RES/Mixamo/"
+# The rig goes to the game's Resources (one copy only; the capture tests load it from there).
+mkdir -p "$ROOT/Assets/Resources/Mixamo"
+rm -f "$RES/Mixamo/spearhunter.fbx" "$RES/Mixamo/spearhunter.fbx.meta"
+cp "$HERE/work/spearhunter/spearhunter.fbx" "$ROOT/Assets/Resources/Mixamo/"
 cp "$HERE/work/spearhunter/spearhunter-tex.png" "$RES/"
 cp "$HERE"/work/spearhunter/rock/*/*.fbx "$RES/spearrock.fbx"
 cp "$HERE"/work/spearhunter/rock/*/*.png "$RES/spearrock-tex.png"
+"$HERE/install_crew_models.sh"
 echo "Installed spearhunter.fbx and spearrock.fbx"

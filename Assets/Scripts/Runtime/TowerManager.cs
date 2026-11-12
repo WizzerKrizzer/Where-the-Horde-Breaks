@@ -131,17 +131,27 @@ namespace TowerDefense.Runtime
 
         public string GetPlacementBlockReason(TowerDefinition definition, Vector3 position)
         {
+            return GetPlacementBlockReason(definition, position, true);
+        }
+
+        // checkGround false: a saved layout is put back as it was, even where the borders (2026-11-11)
+        // would not let a tower be built now; only the limits still apply.
+        private string GetPlacementBlockReason(TowerDefinition definition, Vector3 position, bool checkGround)
+        {
             if (definition == null)
             {
                 return "No tower selected.";
             }
 
-            if (OverlapsExistingTower(position))
+            // Each tower's border is its real outline (TowerFootprints, user 2026-11-11).
+            var border = TowerFootprints.World(definition, position, route);
+            if (checkGround && OverlapsExistingTower(position, border))
             {
                 return "Too close to another tower";
             }
 
-            if (definition.behavior != TowerBehavior.Barrier && IsTooCloseToPath(position))
+            if (checkGround && definition.behavior != TowerBehavior.Barrier &&
+                (IsTooCloseToPath(position) || TowerFootprints.EntersRoad(border, route, position.y)))
             {
                 return "Too close to enemy path";
             }
@@ -156,7 +166,12 @@ namespace TowerDefense.Runtime
 
         public bool TryPlace(TowerDefinition definition, Vector3 position)
         {
-            if (!CanPlace(definition, position))
+            return TryPlace(definition, position, true);
+        }
+
+        private bool TryPlace(TowerDefinition definition, Vector3 position, bool checkGround)
+        {
+            if (!string.IsNullOrEmpty(GetPlacementBlockReason(definition, position, checkGround)))
             {
                 return false;
             }
@@ -174,6 +189,7 @@ namespace TowerDefense.Runtime
                 }
             }
             var tower = go.AddComponent<TowerActor>();
+            borders[tower] = TowerFootprints.World(definition, position, route);
             tower.Initialize(definition, enemies, GetDamageMultiplier(definition));
             tower.SetFireRateMultiplier(GetFireRateMultiplier(definition));
             towers.Add(tower);
@@ -210,6 +226,7 @@ namespace TowerDefense.Runtime
             }
 
             towers.Remove(closest);
+            borders.Remove(closest);
             Destroy(closest.gameObject);
             return true;
         }
@@ -225,6 +242,7 @@ namespace TowerDefense.Runtime
             }
 
             towers.Clear();
+            borders.Clear();
             selectedTower = null;
         }
 
@@ -253,7 +271,7 @@ namespace TowerDefense.Runtime
                 var definition = AvailableTowers.FirstOrDefault(tower => tower.id == record.towerId);
                 if (definition != null)
                 {
-                    if (TryPlace(definition, new Vector3(record.x, record.y, record.z)))
+                    if (TryPlace(definition, new Vector3(record.x, record.y, record.z), checkGround: false))
                     {
                         towers[towers.Count - 1].SetTargetingMode(record.targetingMode);
                     }
@@ -344,11 +362,49 @@ namespace TowerDefense.Runtime
             return route != null && route.IsInsideCorridor(position, TowerPathClearance);
         }
 
-        private bool OverlapsExistingTower(Vector3 position)
+        // The borders of the towers standing, as placed.
+        private readonly Dictionary<TowerActor, Vector2[]> borders = new();
+
+        /// <summary>The towers a tower placed on `position` would overlap, border on border.</summary>
+        public void GetOverlappingTowers(TowerDefinition definition, Vector3 position, List<TowerActor> into)
+        {
+            into.Clear();
+            if (definition == null)
+            {
+                return;
+            }
+
+            var border = TowerFootprints.World(definition, position, route);
+            foreach (var tower in towers)
+            {
+                if (tower != null && borders.TryGetValue(tower, out var other) && TowerFootprints.Overlap(border, other))
+                {
+                    into.Add(tower);
+                }
+            }
+        }
+
+        /// <summary>Which way a tower on `position` would face: to the road.</summary>
+        public Vector3 FacingRoad(Vector3 position) => TowerFootprints.ToRoad(position, route);
+
+        /// <summary>A placed tower's border on the map (x, z), or null.</summary>
+        public Vector2[] BorderOf(TowerActor tower) => tower != null && borders.TryGetValue(tower, out var border) ? border : null;
+
+        private bool OverlapsExistingTower(Vector3 position, Vector2[] border)
         {
             foreach (var tower in towers)
             {
+                if (tower == null)
+                {
+                    continue;
+                }
+
                 if ((tower.transform.position - position).sqrMagnitude < 1.1f)
+                {
+                    return true;
+                }
+
+                if (borders.TryGetValue(tower, out var other) && TowerFootprints.Overlap(border, other))
                 {
                     return true;
                 }

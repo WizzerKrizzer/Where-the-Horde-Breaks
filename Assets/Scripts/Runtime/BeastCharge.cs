@@ -600,6 +600,25 @@ namespace TowerDefense.Runtime
         private MaterialPropertyBlock rageBlock;
         private bool rageShown;
 
+        /// <summary>Everything drawn for the beast and its pen (for the placing overlap's red).</summary>
+        public void CollectRenderers(List<Renderer> into)
+        {
+            if (beast != null)
+            {
+                into.AddRange(beast.GetComponentsInChildren<Renderer>(true));
+            }
+
+            if (pen != null)
+            {
+                into.AddRange(pen.GetComponentsInChildren<Renderer>(true));
+            }
+
+            if (healthBar != null)
+            {
+                into.AddRange(healthBar.GetComponentsInChildren<Renderer>(true));
+            }
+        }
+
         private void UpdateRageTint()
         {
             var raging = IsRaging;

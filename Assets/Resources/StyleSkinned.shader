@@ -11,6 +11,11 @@ Shader "TowerDefense/StyleSkinned"
         _Color ("Tint (the mammoth's rage)", Color) = (1, 1, 1, 1)
         _ShadowStrength ("Shadow strength", Range(0, 1)) = 0.42
         _ShadowPlane ("Shadow plane height", Float) = 0
+        // A see-through ghost (the tower being placed, user 2026-11-12): _Color's alpha, blended,
+        // without depth writes. The defaults draw it solid as before.
+        [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Source blend", Float) = 1
+        [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Destination blend", Float) = 0
+        _ZWrite ("Depth write", Float) = 1
     }
 
     CGINCLUDE
@@ -60,6 +65,8 @@ Shader "TowerDefense/StyleSkinned"
         {
             Name "Body"
             Cull Off
+            Blend [_SrcBlend] [_DstBlend]
+            ZWrite [_ZWrite]
             CGPROGRAM
             #pragma vertex Vert
             #pragma fragment Frag
@@ -88,7 +95,7 @@ Shader "TowerDefense/StyleSkinned"
                 float lighting = saturate(dot(normal, LightDirection));
                 float band = lighting > 0.72 ? 1.0 : (lighting > 0.35 ? 0.8 : 0.58);
                 float3 albedo = _VertexColor > 0.5 ? input.color.rgb : tex2D(_MainTex, input.uv).rgb;
-                return float4(albedo * _Color.rgb * band, 1.0);
+                return float4(albedo * _Color.rgb * band, _Color.a);
             }
             ENDCG
         }

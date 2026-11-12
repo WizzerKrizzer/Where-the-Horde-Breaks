@@ -129,6 +129,7 @@ namespace TowerDefense.Tests
 
             Assert.That(beast.IsOut, Is.True, "The mammoth never ran out.");
 
+            var fieldOfView = CavemenLevelTwoCaptureTests.GameFieldOfView();
             foreach (var other in Camera.allCameras)
             {
                 other.enabled = false;
@@ -137,7 +138,7 @@ namespace TowerDefense.Tests
             var cameraObject = new GameObject("Mammoth Camera");
             var camera = cameraObject.AddComponent<Camera>();
             camera.enabled = false;
-            camera.fieldOfView = 45f;
+            camera.fieldOfView = fieldOfView;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = PlaceholderPalette.Background;
             var is4K = System.Environment.GetEnvironmentVariable("CAPTURE_4K") == "1";
@@ -197,8 +198,7 @@ namespace TowerDefense.Tests
                     middle = Vector3.Lerp(middle, at, 0.08f);
                 }
 
-                camera.transform.position = middle + new Vector3(0f, cameraHeight, -cameraHeight * 0.75f);
-                camera.transform.LookAt(middle);
+                CavemenLevelTwoCaptureTests.PlaceGameCamera(camera, middle, cameraHeight);
                 camera.transform.position += GroundTremor.Offset(camera.transform);
                 if (frame % 30 == 0)
                 {

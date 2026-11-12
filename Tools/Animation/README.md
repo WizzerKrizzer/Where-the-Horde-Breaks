@@ -97,6 +97,14 @@ records them in the game at 4, 11 and 40 m.
   other blow is the shield thrust. Hurt, a caveman flinches, or blocks with the shield. The chief roars
   when a fight starts. A dead caveman plays his death, then sinks away.
 
+## The Spear Throwers and the Slingers in the game
+
+`install_crew_models.sh` puts the spear hunter's and the slinger's rigs in `Resources/Mixamo/`, and the
+rock, the textures and the approved one-deck tipi (`slinger-tower.bytes`, from `meshy-tipi.txt`) in
+`Resources/Meshy/`; both folders are git-ignored. `build_spear_hunter.sh` and `build_slinger.sh` run it
+after a build. `TowerCrewVisual` stands three hunters on the rock and eight slingers on the tipi's deck;
+the tower starts a throw when it has a target and its shot leaves the thrower's hand at the release.
+
 ## The cave
 
 `install_cave.sh` copies the Meshy "Primal Cave Dwelling" as it comes into `Resources/Meshy/cave.fbx`

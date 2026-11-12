@@ -136,6 +136,7 @@ namespace TowerDefense.Tests
 
             Assert.That(tower.DamageDealt, Is.GreaterThan(0f), "The cavemen never met the horde.");
 
+            var fieldOfView = GameFieldOfView();
             foreach (var other in Camera.allCameras)
             {
                 other.enabled = false;
@@ -144,7 +145,7 @@ namespace TowerDefense.Tests
             var cameraObject = new GameObject("Cavemen Camera");
             var camera = cameraObject.AddComponent<Camera>();
             camera.enabled = false;
-            camera.fieldOfView = 45f;
+            camera.fieldOfView = fieldOfView;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = PlaceholderPalette.Background;
             // CAPTURE_4K="1": 3840x2160 instead of 1920x1080.
@@ -180,8 +181,7 @@ namespace TowerDefense.Tests
             var framesPerHeight = frames / 3;
             if (fixedHeight > 0f)
             {
-                camera.transform.position = middle + new Vector3(0f, fixedHeight, -fixedHeight * 0.75f);
-                camera.transform.LookAt(middle);
+                PlaceGameCamera(camera, middle, fixedHeight);
             }
 
             // Real speed: the game steps exactly 1/120 s a frame however long a frame takes to draw, and
@@ -205,8 +205,7 @@ namespace TowerDefense.Tests
                 {
                     middle = Vector3.Lerp(middle, Middle(tower, middle), 0.1f);
                     var height = frame < framesPerHeight ? 4f : frame < framesPerHeight * 2 ? 11f : 40f;
-                    camera.transform.position = middle + new Vector3(0f, height, -height * 0.75f);
-                    camera.transform.LookAt(middle);
+                    PlaceGameCamera(camera, middle, height);
                 }
 
                 // How far off his front each fighting caveman's goblin is (user, 2026-11-11: they went
@@ -261,6 +260,24 @@ namespace TowerDefense.Tests
             Debug.Log($"CAVEMEN TARGETS: {sideSamples} of {fightSamples} fighting samples had the goblin more than 65 degrees off his front.");
             Debug.Log($"Cavemen on Level 2: cave at {spot}, damage dealt {tower.DamageDealt:F0}, spawned {enemies.TotalSpawned}.");
             Debug.Log($"CAVEMEN blows struck {AlliedUnitActor.TestStrikes}, swings shown {CavemanVisual.TestSwings} over {seconds:F0} s.");
+        }
+
+        // The game's camera looks down at 75 degrees (TopDownCameraController); the captures looked at
+        // 53 and tall towers hid the road behind them (2026-11-11).
+        internal const float GameCameraPitch = 75f;
+
+        internal static void PlaceGameCamera(Camera camera, Vector3 middle, float height)
+        {
+            camera.transform.SetPositionAndRotation(
+                middle + new Vector3(0f, height, -height / Mathf.Tan(GameCameraPitch * Mathf.Deg2Rad)),
+                Quaternion.Euler(GameCameraPitch, 0f, 0f));
+        }
+
+        // The field of view of the game's own camera (set per level), before the capture turns it off.
+        internal static float GameFieldOfView()
+        {
+            var main = Camera.main;
+            return main != null ? main.fieldOfView : 45f;
         }
 
         internal static float EnvFloat(string name, float fallback)

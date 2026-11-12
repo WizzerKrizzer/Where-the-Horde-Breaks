@@ -24,7 +24,11 @@ SPIN_DOWN=0.55 "$PY" "$HERE/meshy/combo.py" "$WORK/rest.json" "$WORK/mixamo-thro
 if [ -z "${NO_INSTALL:-}" ]; then
     RES="$ROOT/Assets/Tests/PlayMode/StyleAssets/Resources"
     mkdir -p "$RES/Mixamo"
-    cp "$HERE/work/stonehide.fbx" "$RES/Mixamo/"
+    # The rig goes to the game's Resources (one copy only; the capture tests load it from there).
+    mkdir -p "$ROOT/Assets/Resources/Mixamo"
+    rm -f "$RES/Mixamo/stonehide.fbx" "$RES/Mixamo/stonehide.fbx.meta"
+    cp "$HERE/work/stonehide.fbx" "$ROOT/Assets/Resources/Mixamo/"
     cp "$HERE/work/stonehide.png" "$RES/"
+    "$HERE/install_crew_models.sh"
     echo "Installed stonehide.fbx and stonehide.png"
 fi

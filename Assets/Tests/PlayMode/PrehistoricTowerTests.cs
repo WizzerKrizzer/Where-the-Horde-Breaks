@@ -231,6 +231,64 @@ namespace TowerDefense.Tests
             Assert.That(overlapFrames, Is.LessThanOrEqualTo(frames / 10), "Goblins walk through the roaring mammoth.");
         }
 
+        // A tower being placed over another's border turns that tower red, all of it, and back when it
+        // moves off (user, 2026-11-12).
+        [UnityTest]
+        public IEnumerator Placing_OverAnotherTowersBorder_TurnsItRed()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld();
+            Assert.That(world.Towers.TryPlace(world.Spear, new Vector3(-25f, 0f, 4.6f)), Is.True);
+            var rock = world.Towers.Towers[0];
+            yield return null;
+            var overlapped = new List<TowerActor>();
+            world.Towers.GetOverlappingTowers(world.Mammoth, rock.Position + new Vector3(1f, 0f, 0f), overlapped);
+            Assert.That(overlapped, Does.Contain(rock), "A pen right next to the rock does not overlap it.");
+            Assert.That(world.Towers.CanPlace(world.Mammoth, rock.Position + new Vector3(1f, 0f, 0f)), Is.False, "A tower could be built over another.");
+            world.Towers.GetOverlappingTowers(world.Mammoth, rock.Position + new Vector3(30f, 0f, 0f), overlapped);
+            Assert.That(overlapped, Is.Empty, "A pen far away overlaps the rock.");
+
+            rock.SetOverlapTint(true);
+            var block = new MaterialPropertyBlock();
+            var renderers = new List<Renderer>(rock.GetComponentsInChildren<Renderer>(true));
+            if (rock.CrewVisual != null)
+            {
+                renderers.AddRange(rock.CrewVisual.GetComponentsInChildren<Renderer>(true));
+            }
+
+            Assert.That(renderers, Is.Not.Empty);
+            foreach (var renderer in renderers)
+            {
+                renderer.GetPropertyBlock(block);
+                Assert.That(block.GetColor("_Color").g, Is.LessThan(0.2f), $"{renderer.name} did not turn red.");
+            }
+
+            rock.SetOverlapTint(false);
+            foreach (var renderer in renderers)
+            {
+                Assert.That(renderer.HasPropertyBlock(), Is.False, $"{renderer.name} stayed red.");
+            }
+        }
+
+        // Beside another tower the borders (2026-11-11) may not let a tower stand on its usual spot: the
+        // nearest free spot further down the road.
+        internal static bool PlaceNear(TowerManager towers, TowerDefinition definition, Vector3 around)
+        {
+            for (var dx = 0f; dx <= 14f; dx += 0.5f)
+            {
+                for (var dz = 0f; dz <= 4f; dz += 0.5f)
+                {
+                    if (towers.TryPlace(definition, around + new Vector3(dx, 0f, dz)) ||
+                        (dz > 0f && towers.TryPlace(definition, around + new Vector3(dx, 0f, -dz))))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         [UnityTest, Explicit("Records the prehistoric towers on the Level 1 road to Logs/Captures/PrehistoricTowers/normal.")]
         public IEnumerator RecordPrehistoricTowers()
         {
@@ -269,7 +327,7 @@ namespace TowerDefense.Tests
             }
 
             Assert.That(world.Towers.TryPlace(world.Spear, new Vector3(-25f, 0f, 4.6f)), Is.True);
-            Assert.That(world.Towers.TryPlace(world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
+            Assert.That(PlaceNear(world.Towers, world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
 
             var light = new GameObject("Test Sun").AddComponent<Light>();
             cleanup.Add(light.gameObject);

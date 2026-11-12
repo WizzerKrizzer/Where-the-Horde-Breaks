@@ -384,7 +384,9 @@ namespace TowerDefense.Runtime
             var spearThrower = CreateTower("spear_thrower", "Spear Throwers", TowerRole.ArtilleryLine,
                 "Hunters hurl long spears with atlatls. Long range and heavy hits; each spear flies on along its line past the target.",
                 "Weak against fast swarms: the throws are slow, and goblins slip past between spears.",
-                (int)EraId.Prehistoric, 1, 9.5f, 12f, 1.6f, 12f, PlaceholderPalette.Tower);
+                (int)EraId.Prehistoric, 1, 9.5f, 12f, 1.6f, 24f, PlaceholderPalette.Tower);
+            // The spear flies at 24 m/s, as hard as the hunter's swing looks (it was 12; user,
+            // 2026-11-11). TEMPORARY.
             spearThrower.canHitFlying = true;
             spearThrower.flyThroughShot = true;
             // User, 2026-11-08: up to 3 hunters on a rock outcrop; they aim at the heaviest goblin

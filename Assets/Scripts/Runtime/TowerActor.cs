@@ -100,6 +100,7 @@ namespace TowerDefense.Runtime
                 charge.Initialize(this, towerDefinition, enemies);
             }
 
+            CreateCrew();
             EnsureCrewMarkers();
 
             UpdateAuraVisual();
@@ -142,6 +143,11 @@ namespace TowerDefense.Runtime
                 Destroy(cave);
             }
 
+            if (crewVisual != null)
+            {
+                Destroy(crewVisual.gameObject);
+            }
+
             if (definition != null && definition.behavior == TowerBehavior.Barrier)
             {
                 enemies?.UnregisterCombatTarget(this);
@@ -180,11 +186,47 @@ namespace TowerDefense.Runtime
             }
 
             cooldown -= Time.deltaTime;
+            // The horde answers target queries a few frames late and forgets those not asked again,
+            // so while a throw is in the air the tower keeps asking, to have its answer at the release.
+            if (pendingThrows > 0)
+            {
+                TryPeekTarget(out _, out _);
+            }
+
             if (cooldown > 0f)
             {
                 return;
             }
 
+            // A crew that throws by hand starts a throw once there is a goblin to throw at; the shot
+            // leaves at the throw's release, at whichever goblin the tower picks then.
+            if (crewVisual != null)
+            {
+                if (!TryPeekTarget(out var aim, out var aimIndex))
+                {
+                    return;
+                }
+
+                var thrower = crewVisual.StartThrow(aim);
+                if (thrower < 0)
+                {
+                    return;
+                }
+
+                cooldown = definition.fireInterval / fireRateMultiplier;
+                StartCoroutine(ReleaseThrow(thrower, crewVisual.ReleaseLead, aimIndex));
+                return;
+            }
+
+            if (FireOnce())
+            {
+                cooldown = definition.fireInterval / fireRateMultiplier;
+            }
+        }
+
+        // One shot (two with a double shot) at the tower's target; false when it has none.
+        private bool FireOnce()
+        {
             if (TryFireAtHordeTarget(out var hordeTargetIndex))
             {
                 if (definition.doubleShotChance > 0f && Random.value < definition.doubleShotChance)
@@ -192,14 +234,13 @@ namespace TowerDefense.Runtime
                     TryFireAtSecondHordeTarget(hordeTargetIndex);
                 }
 
-                cooldown = definition.fireInterval / fireRateMultiplier;
-                return;
+                return true;
             }
 
             var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
             if (target == null)
             {
-                return;
+                return false;
             }
 
             Fire(target);
@@ -208,8 +249,184 @@ namespace TowerDefense.Runtime
                 var secondTarget = enemies.GetNearestEnemyExcept(transform.position, definition.range, definition.canHitFlying, target) ?? target;
                 Fire(secondTarget);
             }
-            cooldown = definition.fireInterval / fireRateMultiplier;
+
+            return true;
         }
+
+        // The Spear Throwers' hunters and the Slingers on their tipi, when their models are installed
+        // (user, 2026-11-11): they replace the greybox and throw by hand.
+        private TowerCrewVisual crewVisual;
+        private bool hasThrowOrigin;
+        private Vector3 throwOrigin;
+        private Vector3 throwFeet;
+
+        /// <summary>The crew throwing for this tower, if its models are installed.</summary>
+        public TowerCrewVisual CrewVisual => crewVisual;
+
+        private void CreateCrew()
+        {
+            if (crewVisual != null)
+            {
+                return;
+            }
+
+            crewVisual = TowerCrewVisual.TryCreate(this, definition, enemies != null ? enemies.Route : null);
+            if (crewVisual != null && GetComponent<Renderer>() != null)
+            {
+                GetComponent<Renderer>().enabled = false;
+            }
+        }
+
+        // The goblin the tower would shoot now: its horde index (-1 for a goblin outside the horde).
+        private bool TryPeekTarget(out Vector3 aim, out int hordeIndex)
+        {
+            aim = transform.position;
+            hordeIndex = -1;
+            if (enemies.TryGetHordeTargetSnapshot(transform.position, definition.range, definition.canHitFlying, targetingMode, out hordeIndex, out var position, out _))
+            {
+                aim = position;
+                return true;
+            }
+
+            var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
+            if (target == null)
+            {
+                return false;
+            }
+
+            aim = target.transform.position;
+            return true;
+        }
+
+        // The thrower keeps his goblin from the start of the throw: he turns after it as it walks, and
+        // at the release the shot leaves his hand at it (a fresh pick then could lie behind him, and
+        // spears flew the other way, user 2026-11-11). If it died meanwhile, the tower's target of that
+        // moment; with none, the throw is wasted.
+        private IEnumerator ReleaseThrow(int thrower, float lead, int hordeIndex)
+        {
+            pendingThrows++;
+            var end = Time.time + lead;
+            var hasLast = false;
+            var last = Vector3.zero;
+            var velocity = Vector3.zero;
+            while (Time.time < end)
+            {
+                yield return null;
+                if (crewVisual == null || enemies == null || hordeIndex < 0 || !enemies.TryGetHordeAgentPosition(hordeIndex, out var position))
+                {
+                    continue;
+                }
+
+                if (hasLast && Time.deltaTime > 0f)
+                {
+                    velocity = Vector3.Lerp(velocity, (position - last) / Time.deltaTime, 0.3f);
+                }
+
+                last = position;
+                hasLast = true;
+                crewVisual.Aim(thrower, position);
+            }
+
+            // A few frames' grace for the target's answer.
+            for (var attempt = 0; attempt < ReleaseAttempts; attempt++)
+            {
+                if (crewVisual == null || definition == null || enemies == null)
+                {
+                    break;
+                }
+
+                throwOrigin = crewVisual.ReleasePoint(thrower);
+                throwFeet = crewVisual.Feet(thrower);
+                hasThrowOrigin = true;
+                bool fired;
+                if (hordeIndex >= 0 && enemies.TryGetHordeAgentPosition(hordeIndex, out var position))
+                {
+                    velocity.y = 0f;
+                    fired = FireAtHordeTarget(hordeIndex, position, velocity);
+                    var toTarget = position - throwFeet;
+                    TestThrows++;
+                    TestThrowsOffFacing += Mathf.Abs(Mathf.DeltaAngle(crewVisual.FacingYaw(thrower),
+                        Mathf.Atan2(toTarget.x, toTarget.z) * Mathf.Rad2Deg)) > 45f ? 1 : 0;
+                }
+                else
+                {
+                    fired = FireOnce();
+                }
+
+                hasThrowOrigin = false;
+                if (fired)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+
+            pendingThrows--;
+        }
+
+        private const int ReleaseAttempts = 6;
+        // Testing only: throws at a held goblin, and those more than 45 degrees off the thrower's facing.
+        internal static int TestThrows;
+        internal static int TestThrowsOffFacing;
+        private int pendingThrows;
+
+        // While a tower being placed would overlap this one's border, all of it turns red: its
+        // building, its crew, its units and its beast (user, 2026-11-12).
+        private static readonly Color OverlapRed = new(1f, 0.12f, 0.1f, 1f);
+        private MaterialPropertyBlock overlapBlock;
+        private readonly List<Renderer> overlapRenderers = new();
+
+        public bool OverlapTinted { get; private set; }
+
+        public void SetOverlapTint(bool tinted)
+        {
+            if (OverlapTinted == tinted)
+            {
+                return;
+            }
+
+            OverlapTinted = tinted;
+            overlapBlock ??= new MaterialPropertyBlock();
+            overlapRenderers.Clear();
+            overlapRenderers.AddRange(GetComponentsInChildren<Renderer>(true));
+            if (crewVisual != null)
+            {
+                overlapRenderers.AddRange(crewVisual.GetComponentsInChildren<Renderer>(true));
+            }
+
+            if (cave != null)
+            {
+                overlapRenderers.AddRange(cave.GetComponentsInChildren<Renderer>(true));
+            }
+
+            var charge = GetComponent<BeastCharge>();
+            if (charge != null)
+            {
+                charge.CollectRenderers(overlapRenderers);
+            }
+            foreach (var renderer in overlapRenderers)
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                if (!tinted)
+                {
+                    renderer.SetPropertyBlock(null);
+                    continue;
+                }
+
+                renderer.GetPropertyBlock(overlapBlock);
+                overlapBlock.SetColor("_Color", OverlapRed);
+                overlapBlock.SetColor("_BaseColor", OverlapRed);
+                renderer.SetPropertyBlock(overlapBlock);
+            }
+        }
+
+        // Where a shot starts: the thrower's hand at the release, or the top of the greybox.
+        private Vector3 ShotStart => hasThrowOrigin ? throwOrigin : transform.position + Vector3.up * 0.82f;
 
         private void Fire(EnemyActor target)
         {
@@ -239,6 +456,12 @@ namespace TowerDefense.Runtime
                 return false;
             }
 
+            return FireAtHordeTarget(targetIndex, targetPosition, targetVelocity);
+        }
+
+        // A shot at one goblin of the horde, where it is now and how it moves.
+        private bool FireAtHordeTarget(int targetIndex, Vector3 targetPosition, Vector3 targetVelocity)
+        {
             var damage = definition.damage * damageMultiplier;
             if (definition.projectilePattern == ProjectilePattern.ArcSplash)
             {
@@ -268,7 +491,7 @@ namespace TowerDefense.Runtime
                 return true;
             }
 
-            var start = transform.position + Vector3.up * 0.82f;
+            var start = ShotStart;
             var queued = enemies.QueueHordeProjectile(
                 start,
                 targetPosition,
@@ -429,7 +652,8 @@ namespace TowerDefense.Runtime
 
         private void EnsureCrewMarkers()
         {
-            var crewSize = definition != null ? Mathf.Max(0, definition.crewSize) : 0;
+            // The crew's models stand in for the markers.
+            var crewSize = definition != null && crewVisual == null ? Mathf.Max(0, definition.crewSize) : 0;
             if (crewMarkers != null && crewMarkers.Length == crewSize)
             {
                 return;
@@ -475,6 +699,16 @@ namespace TowerDefense.Runtime
         // take turns; each throw raises dust around that hunter's feet.
         private Vector3 TakeNextThrow()
         {
+            if (hasThrowOrigin)
+            {
+                if (definition.throwsSpears)
+                {
+                    SpearVisuals.SpawnThrowDust(throwFeet);
+                }
+
+                return throwOrigin;
+            }
+
             if (definition.crewSize <= 0)
             {
                 return transform.position + Vector3.up * ThrowHandHeight;
@@ -596,7 +830,7 @@ namespace TowerDefense.Runtime
 
         private float GetHordeShotDuration(Vector3 targetPosition)
         {
-            var start = transform.position + Vector3.up * 0.82f;
+            var start = ShotStart;
             var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
             var distance = Vector3.Distance(start, end);
             return definition.projectilePattern == ProjectilePattern.ArcSplash
@@ -609,7 +843,7 @@ namespace TowerDefense.Runtime
             var projectileColor = definition.appliesFire
                 ? PlaceholderPalette.Grey(.493f)
                 : definition.projectilePattern == ProjectilePattern.ArcSplash ? PlaceholderPalette.Grey(.369f) : PlaceholderPalette.Grey(.841f);
-            var start = transform.position + Vector3.up * 0.82f;
+            var start = ShotStart;
             var end = targetPosition + Vector3.up * (definition.projectilePattern == ProjectilePattern.ArcSplash ? 0.28f : 0.45f);
             var markerRadius = definition.projectilePattern == ProjectilePattern.ArcSplash
                 ? Mathf.Max(0.55f, definition.splashRadius)

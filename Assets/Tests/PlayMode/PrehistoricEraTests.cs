@@ -547,10 +547,11 @@ namespace TowerDefense.Tests
             Assert.That(world.Towers.TryPlace(spear, new Vector3(-25f, 0f, 4.6f)), Is.True, "The Spear Throwers could not be placed.");
             var tower = world.Towers.Towers[0];
             Assert.That(tower.TargetingMode, Is.EqualTo(TowerTargetingMode.Heaviest), "A new spear rock does not aim at the heaviest goblin.");
+            // The greybox markers, or the hunters' models when they are installed (2026-11-11).
             var hunters = 0;
-            foreach (Transform child in tower.transform)
+            foreach (Transform child in tower.CrewVisual != null ? tower.CrewVisual.transform : tower.transform)
             {
-                hunters += child.name.StartsWith("Hunter_") ? 1 : 0;
+                hunters += child.name.StartsWith("Hunter_") || child.name == "Thrower" ? 1 : 0;
             }
             Assert.That(hunters, Is.EqualTo(3), "The rock does not hold three hunters.");
 
@@ -768,7 +769,7 @@ namespace TowerDefense.Tests
             world.Towers.SetAvailableTowers(new[] { cave, world.Mammoth });
             // The cave near the first bend; the mammoth's pen further down the road.
             Assert.That(world.Towers.TryPlace(cave, new Vector3(-25f, 0f, 4.6f)), Is.True, "The Cave could not be placed.");
-            Assert.That(world.Towers.TryPlace(world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True);
+            Assert.That(PrehistoricTowerTests.PlaceNear(world.Towers, world.Mammoth, new Vector3(-17.6f, 0f, 2f)), Is.True, "No room for the mammoth's pen beside the cave.");
             var caveTower = world.Towers.Towers[0];
             var charge = world.Towers.Towers[1].GetComponent<BeastCharge>();
             var wave = Object.Instantiate(world.Wave);
