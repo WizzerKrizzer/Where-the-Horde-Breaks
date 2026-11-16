@@ -711,8 +711,16 @@ namespace TowerDefense.Runtime
             return system;
         }
 
-        // A round, soft-edged, slightly lumpy puff.
-        private static Texture2D SoftPuff()
+        // A round, soft-edged, slightly lumpy puff (also the horde's dust, HordeDust.shader).
+        private static Texture2D softPuff;
+
+        internal static Texture2D SoftPuff()
+        {
+            if (softPuff == null) softPuff = MakeSoftPuff();
+            return softPuff;
+        }
+
+        private static Texture2D MakeSoftPuff()
         {
             const int size = 64;
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, name = "SoftPuff" };

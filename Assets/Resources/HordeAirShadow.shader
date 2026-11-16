@@ -1,8 +1,9 @@
 Shader "TowerDefense/HordeAirShadow"
 {
     // The shadow of a goblin thrown into the air: its silhouette projected onto the ground along
-    // the 80 degree sun (the same direction as the style tests' drop shadows). Goblins on the
-    // ground have no shadow here. The shadow fades in as the goblin rises, so it separates from the
+    // the 80 degree sun (the same direction as the style tests' drop shadows). The placeholder
+    // bodies have no shadow on the ground; the goblin model (_ModelEnabled) always casts one, in its
+    // walk pose, so the crowd reads as separate bodies standing on the road (user, 2026-11-14). The shadow fades in as the goblin rises, so it separates from the
     // body while it flies and melts back under it on landing. A stencil bit keeps overlapping
     // triangles and neighbouring shadows from darkening the ground twice.
     Properties
@@ -11,6 +12,9 @@ Shader "TowerDefense/HordeAirShadow"
         _PackingScale ("Dense Packing Silhouette Scale", Range(1, 1.25)) = 1.18
         _VisualScaleMultiplier ("Visual Scale Multiplier", Range(0.1, 2)) = 1
         _ShadowHeight ("Ground Height", Float) = 0.03
+        _ModelEnabled ("Draw The Goblin Model", Float) = 0
+        _WalkPoses ("Walk Poses A Cycle", Float) = 6
+        _StrideMetres ("Metres A Walk Cycle At Scale 0.36", Float) = 0.7
     }
 
     SubShader
@@ -93,10 +97,14 @@ Shader "TowerDefense/HordeAirShadow"
             float _VisualScaleMultiplier;
             float _PresentationAlpha;
             float _ShadowHeight;
+            float _ModelEnabled;
+            #include "HordeGoblin.cginc"
 
             struct Attributes
             {
                 float4 vertex : POSITION;
+                float2 held : TEXCOORD1;
+                uint vertexID : SV_VertexID;
                 uint instanceID : SV_InstanceID;
             };
 
@@ -113,6 +121,16 @@ Shader "TowerDefense/HordeAirShadow"
                 // Full strength once the feet are about 0.25 m up.
                 float strength = state.status == 1 ? saturate(state.airHeight / 0.25) : 0.0;
                 float3 local = input.vertex.xyz;
+                if (_ModelEnabled > 0.5)
+                {
+                    // The same pose, turn, size and held thing as HordeIndirect.
+                    bool hidden;
+                    local = GoblinLocal(agentIndex, input.vertexID, input.held, float3(0.0, 1.0, 0.0), 0.0,
+                        state.animationDistance, state.locomotionSpeed, state.facing, state.scale,
+                        (state.flags & 2u) != 0u, state.attackTimer, state.attackInterval, state.flags, hidden);
+                    strength = state.status == 1 && !hidden ? 1.0 : 0.0;
+                }
+
                 local.xz *= _PackingScale;
                 float2 rendered = lerp(state.stepStartPosition, state.position, _PresentationAlpha);
                 float3 world = local * (state.scale * _VisualScaleMultiplier) + float3(rendered.x, state.airHeight, rendered.y);

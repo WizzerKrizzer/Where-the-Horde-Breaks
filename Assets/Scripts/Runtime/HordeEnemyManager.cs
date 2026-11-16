@@ -1003,6 +1003,9 @@ namespace TowerDefense.Runtime
         {
             if (activeCount <= 0)
             {
+                // The last ones killed still fly, fall and raise dust: keep their clock going
+                // even with nobody left alive to simulate.
+                gpuSimulation?.AdvanceCorpseClock(deltaTime);
                 lastBucketMs = 0f;
                 lastFullFidelityCount = 0;
                 lastCheapFidelityCount = 0;
@@ -1382,6 +1385,15 @@ namespace TowerDefense.Runtime
 
         // Throws every body within radius off the line through center along axis: mostly sideways,
         // a little forward (the rolling rock). GPU horde only.
+        /// <summary>A bomb: a deadly core and a wave of falling damage and push (GpuHordeSimulation.QueueBomb).</summary>
+        public bool Bomb(Vector3 center, float coreRadius, float reach, float coreDamage, float edgeDamage,
+            float coreKnockback, float waveKnockback, float coreLaunch, float waveLaunch)
+        {
+            return gpuSimulation != null && activeCount > 0 &&
+                   gpuSimulation.QueueBomb(center, coreRadius, reach, coreDamage, edgeDamage, coreKnockback,
+                       waveKnockback, coreLaunch, waveLaunch);
+        }
+
         public bool ThrowOffLine(Vector3 center, float radius, float knockback, float launch, Vector3 axis,
             float forward = 1f, float maxPushMass = 0f)
         {

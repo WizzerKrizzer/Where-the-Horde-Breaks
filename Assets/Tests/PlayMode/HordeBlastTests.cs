@@ -84,6 +84,145 @@ namespace TowerDefense.Tests
             Assert.That(settled, Is.LessThan(before + 2f), "The crowd was still flying apart after the landing.");
         }
 
+        // The last goblins a blast kills still fly, fall and raise dust after nobody is left alive
+        // (user, 2026-11-14: one or two bombed goblins froze where they lay mid-throw).
+        [UnityTest]
+        public IEnumerator Corpses_KeepPlayingWhenTheLastGoblinDies()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld(cleanup);
+            var wave = Object.Instantiate(world.Wave);
+            cleanup.Add(wave);
+            wave.totalEnemyCount = 3;
+            wave.randomSpawnBurstMin = 3;
+            wave.randomSpawnBurstMax = 3;
+            wave.entries = (Data.WaveEntry[])wave.entries.Clone();
+            for (var i = 0; i < wave.entries.Length; i++)
+            {
+                wave.entries[i].count = i == 0 ? 3 : 0;
+            }
+
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            var deadline = Time.realtimeSinceStartup + 20f;
+            while (world.Enemies.TotalSpawned < 3)
+            {
+                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The goblins never came.");
+                yield return null;
+            }
+
+            for (var frame = 0; frame < 30; frame++) yield return null;
+            while (world.Enemies.ActiveEnemyCount > 0)
+            {
+                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The goblins did not die.");
+                world.Enemies.DamageAndKnockbackInRadius(world.Route.Sample(0f), 1000f, 100000f, 4f, 1000, out _, launch: 1.6f);
+                yield return null;
+            }
+
+            var simulation = PrehistoricTowerTests.Simulation(world);
+            var clock = simulation.CorpseClock;
+            // Frames, not seconds: a slow test frame runs at most a few simulation ticks.
+            for (var frame = 0; frame < 20; frame++) yield return null;
+            Assert.That(world.Enemies.ActiveEnemyCount, Is.Zero);
+            Debug.Log($"Corpse clock {clock:F3} -> {simulation.CorpseClock:F3}, spawned {world.Enemies.TotalSpawned}, alive {world.Enemies.ActiveEnemyCount}, complete {world.Enemies.IsWaveComplete}");
+            Assert.That(simulation.CorpseClock - clock, Is.GreaterThan(0.2f), "The corpses' clock stopped with the last goblin.");
+        }
+
+        // The test bomb (user, 2026-11-14): everything in its 6 m core dies; outside it a wave out to
+        // 50 m hurts less the further out (10 at the core's edge here) and pushes goblins away from
+        // it, hardest near the core; beyond 50 m nothing is touched.
+        [UnityTest]
+        public IEnumerator Bomb_KillsTheCoreAndItsWaveHurtsAndPushesLessFurtherOut()
+        {
+            RequireComputeShaders();
+            var world = CreateJammedRoad();
+            var deadline = Time.realtimeSinceStartup + 40f;
+            // Enough in the core itself (measured within 5.5 m), not only near it.
+            while (AgentsWithin(world, BlastCenter, 5.5f) < 15)
+            {
+                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The road never jammed at the bomb.");
+                yield return null;
+            }
+
+            var simulation = PrehistoricTowerTests.Simulation(world);
+            var count = world.Enemies.TotalSpawned;
+            var before = new GpuHordeSimulation.AgentState[count];
+            simulation.ReadStatesSynchronous(before, count);
+            Assert.That(world.Enemies.Bomb(BlastCenter, 6f, 50f, 1000f, 10f, 4f, 6f), Is.True);
+            var start = Time.realtimeSinceStartup;
+            var pushedNear = 0f;
+            var pushedFar = 0f;
+            var near = 0;
+            var far = 0;
+            var after = new GpuHordeSimulation.AgentState[count];
+            var center = new Vector2(BlastCenter.x, BlastCenter.z);
+            // The wave crosses 44 m at 25 m/s in under 2 s. The push is each goblin's fastest speed
+            // away from the bomb while the wave passes (the jammed crowd soon walks back in).
+            var push = new float[count];
+            while (Time.realtimeSinceStartup - start < 3f)
+            {
+                simulation.ReadStatesSynchronous(after, count);
+                for (var i = 0; i < count; i++)
+                {
+                    var away = (before[i].Position - center).normalized;
+                    push[i] = Mathf.Max(push[i], Vector2.Dot(after[i].KnockbackVelocity, away));
+                }
+
+                yield return null;
+            }
+
+            simulation.ReadStatesSynchronous(after, count);
+            var coreAlive = 0;
+            var coreTotal = 0;
+            float hurtNear = 0f, hurtFar = 0f;
+            var hurtBeyond = 0;
+            for (var i = 0; i < count; i++)
+            {
+                if (before[i].Status != 1u) continue;
+                var distance = Vector2.Distance(before[i].Position, center);
+                if (distance < 5.5f)
+                {
+                    coreTotal++;
+                    if (after[i].Status == 1u) coreAlive++;
+                    continue;
+                }
+
+                if (after[i].Status != 1u) continue;
+                var hurt = before[i].Health - after[i].Health;
+                var outward = push[i];
+                if (distance > 8f && distance < 14f)
+                {
+                    near++;
+                    hurtNear += hurt;
+                    pushedNear += outward;
+                }
+                else if (distance > 20f && distance < 32f)
+                {
+                    far++;
+                    hurtFar += hurt;
+                    pushedFar += outward;
+                }
+                else if (distance > 60f && hurt > 0.01f)
+                {
+                    hurtBeyond++;
+                }
+            }
+
+            hurtNear /= Mathf.Max(1, near);
+            hurtFar /= Mathf.Max(1, far);
+            pushedNear /= Mathf.Max(1, near);
+            pushedFar /= Mathf.Max(1, far);
+            Debug.Log($"Bomb: core {coreTotal - coreAlive}/{coreTotal} dead; 8-14 m: {near} goblins, hurt {hurtNear:F2}, pushed at {pushedNear:F2} m/s; 20-32 m: {far} goblins, hurt {hurtFar:F2}, pushed at {pushedFar:F2} m/s; hurt beyond 60 m: {hurtBeyond}.");
+            Assert.That(coreTotal, Is.GreaterThanOrEqualTo(10));
+            Assert.That(coreAlive, Is.Zero, "Goblins in the core survived the bomb.");
+            Assert.That(near, Is.GreaterThanOrEqualTo(10));
+            Assert.That(far, Is.GreaterThanOrEqualTo(10));
+            Assert.That(hurtNear, Is.InRange(6f, 10.01f), "Near the core the wave should hurt nearly its full 10.");
+            Assert.That(hurtFar, Is.InRange(0.1f, hurtNear * 0.85f), "Further out the wave should hurt less.");
+            Assert.That(hurtBeyond, Is.Zero, "The wave hurt goblins beyond its reach.");
+            Assert.That(pushedNear, Is.GreaterThan(1f), "The wave did not push the goblins near the core away.");
+            Assert.That(pushedNear, Is.GreaterThan(pushedFar), "The wave should push hardest near the core.");
+        }
+
         [UnityTest, Explicit("Records blasts in a jammed road to Logs/Captures/HordeBlast.")]
         public IEnumerator RecordBlastsInAJammedRoad()
         {

@@ -814,6 +814,19 @@ namespace TowerDefense.Runtime
             DamageAndKnockbackInRadius(center, radius, 0f, knockback, 0, out _, launch: launch, maxPushMass: maxPushMass);
         }
 
+        /// <summary>
+        /// A bomb (user, 2026-11-14; only the test bomb for now): everything within coreRadius takes
+        /// coreDamage and is thrown; a wave then spreads to reach, hurting (edgeDamage at the core's
+        /// edge down to nothing at reach) and pushing out, hardest near the core. The GPU horde only.
+        /// </summary>
+        public bool Bomb(Vector3 center, float coreRadius, float reach, float coreDamage, float edgeDamage,
+            float coreKnockback, float waveKnockback, float coreLaunch = 1.6f, float waveLaunch = 0.2f)
+        {
+            return hordePrototype != null && hordePrototype.IsRunning &&
+                   hordePrototype.Bomb(center, coreRadius, reach, coreDamage, edgeDamage, coreKnockback,
+                       waveKnockback, coreLaunch, waveLaunch);
+        }
+
         private float DamageAndKnockbackInRadiusInternal(
             Vector3 center,
             float radius,

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections;
 using NUnit.Framework;
 using TowerDefense.Data;
@@ -15,6 +16,8 @@ namespace TowerDefense.Tests
         [SetUp]
         public void UseOriginalCollisionGeometry()
         {
+            // These tests are about the simulation and its draw lists with the placeholder bodies.
+            GoblinModel.UsePlaceholderBodies = true;
             hadVisualPreference = PlayerPrefs.HasKey(HordePreviewSettings.PreferenceKey);
             visualPreference = PlayerPrefs.GetInt(HordePreviewSettings.PreferenceKey);
             PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, 0);
@@ -23,6 +26,7 @@ namespace TowerDefense.Tests
         [TearDown]
         public void RestoreVisualPreference()
         {
+            GoblinModel.UsePlaceholderBodies = false;
             if (hadVisualPreference) PlayerPrefs.SetInt(HordePreviewSettings.PreferenceKey, visualPreference);
             else PlayerPrefs.DeleteKey(HordePreviewSettings.PreferenceKey);
         }
@@ -1098,7 +1102,9 @@ namespace TowerDefense.Tests
                 var blocker = new TestCombatTarget(Vector3.zero, 1000000f, 1000f,
                     Vector3.forward, 2f, 0.15f);
                 var blockerList = new ICombatTarget[] { blocker };
-                for (var frame = 0; frame < 300; frame++)
+                // 9 s for the queue to pack: with the crowd ahead a goblin walks slower
+                // (user, 2026-11-14), so the back rows arrive later than they used to.
+                for (var frame = 0; frame < 540; frame++)
                 {
                     simulation.SynchronizeDynamicTargets(blockerList);
                     simulation.Dispatch(1f / 60f, null, null, false);
@@ -1999,12 +2005,14 @@ namespace TowerDefense.Tests
                 var maxStep = 0f;
                 var maximumStepBody = -1;
                 var maximumStepState = default(GpuHordeSimulation.AgentState);
-                for (var frame = 0; frame < 600; frame++)
+                // 15 s: a goblin with the crowd packed ahead walks slower (user, 2026-11-14), so
+                // the back of the queue arrives later than it used to.
+                for (var frame = 0; frame < 900; frame++)
                 {
                     simulation.SynchronizeDynamicTargets(targets);
                     simulation.Dispatch(1f / 60f, controls, null, false);
-                    if (frame == 539) simulation.ReadStatesSynchronous(settled, count);
-                    if (frame >= 540)
+                    if (frame == 839) simulation.ReadStatesSynchronous(settled, count);
+                    if (frame >= 840)
                     {
                         simulation.ReadStatesSynchronous(states, count);
                         for (var i = 0; i < count; i++)
@@ -2195,6 +2203,123 @@ namespace TowerDefense.Tests
             public void TakeDamage(float damage, EnemyActor source) => CurrentHealth -= damage;
             public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition) =>
                 CurrentHealth = destroyed ? 0f : authoritativeHealth;
+        }
+
+        // An Orc Brute takes more room than a goblin (user, 2026-11-14: goblins stood inside its
+        // 2 m model): packed in a held queue, no goblin comes as close to a brute as goblins come to
+        // each other.
+        [UnityTest]
+        public IEnumerator Brute_TakesMoreRoomThanAGoblinInAPackedQueue()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            const int count = 60;
+            var field = new HordeFlowField(new[] { new Vector3(-20, 0, 0), new Vector3(12, 0, 0) }, null, 2.4f, 0.31f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                simulation.SetCollisionDiameter(0.29f);
+                simulation.SetXpbdPerBodyRadius(true);
+                var states = new GpuHordeSimulation.AgentState[count];
+                var controls = new Vector4[count];
+                var brutes = new HashSet<int> { 7, 22, 41 };
+                for (var i = 0; i < count; i++)
+                {
+                    states[i] = State(-14f + (i / 5) * 0.6f, 100f, 0f, false);
+                    states[i].Position.y = ((i % 5) - 2) * 0.45f;
+                    states[i].Scale = brutes.Contains(i) ? 0.4875f : 0.36f;
+                    states[i].Mass = brutes.Contains(i) ? 4f : 1f;
+                    states[i].Facing = Vector2.right;
+                    states[i].AttackInterval = 1f;
+                    states[i].WallDamageMultiplier = 1f;
+                    states[i].CombatFlags = brutes.Contains(i) ? GpuHordeSimulation.BruteBodyFlag : 0u;
+                    controls[i] = new Vector4(3.84f, 1f, 0f, 0f);
+                }
+
+                simulation.SpawnBatch(states, controls, 0, count);
+                var blocker = new TestCombatTarget(Vector3.zero, 1000000f, 1000f, Vector3.forward, 2.4f, 0.15f);
+                var targets = new ICombatTarget[] { blocker };
+                for (var frame = 0; frame < 600; frame++)
+                {
+                    simulation.SynchronizeDynamicTargets(targets);
+                    simulation.Dispatch(1f / 60f, controls, null, false);
+                    if (frame % 30 == 0) yield return null;
+                }
+
+                simulation.ReadStatesSynchronous(states, count);
+                var nearestToBrute = float.MaxValue;
+                var goblinNearest = new List<float>();
+                for (var i = 0; i < count; i++)
+                {
+                    if (brutes.Contains(i)) continue;
+                    var nearest = float.MaxValue;
+                    for (var j = 0; j < count; j++)
+                    {
+                        if (i == j) continue;
+                        var distance = Vector2.Distance(states[i].Position, states[j].Position);
+                        if (brutes.Contains(j)) nearestToBrute = Mathf.Min(nearestToBrute, distance);
+                        else nearest = Mathf.Min(nearest, distance);
+                    }
+
+                    goblinNearest.Add(nearest);
+                }
+
+                goblinNearest.Sort();
+                var goblinSpacing = goblinNearest[goblinNearest.Count / 2];
+                Debug.Log($"Brute room: goblins pack {goblinSpacing:F3} m apart, the nearest goblin to a brute is {nearestToBrute:F3} m.");
+                Assert.That(nearestToBrute, Is.GreaterThan(goblinSpacing * 1.15f), "Goblins pack as close to a brute as to each other.");
+            }
+        }
+
+        // A faster body behind a slower one goes round it (user, 2026-11-15: a goblin behind an Orc
+        // Brute must push past it and overtake, the brute giving way, not queue behind it). Goblins
+        // start in a line straight behind a brute on an open road; all of them end up ahead of it.
+        [UnityTest]
+        public IEnumerator Goblins_GoRoundASlowerBruteAhead()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            const int count = 5;
+            var field = new HordeFlowField(new[] { new Vector3(-30, 0, 0), new Vector3(60, 0, 0) }, null, 2.4f, 0.31f);
+            Assert.That(GpuHordeSimulation.TryCreate(count, field, EnemyManager.GetLowEnemyMesh(), out var simulation), Is.True);
+            using (simulation)
+            {
+                simulation.SetCollisionDiameter(0.29f);
+                simulation.SetXpbdPerBodyRadius(true);
+                var states = new GpuHordeSimulation.AgentState[count];
+                var controls = new Vector4[count];
+                for (var i = 0; i < count; i++)
+                {
+                    var brute = i == 0;
+                    states[i] = State(brute ? -20f : -20f - 0.7f * i, 100f, 0f, false);
+                    states[i].Scale = brute ? 0.4875f : 0.36f;
+                    states[i].Mass = brute ? 3f : 1f;
+                    states[i].Facing = Vector2.right;
+                    states[i].AttackInterval = 1f;
+                    states[i].CombatFlags = brute ? GpuHordeSimulation.BruteBodyFlag : 0u;
+                    // The game's speeds: the brute about 20% slower than the goblin.
+                    controls[i] = new Vector4(brute ? 2.14f : 2.675f, 1f, 0f, 0f);
+                }
+
+                simulation.SpawnBatch(states, controls, 0, count);
+                for (var frame = 0; frame < 1200; frame++)
+                {
+                    simulation.Dispatch(1f / 60f, controls, null, false);
+                    if (frame % 30 == 0) yield return null;
+                }
+
+                simulation.ReadStatesSynchronous(states, count);
+                var report = "";
+                for (var i = 0; i < count; i++)
+                {
+                    report += $" [{i}] x {states[i].Position.x:F2} y {states[i].Position.y:F2}";
+                }
+
+                Debug.Log("Going round a brute after 20 s:" + report);
+                for (var i = 1; i < count; i++)
+                {
+                    Assert.That(states[i].Position.x, Is.GreaterThan(states[0].Position.x + 0.3f),
+                        $"Goblin {i} is still behind the slower brute after 20 s." + report);
+                }
+            }
         }
 
         private static GpuHordeSimulation.AgentState State(float x, float health, float progress, bool flying)

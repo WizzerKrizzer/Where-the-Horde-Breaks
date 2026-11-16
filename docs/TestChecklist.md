@@ -22,7 +22,7 @@
 
 ## Пълното праисторическо дърво (2026-11-08)
 
-Дървото вече има 65 възела. Камъкът е в центъра, а неговите 12 подобрения са в диагоналите. Прашкарите са вляво, копиехвъргачите вдясно, мамутът горе, пещерата долу.
+Дървото вече има 61 възела. Копието е в центъра със 7 подобрения („Sharper Flint“, „Quick Hands“, „Heavy Spear“, „Volley“ и специалното „Precise Strike“ с 2 свои); подобренията на камъка са скрити засега. Прашкарите са вляво, копиехвъргачите вдясно, мамутът горе, пещерата долу.
 
 - [ ] Дървото е подредено по-естествено, не съвсем симетрично, и нищо не се застъпва: линиите не минават през чужди квадратчета.
 - [ ] Цялото дърво се побира на екрана, когато се отдалечиш докрай.
@@ -31,7 +31,7 @@
 - [ ] Цветът на рамката е ясен: зелена може да се купи, сива е заключена или не стига валутата, светла е започната, златна е максимум.
 - [ ] Прозорчето с детайли излиза до възела, когато задържиш мишката: икона, име, описание, ниво, цена.
 - [ ] Иконите остават остри (пикселни) при всяко увеличение.
-- [ ] Копиехвъргачите, мамутът и пещерата се купуват с по 1 Victory Sigil и след това могат да се строят.
+- [ ] Копиехвъргачите и пещерата се купуват с по 1 Victory Sigil, а мамутът с 1 Victory Sigil и 3 Challenge Sigil-а (цената се вижда в дървото). След това могат да се строят.
 - [ ] Статовете на копиехвъргачите (щета, скорост, обхват) работят.
 - [ ] Статовете на мамута (щета, живот, по-бърз нов мамут) работят.
 - [ ] Статовете на пещерата (щета, живот, още пещерняци до 5) работят.
@@ -41,6 +41,8 @@
 - [ ] **Ярост** (мамут): под 40% живот тъпче по-бързо и по-силно.
 - [ ] **Прашкари на гърба** (мамут): докато тича и се бие, от гърба му летят камъчета.
 - [ ] **Броня** (мамут): лентата за живот има светла част (бронята), която пада първа. Мамутът удря по-силно и пробива по-навътре в тълпата.
+- [ ] **Хвърляч на брути** (мамут, нов възел в клона му): без него мамутът спира в брут; с него го избутва и хвърля; в боса спира и в двата случая.
+- [ ] Пещерата и подобрението ѝ пишат „bones“ / „Bigger Bones“, никъде „clubs“.
 - [ ] **Щитове** (пещера): пещерняците издържат по-дълго.
 - [ ] **Вожд** (пещера): един пещерняк е по-голям, с двойно повече живот, и останалите около него удрят по-силно.
 - [ ] **Факли** (пещера): гоблините, ударени от пещерняк, горят.
@@ -210,3 +212,97 @@
 - [ ] Очертанията не се виждат. Докато поставяш кула, всяка кула, чието очертание новата би застъпила, става изцяло червена (сградата, войниците, звярът), както и кутията на новата кула; като отместиш мишката, цветът им се връща (картина: `overlap.png` от `RecordTowerBorders`).
 - [ ] Докато поставяш шатра, скала, пещера или кошара, на мястото се вижда самият модел, полупрозрачен и обърнат към пътя (с войниците): в нормални цветове на свободно място, червен над друга кула, по-тъмен където не може да се строи (картини: `RecordPlacementGhost`).
 - [ ] Прашкарите между хвърлянията не стоят неподвижно: пристъпват леко и бавно се оглеждат нагоре-надолу по пътя, всеки в свой ритъм (видео: `CAPTURE_FROM_START=1`).
+
+## Модели на камъка (2026-11-12)
+
+Нужни са моделите (Meshy, само локално): `Tools/Animation/install_rocks.sh` слага обикновения камък („Fractured Stone Planet“) и горящия („Molten Heart“) в `Assets/Resources/Meshy/`. Без тях камъкът е сива топка. Видео: `RockLevelTwoCaptureTests` (11 м, неподвижна камера).
+
+- [ ] Обикновеният камък е моделът на напукания камък, колкото досегашната топка (1.3 м), и се търкаля около средата си.
+- [ ] С купен Огън камъкът е горящият модел: пукнатините му светят оранжево и леко пулсират, независимо от светлината.
+- [ ] Горящият камък непрекъснато изхвърля езици огън, които се издигат, трептят и угасват там, където са останали, така че след търкалящия се камък остава поток от пламъци. Пламъците върху самия камък постоянно растат и спадат. Отзад хвърчат искри, а земята под него свети оранжево.
+- [ ] В края на пътя си камъкът не се смалява, а се пръсва на малки парченца от собствения си камък (при горящия някои светят) с облак прах; парченцата отскачат, полежават и потъват. Те не нараняват никого. С купено Разпадане вместо тях летят големите парчета, които нараняват.
+- [ ] Огънят на горящия камък избухва заедно с него: последни пламъци и искри навън, след това огън няма.
+- [ ] Всичкият огън е low poly (2026-11-12): фасетирани пламъци, жълти в основата, оранжеви и червени към върха, чиито ъгли непрекъснато мърдат. Това важи за камъка, горящата следа и факлите на пещерняците. Умиращите езици огън почервеняват.
+- [ ] Прахът (удар, трус, пръскане, попадения на прашкарите) е от фасетирани топчета, а не от кубчета. Искрите са малки светещи кристалчета, а парчетата от Разпадане са ъгловати камъчета. Светлината под горящия камък е многоъгълник с три твърди пръстена.
+
+## Хвърлено копие, първото активно оръжие (2026-11-12)
+
+Копието замества камъка като начално оръжие. Камъкът остава в кода за по-късно. Числата са временни: 12 щета, 1 s презареждане, 3 s в земята.
+
+- [ ] Клик върху гоблин хвърля копие. То долита от ляво или от дясно на екрана по къса дъга, следва гоблина и удря само него.
+- [ ] Бегач умира от едно копие. Тълпата наоколо не поема щета.
+- [ ] Копието се забива в земята наклонено, потреперва, стои около 3 s и потъва в земята.
+- [ ] Следващото копие е готово след около 1 s. Кликовете преди това не хвърлят нищо.
+- [ ] Отблизо се виждат дървото с жилките и възлите, кожената превръзка и кремъчният връх.
+- [ ] Центърът на дървото е „Thrown Spear“ с иконка на забиващо се копие. „Sharper Flint“ и „Quick Hands“ засилват копието. Търкалянето, трусът, огненият камък и разбиването ги няма в дървото.
+
+### Подобрения на копието (2026-11-12)
+
+Числата са временни.
+
+- [ ] **Heavy Spear** (Kill Essence, 3 ранга): при удара в земята тичат пукнатини и излиза пръстен прах. Гоблините до целта (0,7 m на ранг) поемат 40% от щетата, а самата цел не я поема втори път.
+- [ ] **Volley** (Kill Essence, 4 ранга): всеки ранг добавя по едно копие на клик, до 5. Копията летят малко едно след друго към различни гоблини около клика.
+- [ ] **Precise Strike** (специално, 3 Challenge Sigil-а): 15% шанс за тройна щета, с червен low poly взрив и искри върху гоблина.
+  - [ ] „Keen Eye“ добавя по 5% шанс.
+  - [ ] „Deep Wound“ добавя по половин щета към множителя.
+
+## Нов вид на дървото (2026-11-12)
+
+- [ ] Всички възли са еднакви цветни квадратчета (64 px), само центърът е малко по-голям. Цветът казва вида: оранжево е нова кула или оръжие, лилаво е специално, синьо е подобрение с Kill Essence.
+- [ ] Иконките са големи (48 px) и в три тона: тъмно, по-тъмен нюанс на квадратчето и кремаво за светлите части (бивни, кремък, сърцевини). Тъмните детайли вътре са дупки, през които се вижда цветът. Сърцето и огънят са чисти силуети.
+- [ ] Възел, който още не може да се купи, е тъмен, а иконката му е полупрозрачна. Щом може да се купи, е по-светъл и със зелена рамка. Купеният е в пълен цвят, а напълно купеният е със златна рамка.
+- [ ] Линиите са дебели и преливат от цвета на единия възел към цвета на другия. Към некупени възли са по-тъмни.
+- [ ] Вместо „0/3“ има лента в дъното на квадратчето, която се пълни с ранговете. Числата са в детайлите при посочване.
+
+## The Meshy goblin in the horde (2026-11-13)
+- [ ] With `Resources/Meshy/goblin.bytes` and `goblin-tex.png` present, the horde draws the green goblin with a club instead of grey spheres; without them, the spheres come back.
+- [ ] Goblins face the way they walk; the walk is six held poses, the club arm swinging with the opposite leg; standing still they hold one pose.
+- [ ] Far away (under about 96 px tall) they switch to the simpler model with no visible pop.
+- [ ] Goblin Runners walk at half the old speed (2.675 m/s).
+- [ ] Not yet checked: corpses (drawn as the far model, without its texture), Orc Brutes (still drawn as the goblin).
+- Clips: `GoblinModelCaptureTests.RecordGoblinsOnLevelTwo` (CAPTURE_HEIGHTS, CAPTURE_ROUTE).
+
+## Goblin crowd look (2026-11-14)
+- [ ] From above, a goblin shows the top of its head with the tuft, not its face.
+- [ ] Goblins are about 1.28 m tall, each a little taller or shorter and turned a few degrees off the road; five slight skin shades are mixed at random.
+- [ ] About half hold a club, some a bone, some a stone, some nothing.
+- [ ] Legs turn about 1.2 times a second at walking speed, slower when the goblin slows, and stop when it stands.
+- [ ] Near goblins have a dark outline and a ground shadow; far ones have the shadow only.
+- [ ] Fighting a caveman or the wall, a goblin raises its weapon and brings it down as the blow lands.
+- [ ] Dead goblins lie four different ways (on the back, face down, curled on a side, sprawled), each turned its own way; they drop what they held.
+- [ ] Goblins a blast kills fly away from where it landed: a blast behind sends them forward, one in front sends them back. Mostly outward, not up: right under it they rise steeply, a little further out the throw is already flat and long. Some right under it are crushed and drop where they stood. Goblins that die without a blast drop where they stand.
+- [ ] Bodies thrown far roll over along the ground once or twice at most before they stop.
+- [ ] Bomb the last one or two goblins left: their bodies still fly, fall and raise dust (they do not freeze where they were hit).
+- [ ] Soft grey dust (like the raging mammoth's smoke, not squares) puffs up where a body leaves the ground, where it lands and along its roll, and fades in about a second. About 4 bodies in 10 raise dust, so a blast that kills dozens does not hide the crowd under a white sheet.
+- [ ] Test bomb (only in the showcase clips for now; TEMPORARY numbers): everything within 6 m dies and is thrown; a wave then spreads to 50 m in under 2 s, hurting less the further out (10 at 6 m, nothing at 50 m) and pushing goblins away, hardest near the core; the pushed shove the ones behind them, and the hole is wider than the core.
+- [ ] Deaths are not in step: some fall quicker, some a moment later; most thrown bodies do not turn over in the air, only drift and twist a little; about one in four on a long flight turns over once.
+- [ ] Corpses are lit in facets like the living, colours a little dulled, with the dark outline and a ground shadow; burned and poisoned corpses are tinted.
+- [ ] A dense crowd does not stand in even rows: each goblin is drawn a little off its spot.
+- [ ] Up close the right hand is clenched shut round its club, bone or stone (no open fingers; the handle comes out of the fist), and the left hand is loosely curled.
+- [ ] Up close (the camera in front of a goblin or a brute) the face is clear: eyes, nose, teeth and mouth hold together, with no dark smears from the outline across it; the outline thins only within about 6 m of the camera; at 11 m and further the crowd has its full dark outline, the same at any screen resolution.
+- [ ] Goblins differ only a little (a big crowd must stay easy to read): about a quarter have a long tail of black hair down the back, about a fifth a taller crest of spikes, about a quarter faint marks on the head (ochre, pale clay or soot). Corpses keep their hair. No hoods, skulls or mantles.
+- [ ] Bodies thrown by a blast always stay on the road (stopping 0.35 m inside its edge), never off the map.
+- [ ] A goblin with the crowd packed ahead of it walks slower (down to 0.6, TEMPORARY); with room ahead it walks at full speed, so after a blast the ones behind run up and close the hole within a few seconds.
+- [ ] The road is brown trodden dirt with patches and pebbles; the ground beside it is still grey.
+
+## The Meshy Orc Brute in the horde (2026-11-14)
+Needs the local model: `Tools/Animation/meshy/build_brute.py` (Blender) on `Art/Characters/OrcBrute/Meshy/orc.fbx`, then copy `brute.bytes` and `brute-tex.png` to `Assets/Resources/Meshy/`. Without them brutes are drawn as goblins. Clips: `GoblinShowcaseCaptureTests` shots `brute_alone`, `brute_alone_side`, `brute_alone_front`, `brute_swing` (stopped by a barrier, swinging at it), `brutes_in_crowd_11m`, `brutes_in_crowd_low`, `brutes_bomb`.
+- [ ] Orc Brutes are 2.5 m tall (goblins 1.28 m), and as much wider in the crowd; their legs turn about 1.1 times a second (a cycle covers 1.91 m at 2.14 m/s), feet not sliding, dark olive skin (lighter than the Meshy texture), an animal skull on one shoulder, hide wraps, and a weapon in the right hand.
+- [ ] The brute's club is drawn over the goblins round it (0.6 m nearer the camera), never through them; on screen it stays in its hand.
+- [ ] A brute reaching a barrier stands still about half a second, winds up and only then strikes (never starts with the end of a blow, not even for a moment on its first stop); its blows vary between overhead, across from the right and a deep forward smash, never the same twice running. Slow and clumsy: the blow held about 0.5 s, a pause of 0.4 s, a 0.9 s wind-up (one blow every 1.8 s, each twice as hard as before). The club is a light-wood bat (as long as the first club, three quarters as thick), thick at the end, a hide band with three rings of bone fangs, a corded grip and a knob below the fist. From rest it swings into the wind-up through two in-between poses and back out through one, always in the fist, the body never bent out of shape.
+- [ ] Brutes walk with the walk posed by hand (the one the user approved: crouched a little, leaning in about like the goblins, knees and elbows bent, arms close to the body and swinging with the legs), not with a Meshy walk animation: those swayed and flung the arms so much that brutes in a crowd seemed to thrash about. Only the blow comes from the Meshy animation.
+- [ ] The brute's steps match its speed: a cycle covers about 1.53 m, measured from the foot on the ground, so the feet do not slide and at 2.14 m a second the legs turn about 1.4 times a second (they were many small quick steps, 0.6 m each).
+- [ ] Brutes are about 20% slower than goblins (2.14 against 2.675 m a second).
+- [ ] A goblin that catches up a walking brute does not queue behind it: it veers round it on the side it is on and goes on ahead (shot `brute_overtaken`). The brute keeps its line: it does not step aside, lurch from side to side or shove the goblins beside it. In a crowd the brutes fall back through the goblins. Not at a barricade: while the brute stands held or fighting, the crowd behind keeps its places. TEMPORARY numbers (PASS_LOOK, PASS_STEER, PASS_REACH, PASS_RATE).
+- [ ] Brutes fight with a blow taken from the Meshy animation ("Weapon Combo 2" in the same `all.fbx`; without it the hand-posed blow is used): turning side-on they swing the club up over the head and bring it down in front, the legs and back moving with it and the feet on the ground, in nine drawings (shots `brute_swing`, `brute_swing_front`); they lie dead in the same four ways as goblins, with their own model.
+- [ ] In a packed crowd a brute takes about 1.5 times a goblin's room (TEMPORARY): goblins press against it, not into it.
+- [ ] Brutes all hold the stone-headed club: the shaft runs through the stone and two hide bands bind it (the stone never floats apart from the wood); walking, the club is held steady, pointing forward and up (about 45 degrees seen from the side) and a little out, turning with the chest and not dipping at the ground as the arm swings back (not down at the ground, not straight ahead into the brute in front); winding up it hangs behind the head, and the blow brings it down forward; like the goblins, some have a tail of hair, some a crest of spikes, some faint marks on the head.
+
+## Известни падащи тестове (2026-11-16)
+
+Не са за проверка в играта, а за да се знае кое пада и защо, преди да се търси нова грешка.
+
+- [ ] `HordeFlowFieldTests.LevelTwoVariableWidthRoute_StaysOnRoadAndReachesExit` и `ProgressionServiceTests.TryPurchase_AllowsMultipleRanksUntilMaxRank` (EditMode) падат поне от 2026-11-07, не заради последните промени.
+- [ ] `GameRockTests.Rock_InAPackedCrowd_PushesAndClearsAChannel` и `Rock_ThroughTheThickOfTheCrowd` (ръчни, Explicit) падат с „The second click threw no rock“, и при старото правило за телата.
+- [ ] `HordeBlastTests.Bomb_KillsTheCoreAndItsWaveHurtsAndPushesLessFurtherOut` понякога пада в дълго пускане („The wave should push hardest near the core“, 4.31 срещу 4.44), а сам минава.
+- [ ] При пълното пускане на PlayMode видеокартата понякога спира („d3d12: Unrecoverable GPU device error“) след много тестове с ордата. Останалите тестове, пуснати отново, минават.

@@ -202,9 +202,10 @@ namespace TowerDefense.Tests
                 var initialState = runner.ReadSnapshot();
                 // The preventive contact shell and gentle global propulsion avoid
                 // penetration at the wall, then turn the row back into flow
-                // gradually. Observe four seconds so this checks recovery,
-                // not the old high-acceleration response time.
-                var report = runner.RunFixedTicks(240, writeReport: true);
+                // gradually. Observe five seconds so this checks recovery,
+                // not the old high-acceleration response time (a row packed against the wall also
+                // walks slower with the crowd ahead, user 2026-11-14).
+                var report = runner.RunFixedTicks(300, writeReport: true);
                 var finalState = runner.ReadSnapshot();
 
                 var correctedInward = 0;

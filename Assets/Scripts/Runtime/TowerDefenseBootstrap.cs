@@ -308,14 +308,19 @@ namespace TowerDefense.Runtime
 
         public static SampleContent Create()
         {
+            // Half the old 5.35 m/s (user, 2026-11-13: "twice as slow", with the new goblin model).
             var runner = CreateEnemy("runner", "Goblin Runner", EnemyRole.Runner,
                 "Fast and fragile. Dangerous in large groups because it slips past slow towers.",
                 "Weak to rapid-fire towers, bends with overlapping coverage, and well-timed arrow volleys.",
-                12f, 5.35f, 1, 1, PlaceholderPalette.Enemy, 0.36f);
+                12f, 2.675f, 1, 1, PlaceholderPalette.Enemy, 0.36f);
             var brute = CreateEnemy("brute", "Orc Brute", EnemyRole.Heavy,
                 "Slow but durable. It soaks repeated hits and punishes weak single-target damage.",
                 "Weak to heavy single-target damage and long-range focus fire before it reaches the gate.",
-                72f, 2.28f, 2, 4, PlaceholderPalette.Enemy, 0.39f);
+                // 2.14: about 20% slower than the goblin's 2.675 (user, 2026-11-15; it was 2.28).
+                72f, 2.14f, 2, 4, PlaceholderPalette.Enemy, 0.4875f);
+            // Its own model in the horde, 2.5 m tall (user, 2026-11-15; it was about 2 m), its body in
+            // the crowd wider by as much (visualScale 0.4875, was 0.39).
+            brute.hordeBody = HordeBody.Brute;
             var shaman = CreateEnemy("shaman", "Shaman", EnemyRole.Support,
                 "Walks with the horde and heals the goblins around it.",
                 "Weak to burst damage and priority targeting before it can travel with the main pack.",
@@ -355,6 +360,10 @@ namespace TowerDefense.Runtime
             brute.alliedDamageMultiplier = 1.3f;
             brute.wallDamageMultiplier = 1.8f;
             brute.mass = 3f;
+            // Slower, heavier blows (user, 2026-11-16): one every 1.8 s instead of 0.9, each twice
+            // as hard, so the damage over time stays as it was. TEMPORARY until balancing.
+            brute.attackInterval = 1.8f;
+            brute.attackDamage = 4f;
             shaman.healsEnemies = true;
             shaman.healAmount = 4f;
             shaman.mass = 1.5f;
@@ -403,12 +412,12 @@ namespace TowerDefense.Runtime
                 "Weak against tough enemies: each stone hits lightly.",
                 (int)EraId.Prehistoric, 1, 6.5f, 3f, 0.4f, 16f, PlaceholderPalette.Tower);
             slingers.nextEvolution = archer;
-            // Cavemen with clubs come out of a cave beside the road and hold the goblins back; they
+            // Cavemen with bones come out of a cave beside the road and hold the goblins back; they
             // hit lightly, holding is their job. One at first, up to five with upgrades; one shared
             // timer brings the next one only while fewer than the maximum are out (docs/Handoff.md,
             // user 2026-11-08). TEMPORARY numbers until balancing.
             var cave = CreateTower("cave", "Cave", TowerRole.BarracksLine,
-                "A cave beside the road. Cavemen with clubs come out and hold the goblins back on the road.",
+                "A cave beside the road. Cavemen with bones come out and hold the goblins back on the road.",
                 "Weak against thick hordes and heavy enemies: the cavemen hold, but hit lightly.",
                 (int)EraId.Prehistoric, 1, 3.2f, 0f, 1f, 0f, PlaceholderPalette.Tower);
             cave.behavior = TowerBehavior.Barracks;
@@ -872,12 +881,13 @@ namespace TowerDefense.Runtime
             {
                 new SkillNodeDefinition
                 {
-                    // The rock replaced the Volley of Arrows (user, 2026-11-08); the volley ids stay so
+                    // The rock replaced the Volley of Arrows (user, 2026-11-08), and the thrown spear the rock
+                    // (user, 2026-11-12); the volley ids stay so
                     // saved progress keeps its ranks.
                     id = "volley_core",
-                    displayName = "Rolling Rock",
-                    description = "Your starting active weapon: drop a rock on the road, then let it roll the way you drag. This is the center of the first tree.",
-                    iconKey = "rock",
+                    displayName = "Thrown Spear",
+                    description = "Your starting active weapon: click a goblin and a spear flies at it. This is the center of the first tree.",
+                    iconKey = "javelin",
                     radialPosition = Vector2.zero,
                     maxRanks = 1,
                     startsUnlocked = true,
@@ -946,8 +956,8 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.TowerHeavyDamagePercent, 25f, "spear_thrower")),
                 TreeNode("spear_big_game_weight", "Heavier Spears", "Big-Game Hunters: spears hit 5% harder against everything.", "spear|up", new Vector2(531f, -306f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_big_game", false,
                     TreeEffect(UpgradeEffectType.TowerDamagePercent, 5f, "spear_thrower")),
-                TreeNode("mammoth_unlock", "Tamed Mammoth", "A mammoth that charges into the horde, trampling and throwing goblins aside. Costs a Victory Sigil.", "mammoth", new Vector2(484f, 129f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
-                    TreeEffect(UpgradeEffectType.UnlockTower, 1f, "mammoth")),
+                WithExtraCost(TreeNode("mammoth_unlock", "Tamed Mammoth", "A mammoth that charges into the horde, trampling and throwing goblins aside. Costs a Victory Sigil and 3 Challenge Sigils.", "mammoth", new Vector2(484f, 129f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.UnlockTower, 1f, "mammoth")), CurrencyType.ChallengeToken, 3),
                 TreeNode("mammoth_damage", "Heavy Tread", "The mammoth tramples and scoops harder.", "damage", new Vector2(662f, 193f), 10, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "mammoth")),
                 TreeNode("mammoth_health", "Thick Fur", "The mammoth has 20 more health.", "health", new Vector2(269f, 183f), 8, CurrencyType.KillEssence, 3, 1.2f, "mammoth_unlock", false,
@@ -972,9 +982,13 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.TowerBeastArmorFlat, 40f, "mammoth")),
                 TreeNode("mammoth_armor_ram", "Battering Ram", "Armoured Mammoth: crowds slow its charge 10% less.", "armor|fast", new Vector2(440f, 356f), 5, CurrencyType.KillEssence, 6, 1.25f, "mammoth_armor", false,
                     TreeEffect(UpgradeEffectType.TowerBeastCrowdPercent, 10f, "mammoth")),
-                TreeNode("cave_unlock", "Cave", "Cavemen with clubs come out and hold the goblins back on the road. Costs a Victory Sigil.", "cave", new Vector2(-473f, -136f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
+                // The mammoth pushes and throws the Orc Brutes instead of stopping in them (Handoff,
+                // 2026-11-10); the boss still stops it. Price TEMPORARY, like the rest.
+                TreeNode("mammoth_push_brutes", "Brute Tosser", "Special: the mammoth pushes and throws Orc Brutes instead of stopping in them. The boss still stops it.", "push", new Vector2(355f, 120f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "mammoth_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerPushesHeavy, 1f, "mammoth")),
+                TreeNode("cave_unlock", "Cave", "Cavemen with bones come out and hold the goblins back on the road. Costs a Victory Sigil.", "cave", new Vector2(-473f, -136f), 1, CurrencyType.VictorySigil, 1, 1.2f, "volley_core", true,
                     TreeEffect(UpgradeEffectType.UnlockTower, 1f, "cave")),
-                TreeNode("cave_damage", "Bigger Clubs", "Cavemen hit harder.", "damage", new Vector2(-295f, -227f), 10, CurrencyType.KillEssence, 2, 1.2f, "cave_unlock", false,
+                TreeNode("cave_damage", "Bigger Bones", "Cavemen hit harder.", "damage", new Vector2(-295f, -227f), 10, CurrencyType.KillEssence, 2, 1.2f, "cave_unlock", false,
                     TreeEffect(UpgradeEffectType.BarracksUnitDamagePercent, 10f, "cave")),
                 TreeNode("cave_health", "Tough Hides", "Cavemen have more health.", "health", new Vector2(-617f, -190f), 10, CurrencyType.KillEssence, 2, 1.2f, "cave_unlock", false,
                     TreeEffect(UpgradeEffectType.BarracksUnitHealthPercent, 10f, "cave")),
@@ -998,30 +1012,23 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.TowerTorchBurnDamagePerSecondFlat, 1f, "cave")),
                 TreeNode("cave_torches_long", "Pitch", "Torches: the burn lasts 1 s longer.", "torch|time", new Vector2(-499f, -356f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_torches", false,
                     TreeEffect(UpgradeEffectType.TowerTorchBurnSecondsFlat, 1f, "cave")),
-                TreeNode("rock_damage", "Heavier Rock", "The rock hits harder (impact, roll, fire and shards).", "damage", new Vector2(-46f, 146f), 10, CurrencyType.KillEssence, 2, 1.2f, "volley_core", false,
+                TreeNode("rock_damage", "Sharper Flint", "The spear hits harder.", "damage", new Vector2(-46f, 146f), 10, CurrencyType.KillEssence, 2, 1.2f, "volley_core", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponDamagePercent, 10f)),
-                TreeNode("rock_cooldown", "Quick Haul", "The next rock is ready sooner.", "cooldown", new Vector2(-109f, -98f), 8, CurrencyType.KillEssence, 3, 1.2f, "volley_core", false,
+                TreeNode("rock_cooldown", "Quick Hands", "The next spear is ready sooner.", "cooldown", new Vector2(-109f, -98f), 8, CurrencyType.KillEssence, 3, 1.2f, "volley_core", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponCooldownPercent, 5f)),
-                TreeNode("rock_roll", "Longer Roll", "The rock rolls 2 m further.", "roll", new Vector2(115f, -118f), 5, CurrencyType.KillEssence, 4, 1.25f, "volley_core", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponRollDistanceFlat, 2f)),
-                TreeNode("rock_quake", "Quake", "Special: where the rock lands, goblins within 3.5 m are stunned for 0.8 s.", "quake", new Vector2(-142f, 117f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "volley_core", true,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 3.5f), TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.8f)),
-                TreeNode("rock_quake_radius", "Wide Quake", "Quake: reaches 0.5 m further.", "quake|plus", new Vector2(-195f, 233f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 0.5f)),
-                TreeNode("rock_quake_time", "Deep Quake", "Quake: the stun lasts 0.2 s longer.", "quake|time", new Vector2(-243f, 112f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.2f)),
-                TreeNode("rock_fire", "Fire Rock", "Special: the rock burns and leaves a burning trail where it rolls.", "fire", new Vector2(75f, 108f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "volley_core", true,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTrailUnlock, 1f)),
-                TreeNode("rock_fire_damage", "Hotter Fire", "Fire Rock: each burn tick deals 20% more.", "fire|up", new Vector2(181f, 158f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponFireDamagePercent, 20f)),
-                TreeNode("rock_fire_rate", "Fierce Fire", "Fire Rock: burns 0.5 more times per second.", "fire|fast", new Vector2(103f, 238f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTicksPerSecondFlat, 0.5f)),
-                TreeNode("rock_shatter", "Shatter", "Special: at the end of its roll the rock bursts into 5 shards, each hitting where it lands for 40% of the rock's damage.", "shatter", new Vector2(25f, -171f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "volley_core", true,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 5f), TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 40f)),
-                TreeNode("rock_shatter_shards", "More Shards", "Shatter: 2 more shards.", "shatter|plus", new Vector2(-41f, -263f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 2f)),
-                TreeNode("rock_shatter_damage", "Sharp Shards", "Shatter: each shard deals 10% more of the rock's damage.", "shatter|up", new Vector2(104f, -261f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 10f)),
+                // Spear upgrades (user, 2026-11-12), all prices and numbers TEMPORARY. The heavy spear and
+                // the volley are plain Kill Essence upgrades; the precise strike is a special with two
+                // upgrades of its own. They sit where the rock's upgrades were.
+                TreeNode("spear_heavy", "Heavy Spear", "The spear's blow shakes the ground: goblins within 0.7 m of its target take 40% of its damage. Each rank reaches 0.7 m further.", "heavyspear", new Vector2(115f, -118f), 3, CurrencyType.KillEssence, 4, 1.3f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponSplashRadiusFlat, 0.7f)),
+                TreeNode("spear_volley", "Volley", "One more spear flies with each click, at the goblins nearest it.", "volley", new Vector2(75f, 108f), 4, CurrencyType.KillEssence, 8, 1.5f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponExtraSpearsFlat, 1f)),
+                TreeNode("spear_precise", "Precise Strike", "Special: each spear has a 15% chance to deal 3 times its damage.", "crit", new Vector2(-142f, 117f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponCritChancePercent, 15f)),
+                TreeNode("spear_precise_chance", "Keen Eye", "Precise Strike: 5% more chance.", "crit|plus", new Vector2(-195f, 233f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_precise", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponCritChancePercent, 5f)),
+                TreeNode("spear_precise_damage", "Deep Wound", "Precise Strike: half the spear's damage more.", "crit|up", new Vector2(-243f, 112f), 5, CurrencyType.KillEssence, 6, 1.25f, "spear_precise", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponCritMultiplierFlat, 0.5f)),
             };
 
             return new SampleContent
@@ -1341,6 +1348,36 @@ namespace TowerDefense.Runtime
             }
         }
 
+        // The rock's own upgrades: its roll and its three specials (quake, fire, shatter), each with
+        // two Kill Essence upgrades. Out of the tree while the thrown spear is the first weapon
+        // (user, 2026-11-12: "hide the rock's upgrades for now"); the rock comes back later.
+        internal static SkillNodeDefinition[] RockNodesForLater()
+        {
+            return new[]
+            {
+                TreeNode("rock_roll", "Longer Roll", "The rock rolls 2 m further.", "roll", new Vector2(115f, -118f), 5, CurrencyType.KillEssence, 4, 1.25f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponRollDistanceFlat, 2f)),
+                TreeNode("rock_quake", "Quake", "Special: where the rock lands, goblins within 3.5 m are stunned for 0.8 s.", "quake", new Vector2(-142f, 117f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 3.5f), TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.8f)),
+                TreeNode("rock_quake_radius", "Wide Quake", "Quake: reaches 0.5 m further.", "quake|plus", new Vector2(-195f, 233f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat, 0.5f)),
+                TreeNode("rock_quake_time", "Deep Quake", "Quake: the stun lasts 0.2 s longer.", "quake|time", new Vector2(-243f, 112f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_quake", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat, 0.2f)),
+                TreeNode("rock_fire", "Fire Rock", "Special: the rock burns and leaves a burning trail where it rolls.", "fire", new Vector2(75f, 108f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTrailUnlock, 1f)),
+                TreeNode("rock_fire_damage", "Hotter Fire", "Fire Rock: each burn tick deals 20% more.", "fire|up", new Vector2(181f, 158f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireDamagePercent, 20f)),
+                TreeNode("rock_fire_rate", "Fierce Fire", "Fire Rock: burns 0.5 more times per second.", "fire|fast", new Vector2(103f, 238f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_fire", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponFireTicksPerSecondFlat, 0.5f)),
+                TreeNode("rock_shatter", "Shatter", "Special: at the end of its roll the rock bursts into 5 shards, each hitting where it lands for 40% of the rock's damage.", "shatter", new Vector2(25f, -171f), 1, CurrencyType.ChallengeToken, 4, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 5f), TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 40f)),
+                TreeNode("rock_shatter_shards", "More Shards", "Shatter: 2 more shards.", "shatter|plus", new Vector2(-41f, -263f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterShardsFlat, 2f)),
+                TreeNode("rock_shatter_damage", "Sharp Shards", "Shatter: each shard deals 10% more of the rock's damage.", "shatter|up", new Vector2(104f, -261f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 10f)),
+            };
+        }
+
         private static SkillNodeDefinition TreeNode(string id, string displayName, string description, string iconKey, Vector2 position,
             int maxRanks, CurrencyType currency, int cost, float costGrowth, string prerequisite, bool isMajor,
             params UpgradeEffect[] effects)
@@ -1359,6 +1396,15 @@ namespace TowerDefense.Runtime
                 isMajorUnlock = isMajor,
                 effects = effects
             };
+        }
+
+        // A node that costs a second currency too. The mammoth is stronger than the other towers,
+        // so it costs a Victory Sigil and 3 Challenge Sigils (user, 2026-11-12) and can still be
+        // bought before the boss. TEMPORARY price.
+        private static SkillNodeDefinition WithExtraCost(SkillNodeDefinition node, CurrencyType currency, int amount)
+        {
+            node.costs = new[] { node.costs[0], new CurrencyAmount(currency, amount) };
+            return node;
         }
 
         private static UpgradeEffect TreeEffect(UpgradeEffectType type, float value, string targetId = null)

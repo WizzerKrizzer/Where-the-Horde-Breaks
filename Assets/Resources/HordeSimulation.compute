@@ -217,6 +217,11 @@ struct AreaEffectCommand
     // straight out from the centre (the rolling rock, user 2026-11-09). Its length scales the
     // share along the line: 1 for the rock, more for the mammoth's forward scoop.
     float2 pushAxis;
+    // Not 0: a bomb's wave ring (GpuHordeSimulation.QueueBomb). Damage, push and death throw fall
+    // from full at this distance from the centre to nothing at falloffEnd (its reach), each body
+    // hit only once.
+    float falloffStart;
+    float falloffEnd;
 };
 
 // Throws sideways off the axis, a little forward, with some scatter per body so the spread is even.
@@ -327,6 +332,24 @@ RWStructuredBuffer<float2> _Impulses;
 RWStructuredBuffer<int> _Aux;
 uint _CorpseCapacity;
 uint _CorpseBase;
+// The brutes' own corpse ring (their model, GpuHordeSimulation.BruteCorpseCapacity): its cursor's
+// slot, its first slot, and its size (0 when there is no brute model: brutes join the goblins').
+uint _BruteCorpseCursor;
+uint _BruteCorpseBase;
+uint _BruteCorpseCapacity;
+// CombatFlags bit of a body drawn with the brute model (GpuHordeSimulation.BruteBodyFlag).
+#define BRUTE_BODY_FLAG 16u
+// A brute arriving at a blocker stands still about 0.5 s and winds up for 0.9 s (GpuHordeSimulation
+// BruteWindUpSeconds) before its first blow. TEMPORARY.
+#define BRUTE_FIRST_BLOW_DELAY 1.4
+// The brute's blows (build_brute.py BLOWS): in flags, bits 6-7 the one that landed last, bits 8-9
+// the one coming (HordeGoblin.cginc).
+#define BRUTE_BLOWS 3u
+#define BLOW_SHIFT_LANDED 6u
+#define BLOW_SHIFT_COMING 8u
+// Set once a brute's blow has landed since it last arrived: until then there is no blow to come
+// back from (HordeGoblin.cginc; user, 2026-11-16: on its first stop it showed the end of a blow).
+#define BLOW_LANDED_FLAG 1024u
 // The simulation clock (seconds) that corpse birth times are measured on; HordeCorpse.shader
 // gets the same clock and plays each body's fall from it.
 float _CorpseClock;
@@ -347,6 +370,10 @@ RWByteAddressBuffer _CorpseDrawArgs;
 // How quickly a corpse sliding on the ground stops (the landing skid of a live body).
 #define CORPSE_GROUND_DRAG 5.4
 #define CORPSE_MAX_GROUND_SPEED 6.0
+// A thrown body is faster than a thrown live goblin may be: the long throws at a blast's edge.
+#define CORPSE_MAX_AIR_SPEED 7.5
+// Dust puffs a corpse raises (HordeDust.shader): written with the corpse draw count.
+RWByteAddressBuffer _DustDrawArgs;
 StructuredBuffer<float4> _FlowVectors;
 StructuredBuffer<float4> _FlowData;
 RWStructuredBuffer<uint> _CellCounts;
@@ -555,6 +582,19 @@ float CellOccupancy(int2 cell)
     return IsInside(cell) ? (float)_CellCountsRead[CellIndex(cell)] : 0.0;
 }
 
+// Bodies per cell at a point, blended between the four nearest cell centres, so it does not
+// jump as a body crosses a cell edge.
+float SmoothOccupancy(float2 position)
+{
+    float2 grid = (position - _GridOrigin) / _CellSize - 0.5;
+    int2 low = (int2)floor(grid);
+    float2 f = grid - (float2)low;
+    return lerp(
+        lerp(CellOccupancy(low), CellOccupancy(low + int2(1, 0)), f.x),
+        lerp(CellOccupancy(low + int2(0, 1)), CellOccupancy(low + int2(1, 1)), f.x),
+        f.y);
+}
+
 float PressureOccupancy(int2 cell)
 {
     // Road boundaries are handled by signed-distance contacts. Filling every
@@ -712,9 +752,43 @@ float2 ConstrainMove(float2 current, float2 desired)
     return result;
 }
 
+// Where a dead body's throw ends (user, 2026-11-15: thrown bodies piled up along the road's edges).
+// A body flies and skids as far as the road goes and stops where it would go further, CORPSE_EDGE_INSET
+// metres inside the edge so the lying body does not hang over it: it does not slide along the edge the
+// way a living goblin is kept on the road. (It could leave the road by up to 2 m; user, 2026-11-16:
+// bodies thrown off the map are not acceptable.)
+#define CORPSE_EDGE_INSET 0.35
+
+bool CorpseMayLie(float2 position)
+{
+    return IsInside(WorldToCell(position)) && SampleBoundaryDistance(position) >= CORPSE_EDGE_INSET;
+}
+
+float2 CorpseMove(float2 current, float2 desired)
+{
+    float2 displacement = desired - current;
+    float distance = length(displacement);
+    int stepCount = clamp((int)ceil(distance / max(_CellSize * 0.4, 0.05)), 1, 24);
+    float2 step = displacement / (float)stepCount;
+    float2 result = current;
+    [loop]
+    for (int stepIndex = 0; stepIndex < stepCount; stepIndex++)
+    {
+        float2 next = result + step;
+        if (!CorpseMayLie(next))
+        {
+            break;
+        }
+
+        result = next;
+    }
+
+    return result;
+}
+
 // A body that dies keeps the motion it had (a blast, a spear, its own fall) and finishes it as a
-// corpse: up in an arc if it was thrown, then a skid along the ground that stops at the road's
-// edge. The whole path is decided here, once, and HordeCorpse.shader plays it back from the
+// corpse: up in an arc if it was thrown, then a skid along the ground that may leave the road
+// (CorpseMove). The whole path is decided here, once, and HordeCorpse.shader plays it back from the
 // birth time, so corpses cost nothing in the simulation. toss and lift add a death throw
 // (horizontal metres per second, upward metres per second) on top of the body's own motion.
 //
@@ -737,17 +811,26 @@ void RecordCorpse(AgentState state, float2 toss, float lift)
     float2 direction = speed > 0.001 ? velocity / speed : state.facing;
     if (dot(direction, direction) < 0.0001) direction = float2(1.0, 0.0);
     direction = normalize(direction);
-    speed = min(speed, flight > 0.0 ? AIR_MAX_HORIZONTAL_SPEED : CORPSE_MAX_GROUND_SPEED);
+    speed = min(speed, flight > 0.0 ? CORPSE_MAX_AIR_SPEED : CORPSE_MAX_GROUND_SPEED);
     float airDecay = exp(-AIR_DRAG * flight);
     float travel = speed * (1.0 - airDecay) / AIR_DRAG + speed * airDecay / CORPSE_GROUND_DRAG;
-    float2 rest = travel > 0.001 ? ConstrainMove(state.position, state.position + direction * travel) : state.position;
+    float2 rest = travel > 0.001 ? CorpseMove(state.position, state.position + direction * travel) : state.position;
     uint mark = state.burnTimer > 0.0 && state.burnDamagePerSecond > 0.0
         ? ((state.flags & 8u) != 0u ? 2u : 1u)
         : 0u;
 
     int cursor;
-    InterlockedAdd(_Aux[0], 1, cursor);
-    uint offset = _CorpseBase + ((uint)cursor % _CorpseCapacity) * CORPSE_STRIDE;
+    uint offset;
+    if ((state.combatFlags & BRUTE_BODY_FLAG) != 0u && _BruteCorpseCapacity > 0u)
+    {
+        InterlockedAdd(_Aux[_BruteCorpseCursor], 1, cursor);
+        offset = _BruteCorpseBase + ((uint)cursor % _BruteCorpseCapacity) * CORPSE_STRIDE;
+    }
+    else
+    {
+        InterlockedAdd(_Aux[0], 1, cursor);
+        offset = _CorpseBase + ((uint)cursor % _CorpseCapacity) * CORPSE_STRIDE;
+    }
     _Aux[offset] = asint(state.position.x);
     _Aux[offset + 1u] = asint(state.position.y);
     _Aux[offset + 2u] = asint(rest.x);
@@ -762,11 +845,27 @@ void RecordCorpse(AgentState state, float2 toss, float lift)
     _Aux[offset + 11u] = (int)((state.definitionIndex & 0xFFFFu) | (mark << 16));
 }
 
-// The throw a blast gives the bodies it kills: away from its centre, or off its line when it
-// has an axis, harder near the centre. Small hits (a stone, a club) only drop the body.
-// Presentation only: it moves the corpse, never a living goblin.
+// A body a blast kills: the shove the blast gave it alive is mostly replaced by its death throw
+// (BlastDeathThrow), which sets how it flies; keep is the share of the shove it keeps (0 for a
+// body crushed where it stood). Presentation only, like RecordCorpse.
+void RecordBlastCorpse(AgentState state, float2 toss, float lift, float keep)
+{
+    state.knockbackVelocity *= keep;
+    // The death throw alone sets how it rises, so the upward shove the same blast gave it alive
+    // does not send it straight up on top (user, 2026-11-14).
+    state.airSpeed = min(state.airSpeed, 0.0);
+    RecordCorpse(state, toss, lift);
+}
+
+// The throw a blast gives the bodies it kills (user, 2026-11-14): away from where it landed, so a
+// blast behind a goblin sends it forward and one in front sends it back. Right under the blast
+// a body goes almost straight up; the further out, the flatter and longer the throw, so the ones
+// at the edge fly far and roll when they land (HordeCorpse). Some right under it are crushed
+// where they stand and do not fly at all. Each body a little its own way, height and distance.
+// A blast with an axis throws off its line instead. Small hits (a stone, a club) only drop the
+// body. Presentation only: it moves the corpse, never a living goblin.
 void BlastDeathThrow(float2 center, float radius, float2 axis, uint agentIndex, float2 position,
-    out float2 toss, out float lift)
+    out float2 toss, out float lift, out float keep)
 {
     float2 offset = position - center;
     float distance = length(offset);
@@ -782,12 +881,32 @@ void BlastDeathThrow(float2 center, float radius, float2 axis, uint agentIndex, 
     }
     if (dot(axis, axis) > 0.0001) direction = AxisThrowDirection(offset, axis, agentIndex);
     float blast = saturate((radius - 0.6) / 1.4);
-    float falloff = 1.0 - saturate(distance / max(0.01, radius));
+    float out01 = saturate(distance / max(0.01, radius));
     float noise = frac(sin((float)(agentIndex + 1u) * 78.233) * 43758.5453);
-    // Mostly up, not far: thrown far, the bodies would land under the crowd around the blast and
-    // vanish again. Up and down within about a metre, they lie in the hole the blast made.
-    toss = direction * blast * lerp(0.6, 1.8, falloff) * lerp(0.8, 1.2, noise);
-    lift = blast * lerp(2.5, 5.0, falloff) * lerp(0.85, 1.15, frac(noise * 7.31));
+    float turn = frac(sin((float)(agentIndex + 1u) * 26.651) * 43758.5453);
+    float power = frac(sin((float)(agentIndex + 1u) * 41.117) * 43758.5453);
+    float tilt = frac(sin((float)(agentIndex + 1u) * 63.719) * 43758.5453);
+    keep = 0.2;
+    if (out01 < 0.3 && noise < 0.3)
+    {
+        // Crushed: drops where it stood.
+        toss = float2(0.0, 0.0);
+        lift = 0.0;
+        keep = 0.0;
+        return;
+    }
+    // Up to 15 degrees either side of straight away from the blast.
+    float sa, ca;
+    sincos((turn - 0.5) * 0.52, sa, ca);
+    direction = float2(direction.x * ca - direction.y * sa, direction.x * sa + direction.y * ca);
+    // Mostly away from the blast, not up (user, 2026-11-14): about 70 degrees up right under it,
+    // falling fast to about 20 at its edge, give or take 8.
+    float elevation = radians(lerp(70.0, 20.0, sqrt(out01)) + (tilt - 0.5) * 16.0);
+    float strength = blast * 6.5 * lerp(1.0, 0.85, out01) * lerp(0.8, 1.15, power);
+    float se, ce;
+    sincos(elevation, se, ce);
+    toss = direction * strength * ce;
+    lift = strength * se;
 }
 
 [numthreads(64, 1, 1)]
@@ -1018,6 +1137,7 @@ void FinalizeActiveDispatch(uint3 id : SV_DispatchThreadID)
     if (_CorpseCapacity > 0u)
     {
         _CorpseDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
+        _DustDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
     }
 }
 
@@ -1221,9 +1341,10 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                             state.status = 3;
                             float2 deathToss;
                             float deathLift;
+                            float deathKeep;
                             BlastDeathThrow(command.center, command.radius, command.pushAxis, agentIndex,
-                                state.position, deathToss, deathLift);
-                            RecordCorpse(state, deathToss, deathLift);
+                                state.position, deathToss, deathLift, deathKeep);
+                            RecordBlastCorpse(state, deathToss, deathLift, deathKeep);
                             EmitEvent(agentIndex, 1u, appliedDamage);
                         }
                         else
@@ -1308,10 +1429,28 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
         float distanceSq = dot(offset, offset);
         float radiusSq = command.radius * command.radius;
         float effectiveInnerRadius = max(0.0, command.innerRadius);
-        bool isPhysicsShockwave = command.innerRadius != 0.0;
+        bool isBombWave = command.falloffStart > 0.0;
+        bool isPhysicsShockwave = command.innerRadius != 0.0 && !isBombWave;
         if (distanceSq > radiusSq || distanceSq < effectiveInnerRadius * effectiveInnerRadius)
         {
             continue;
+        }
+
+        float bombFall = 1.0;
+        if (isBombWave)
+        {
+            // Once per bomb: the wave's rings overlap a little, so mark the body with the bomb.
+            // shockwaveCenter is only read while riding a physics shockwave, which sets it anew;
+            // shifted so a bomb at the origin does not match a fresh body's zero.
+            float2 mark = command.center + 1000.0;
+            if (all(abs(state.shockwaveCenter - mark) < 0.001))
+            {
+                continue;
+            }
+
+            state.shockwaveCenter = mark;
+            bombFall = 1.0 - saturate((sqrt(distanceSq) - command.falloffStart) /
+                max(0.01, command.falloffEnd - command.falloffStart));
         }
 
         if (command.heal > 0.0 && agentIndex + 1u != command.skipAgent && state.health < state.maxHealth)
@@ -1355,6 +1494,12 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
                 float falloff = 1.0 - saturate(distance / command.radius);
                 float smoothFalloff = falloff * falloff * (3.0 - 2.0 * falloff);
                 gameplayFalloff = lerp(0.35, 1.0, smoothFalloff);
+            }
+
+            if (isBombWave)
+            {
+                // Hardest near the core, fading to nothing at the wave's reach.
+                gameplayFalloff = bombFall * bombFall;
             }
 
             if (isPhysicsShockwave)
@@ -1405,9 +1550,9 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
             }
         }
 
-        if (command.damage > 0.0)
+        if (command.damage * bombFall > 0.0)
         {
-            float appliedDamage = max(0.0, command.damage - state.armor) *
+            float appliedDamage = max(0.0, command.damage * bombFall - state.armor) *
                 (1.0 - saturate(state.physicalResistance));
             state.health -= appliedDamage;
             if (state.health <= 0.0)
@@ -1416,9 +1561,13 @@ void ApplyUnlimitedAreaEffects(uint3 id : SV_DispatchThreadID)
                 state.status = 3u;
                 float2 deathToss;
                 float deathLift;
+                float deathKeep;
                 BlastDeathThrow(effectCenter, command.radius, command.pushAxis, agentIndex,
-                    state.position, deathToss, deathLift);
-                RecordCorpse(state, deathToss, deathLift);
+                    state.position, deathToss, deathLift, deathKeep);
+                // Killed by a bomb's wave further out: a weaker throw the further it was.
+                deathToss *= bombFall;
+                deathLift *= bombFall;
+                RecordBlastCorpse(state, deathToss, deathLift, deathKeep);
                 EmitEvent(agentIndex, 1u, appliedDamage);
             }
             else
@@ -1613,7 +1762,9 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     // Bit 0 is flying. Bit 1 is a transient renderer hint for a reserved
     // melee attacker and is recomputed every simulation step. Bit 2 marks a
     // shockwave body whose boundary/contact reflection is returning inward.
-    state.flags &= 0xFFFFFFFDu;
+    // Bit 5 keeps whether it was fighting the step before (a brute arriving at a blocker stands
+    // still a moment before its first blow).
+    state.flags = (state.flags & 0xFFFFFFDDu) | ((state.flags & 2u) != 0u ? 32u : 0u);
     float simulationDelta = _DeltaTime;
     state.stepStartPosition = state.position;
     state.shockwaveOutwardTimer = max(0.0, state.shockwaveOutwardTimer);
@@ -1852,7 +2003,8 @@ void CullVisible(uint3 id : SV_DispatchThreadID)
             return;
         }
 
-        bool secondGoblinModel = _GoblinVariantCulling != 0u && (index & 1u) != 0u;
+        // The second pair of lists draws the brutes with their own model.
+        bool secondGoblinModel = _GoblinVariantCulling != 0u && (state.combatFlags & BRUTE_BODY_FLAG) != 0u;
         float cameraDistance = distance(state.position, _LodCameraPosition);
         float viewingDistance = sqrt(cameraDistance * cameraDistance + _LodProjection.x * _LodProjection.x);
         float projectedHeight = 2.4 * state.scale * _LodProjection.y /
@@ -1897,21 +2049,37 @@ void CullVisible(uint3 id : SV_DispatchThreadID)
 // XPBD crowd path
 // -----------------------------------------------------------------------------
 
+// An Orc Brute takes this much more room than its scale gives (user, 2026-11-14: its 2 m model is
+// much broader than a goblin's, and goblins stood inside it). TEMPORARY until balancing.
+#define BRUTE_RADIUS_SCALE 1.5
+
+float BruteRadiusScale(AgentState state)
+{
+    return (state.combatFlags & BRUTE_BODY_FLAG) != 0u ? BRUTE_RADIUS_SCALE : 1.0;
+}
+
 float XpbdBodyRadius(AgentState state)
 {
     // state.scale sizes the full sprite card, including transparent padding.
     // Production contacts use the painted torso's radius instead. Lab bodies
     // retain their explicit disk diameter, independently of sprite artwork.
     return _XpbdUsePerBodyRadius != 0u
-        ? max(_CollisionDiameter * 0.5, state.scale * _XpbdBodyRadiusPerVisualScale)
+        ? max(_CollisionDiameter * 0.5, state.scale * _XpbdBodyRadiusPerVisualScale) * BruteRadiusScale(state)
         : _CollisionDiameter * 0.5;
 }
 
 float XpbdPairDiameter(AgentState first, AgentState second)
 {
-    return _XpbdUsePerBodyRadius != 0u
-        ? max(_CollisionDiameter, (first.scale + second.scale) * _XpbdBodyRadiusPerVisualScale)
-        : _CollisionDiameter;
+    if (_XpbdUsePerBodyRadius == 0u)
+    {
+        return _CollisionDiameter;
+    }
+
+    // Two goblins keep their shared contact exactly; a brute adds its extra room on its side.
+    float diameter = max(_CollisionDiameter, (first.scale + second.scale) * _XpbdBodyRadiusPerVisualScale);
+    diameter += max(_CollisionDiameter * 0.5, first.scale * _XpbdBodyRadiusPerVisualScale) * (BruteRadiusScale(first) - 1.0);
+    diameter += max(_CollisionDiameter * 0.5, second.scale * _XpbdBodyRadiusPerVisualScale) * (BruteRadiusScale(second) - 1.0);
+    return diameter;
 }
 
 // Resolve outside the five-percent shell used to classify a shallow
@@ -1924,6 +2092,8 @@ float XpbdSolveDistance(float physicalDistance)
     return physicalDistance * 1.18;
 }
 
+#define PASS_LOOK 1.6
+#define PASS_STEER 1.5
 void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simulationDelta)
 {
     int2 cell = WorldToCell(state.position);
@@ -1950,7 +2120,76 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
     if (dot(flow, flow) < 0.0001) flow = float2(1.0, 0.0);
     bool shockwaveRiding = state.shockwaveOutwardTimer > 0.0;
     float desiredSpeed = max(0.0, control.x * _MovementSpeedMultiplier * state.slowMultiplier);
-    float2 desiredVelocity = flow * min(desiredSpeed, _XpbdMaximumSpeed);
+    // Going round a slower body ahead (user, 2026-11-15: a goblin that catches up an Orc Brute
+    // must get past it, not queue behind it). A body with a slower one walking in its way, up to
+    // PASS_LOOK metres ahead, steps sideways as it walks, to the side it is already on, faster the
+    // bigger the difference of their speeds. The slower one keeps its line. Not for one that
+    // stands (held at a barricade, fighting): behind it the crowd queues as before.
+    // TEMPORARY numbers.
+    float passing = 0.0;
+    float2 passSteer = 0.0;
+    if (!shockwaveRiding && control.x > 0.0)
+    {
+        float ownSpeed = control.x * state.slowMultiplier;
+        float2 sideways = float2(-flow.y, flow.x);
+        float ownRadius = max(0.05, XpbdBodyRadius(state));
+        // Every cell along the way ahead, and the one to each side of it.
+        uint lookRows = (uint)clamp(ceil(PASS_LOOK / max(0.05, _CellSize)), 1.0, 8.0);
+        [loop]
+        for (uint lookStep = 0u; lookStep < lookRows * 3u; lookStep++)
+        {
+            float2 lookAt = state.position + flow * (_CellSize * (float)(lookStep / 3u + 1u)) +
+                sideways * (_CellSize * ((float)(lookStep % 3u) - 1.0));
+            int2 lookCell = WorldToCell(lookAt);
+            if (!IsInside(lookCell)) continue;
+            uint lookIndex = CellIndex(lookCell);
+            uint inCell = min(_CellCountsRead[lookIndex], _CellCapacity);
+            [loop]
+            for (uint lookSlot = 0u; lookSlot < inCell; lookSlot++)
+            {
+                uint other = _CellAgentsRead[lookIndex * _CellCapacity + lookSlot];
+                if (other == index) continue;
+                float otherSpeed = _Controls[other].x;
+                if (otherSpeed >= ownSpeed * 0.9) continue;
+                AgentState slower = _StatesInput[other];
+                if (slower.status != 1u || IsAirborne(slower) || slower.locomotionSpeed < 0.25 * otherSpeed) continue;
+                float2 toSlower = slower.position - state.position;
+                float along = dot(toSlower, flow);
+                float across = dot(toSlower, sideways);
+                float room = ownRadius + XpbdBodyRadius(slower);
+                if (along <= 0.0 || along > PASS_LOOK || abs(across) > room * 1.3) continue;
+                float side = abs(across) > 0.03 ? -sign(across) : ((index & 1u) != 0u ? 1.0 : -1.0);
+                passSteer += sideways * (side * (ownSpeed - otherSpeed) * PASS_STEER * saturate(1.3 - abs(across) / room));
+                passing = 1.0;
+            }
+        }
+        float steerLength = length(passSteer);
+        float steerLimit = ownSpeed * 0.8;
+        if (steerLength > steerLimit) passSteer *= steerLimit / steerLength;
+    }
+    // Held back by the crowd ahead (user, 2026-11-14): a goblin with others packed in front of
+    // it walks slower, one with room in front walks at its full speed, so the ones behind a
+    // hole (a blast) run up and close it. Fill is the crowd a couple of metres ahead against a
+    // fully packed crowd of bodies this size. TEMPORARY numbers: down to 0.6 of the speed.
+    {
+        float bodyRadius = max(0.05, XpbdBodyRadius(state));
+        float aheadCount = 0.0;
+        [unroll]
+        for (int aheadStep = 0; aheadStep < 3; aheadStep++)
+        {
+            aheadCount += SmoothOccupancy(state.position + flow * bodyRadius * (2.2 + 1.4 * aheadStep));
+        }
+        float aheadDensity = aheadCount / (3.0 * _CellSize * _CellSize);
+        float packedDensity = 0.2887 / (bodyRadius * bodyRadius);
+        float fill = aheadDensity / packedDensity;
+        // Only while it is actually walking (its last step's speed): in a standing jam the crowd
+        // already holds it, and a released queue must still start as one body
+        // (PackedGoblinQueue_StartsTogetherOnFirstTickAfterBlockerRemoval).
+        float walking = saturate(state.locomotionSpeed / max(0.05, desiredSpeed * 0.4));
+        // Not while it is going round a slower body: held back, it would only trail behind it.
+        desiredSpeed *= lerp(1.0, 0.6, smoothstep(0.15, 0.6, fill) * walking * (1.0 - passing));
+    }
+    float2 desiredVelocity = flow * min(desiredSpeed, _XpbdMaximumSpeed) + passSteer;
     if (shockwaveRiding) desiredVelocity = 0.0;
     bool releasedBlockerThisTick = state.padding2 < -0.5;
 
@@ -2066,6 +2305,14 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
             // queue behind it.
             state.velocity = desiredVelocity;
             state.flags |= 2u;
+            if ((state.flags & 32u) == 0u && (state.combatFlags & BRUTE_BODY_FLAG) != 0u)
+            {
+                // Just arrived: it stands still about half a second, then winds up (user,
+                // 2026-11-16: it started with a blow already half done). TEMPORARY: the first
+                // blow lands this much later.
+                state.attackTimer = max(state.attackTimer, BRUTE_FIRST_BLOW_DELAY);
+                state.flags &= ~BLOW_LANDED_FLAG;
+            }
             state.attackTimer -= simulationDelta;
             if (state.attackTimer <= 0.0 && state.attackDamage > 0.0)
             {
@@ -2078,6 +2325,16 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
                 uint previousAttacker;
                 InterlockedExchange(_DynamicTargetLastAttacker[targetIndex], index + 1u, previousAttacker);
                 state.attackTimer = max(0.15, state.attackInterval);
+                if ((state.combatFlags & BRUTE_BODY_FLAG) != 0u)
+                {
+                    // The blow that lands is the one that was coming; the next is another of the
+                    // three, never the same twice running (user, 2026-11-16: every blow alike).
+                    uint coming = (state.flags >> BLOW_SHIFT_COMING) & 3u;
+                    uint step = 1u + (uint)(frac(sin((float)index * 17.31 + state.presentationTime * 3.7) * 43758.5453) * 2.0);
+                    uint next = (coming + min(step, 2u)) % BRUTE_BLOWS;
+                    state.flags = (state.flags & ~(15u << BLOW_SHIFT_LANDED)) | (coming << BLOW_SHIFT_LANDED) | (next << BLOW_SHIFT_COMING)
+                        | BLOW_LANDED_FLAG;
+                }
 
                 if (target.thornsDamage > 0.0)
                 {
@@ -2357,7 +2614,8 @@ void BuildXpbdPairs(uint3 id : SV_DispatchThreadID)
     // set for the full per-tick relative travel envelope; a 1.25x diameter
     // query omitted second-ring pairs that could become deeply overlapping
     // before the grid was rebuilt on the next tick.
-    float broadDistance = max(_CollisionDiameter, XpbdBodyRadius(state) * 2.0) +
+    // Wide enough for a brute's room on the other side of the pair too.
+    float broadDistance = max(_CollisionDiameter, XpbdBodyRadius(state) * 2.0) * BRUTE_RADIUS_SCALE +
         _XpbdMaximumTravel * 2.0;
     int radius = max(1, (int)ceil(broadDistance / _CellSize));
     [loop]
@@ -2466,6 +2724,10 @@ void ClearXpbdCorrections(uint3 id : SV_DispatchThreadID)
     }
 }
 
+// Going round a slower body (SolveXpbdPairs): within this many body diameters of it, and how much
+// of the difference of the two speeds becomes sideways movement. TEMPORARY numbers.
+#define PASS_REACH 1.2
+#define PASS_RATE 1.0
 [numthreads(64, 1, 1)]
 void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
 {
@@ -2483,6 +2745,8 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     float inverseSecond = 0.0;
     float deepContactWeight = 1.0;
     float contactStrength = 1.0;
+    float2 passFirst = 0.0;
+    float2 passSecond = 0.0;
     if (isBlocker)
     {
         uint targetIndex = pair.second & 0x7FFFFFFFu;
@@ -2529,6 +2793,38 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         firstGradient = -normal;
         secondGradient = normal;
         inverseSecond = rcp(max(0.1, second.mass));
+        // A faster body pressed against the back of a slower one goes round it (user, 2026-11-15:
+        // a goblin behind an Orc Brute must get past it, not queue behind it): it steps sideways,
+        // to the side it is already on, at about the difference of their speeds. The slower one
+        // keeps its line: when it stepped aside too, a brute in a crowd, caught up from both sides
+        // all the time, lurched from side to side and shoved the goblins beside it (user,
+        // 2026-11-15). Not while the slower one stands (held at a barricade, fighting): then it is
+        // a queue, and the crowd keeps its places.
+        {
+            float firstSpeed = _Controls[pair.first].x * first.slowMultiplier;
+            float secondSpeed = _Controls[pair.second].x * second.slowMultiplier;
+            bool firstFaster = firstSpeed > secondSpeed;
+            float fastSpeed = max(firstSpeed, secondSpeed);
+            float slowSpeed = min(firstSpeed, secondSpeed);
+            float slowWalking = firstFaster ? second.locomotionSpeed : first.locomotionSpeed;
+            float2 heading = firstFaster ? second.facing : first.facing;
+            if (fastSpeed - slowSpeed > 0.1 * fastSpeed && slowWalking > 0.25 * slowSpeed &&
+                dot(heading, heading) > 0.0001 && distanceToSecond < physicalDiameter * PASS_REACH)
+            {
+                heading = normalize(heading);
+                float2 toSlow = firstFaster ? normal : -normal;
+                if (dot(toSlow, heading) > 0.35)
+                {
+                    float2 sideways = float2(-heading.y, heading.x);
+                    float offset = dot(-toSlow, sideways);
+                    uint fastIndex = firstFaster ? pair.first : pair.second;
+                    float side = abs(offset) > 0.05 ? sign(offset) : ((fastIndex & 1u) != 0u ? 1.0 : -1.0);
+                    float2 slip = sideways * (side * (fastSpeed - slowSpeed) * _DeltaTime * PASS_RATE);
+                    passFirst = firstFaster ? slip : 0.0;
+                    passSecond = firstFaster ? 0.0 : slip;
+                }
+            }
+        }
         if (_ImpulseTransfer > 0.0 && constraint < 0.0)
         {
             // Overlapping bodies share only the knockback that exceeds a small
@@ -2559,8 +2855,8 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         // correction which pulls the disks together again. Use classic hard
         // PBD for the default zero-compliance profile and reserve accumulated
         // XPBD lambdas for genuinely compliant contacts.
-        if (constraint >= 0.0) return;
-        appliedLambda = -constraint * deepContactWeight / max(0.000001, inverseFirst + inverseSecond);
+        if (constraint >= 0.0 && dot(passFirst, passFirst) + dot(passSecond, passSecond) <= 0.0) return;
+        appliedLambda = max(0.0, -constraint) * deepContactWeight / max(0.000001, inverseFirst + inverseSecond);
         // The ordinary preventive shell remains gently Jacobi-averaged. Once
         // authored bodies cross the five-percent deep threshold, increase only
         // that unilateral repulsion so a rare cancelling pair cannot survive
@@ -2569,7 +2865,7 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        if (constraint >= 0.0 && pair.lambda <= 0.0) return;
+        if (constraint >= 0.0 && pair.lambda <= 0.0 && dot(passFirst, passFirst) + dot(passSecond, passSecond) <= 0.0) return;
         float alpha = _XpbdContactCompliance / max(0.000001, _DeltaTime * _DeltaTime);
         float deltaLambda = (-constraint - alpha * pair.lambda) /
             (inverseFirst + inverseSecond + alpha);
@@ -2579,8 +2875,8 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     }
     _XpbdPairs[pairIndex] = pair;
     appliedLambda *= contactStrength;
-    float2 firstCorrection = firstGradient * appliedLambda * inverseFirst;
-    float2 secondCorrection = secondGradient * appliedLambda * inverseSecond;
+    float2 firstCorrection = firstGradient * appliedLambda * inverseFirst + passFirst * contactStrength;
+    float2 secondCorrection = secondGradient * appliedLambda * inverseSecond + passSecond * contactStrength;
     const float fixedPointScale = 1000000.0;
     InterlockedAdd(_XpbdCorrectionX[pair.first], (int)round(clamp(firstCorrection.x, -8.0, 8.0) * fixedPointScale));
     InterlockedAdd(_XpbdCorrectionY[pair.first], (int)round(clamp(firstCorrection.y, -8.0, 8.0) * fixedPointScale));
@@ -2794,9 +3090,16 @@ void ApplyXpbdCorrections(uint3 id : SV_DispatchThreadID)
         }
         state.locomotionSpeed = travelDistance / max(_DeltaTime, 0.0001);
         state.presentationTime += _DeltaTime;
+        // The walk turns with all the ground covered, a push to the side included (measured in
+        // Level 2, 2026-11-14: it matches the real movement to within 1%).
         if (travelDistance > 0.00001) state.animationDistance += travelDistance;
         float2 facing = travelDistance > 0.00001 ? travel / travelDistance : SampleFlow(state.position);
-        if (dot(facing, facing) > 0.0001) state.facing = facing;
+        // Turned gradually, so the body does not twitch with every push.
+        if (dot(facing, facing) > 0.0001)
+        {
+            float2 turned = lerp(state.facing, facing, 0.2);
+            state.facing = dot(turned, turned) > 0.0001 ? normalize(turned) : facing;
+        }
     }
     _StatesWrite[index] = state;
 }

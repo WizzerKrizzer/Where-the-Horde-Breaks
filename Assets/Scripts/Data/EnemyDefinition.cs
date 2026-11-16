@@ -45,5 +45,14 @@ namespace TowerDefense.Data
         public int killReward = 1;
         public Color color = PlaceholderPalette.Grey(.299f);
         public float visualScale = 0.45f;
+        // Which model the GPU horde draws it with (user, 2026-11-14: the brute gets its own).
+        public HordeBody hordeBody = HordeBody.Goblin;
+    }
+
+    /// <summary>The bodies the GPU horde has models for (GoblinModel).</summary>
+    public enum HordeBody
+    {
+        Goblin,
+        Brute
     }
 }

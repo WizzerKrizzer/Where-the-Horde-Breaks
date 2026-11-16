@@ -208,8 +208,10 @@ namespace TowerDefense.Tests
 
             simulation.SpawnBatch(states, count);
             // XPBD uses the production 0.5 m/s² propulsion ramp. Give the whole
-            // packed formation a deterministic 30-second simulation window.
-            for (var frame = 0; frame < 1800; frame++)
+            // packed formation a deterministic 45-second simulation window: a goblin with a packed
+            // crowd ahead walks slower (down to 0.6 of its speed, user 2026-11-14), so the tail of
+            // this packed block needs longer than the old 30 seconds.
+            for (var frame = 0; frame < 2700; frame++)
             {
                 simulation.Dispatch(1f / 60f, controls, impulses);
                 if (frame % 30 == 0)

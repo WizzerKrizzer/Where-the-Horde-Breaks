@@ -215,6 +215,22 @@ namespace TowerDefense.Runtime
             public uint SkipAgent;
             // Zero, or the line bodies are thrown sideways off (see AxisThrowDirection).
             public Vector2 PushAxis;
+            // Not zero: a bomb's wave ring (QueueBomb). Damage, push and death throw fall from full
+            // at this distance from the centre to nothing at FalloffEnd (its reach), and each body
+            // is hit once.
+            public float FalloffStart;
+            public float FalloffEnd;
+        }
+
+        private struct PendingBombWave
+        {
+            public Vector2 Center;
+            public float CoreRadius;
+            public float CurrentRadius;
+            public float Reach;
+            public float EdgeDamage;
+            public float Knockback;
+            public float Launch;
         }
 
         private struct PendingShockwave
@@ -334,6 +350,23 @@ namespace TowerDefense.Runtime
         // Above this height players can read the authored limb animation. Below it,
         // the compact LOD communicates only collective direction and travel.
         private const float SimplifiedGoblinLodMaxHeightPixels = 96f;
+        private const float GoblinOutlineMetres = 0.022f;
+        // Full width from this many metres from the camera out, thinner closer in (HordeIndirect
+        // OutlineWidthAt).
+        private const float OutlineFullAt = 6f;
+        // How long the brute's wind-up takes before its blow lands, and the rest after it (both
+        // inside one attack interval, 0.9 s).
+        // How much nearer the camera the brute's club is drawn, metres (visual only).
+        private const float BruteHeldDepthPull = 0.6f;
+        // Slow and clumsy (user, 2026-11-16: the blows came too sharply, one straight after
+        // another): the blow held 0.5 s, then it stands 0.4 s, then a 0.9 s wind-up (interval 1.8 s).
+        private const float BruteWindUpSeconds = 0.9f;
+        private const float BruteAfterBlowSeconds = 0.5f;
+        // The horde scale the brute model was built at (build_brute.py HORDE_SCALE, the brute's visualScale).
+        private const float BruteBaseScale = 0.4875f;
+        // Where a brute's war paint goes (HordeGoblinLooks.cginc _PaintBands): its head is the top
+        // sixth of it, the cheeks just under the eyes.
+        private static readonly Vector4 BrutePaintBands = new(0.93f, 0.87f, 0.92f, 0f);
         private readonly int targetQueryKernel;
         private readonly int damageKernel;
         private readonly int statusKernel;
@@ -413,6 +446,16 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer auxiliary;
         private readonly GraphicsBuffer corpseArgs;
         private readonly Material corpseMaterial;
+        private readonly Material bruteCorpseMaterial;
+        private readonly Mesh bruteCorpseMesh;
+        private readonly GraphicsBuffer bruteCorpseArgs;
+        private readonly bool hasBruteModel;
+        // Dust thrown bodies raise as they leave the ground and land (HordeDust.shader): DustPuffs
+        // quads a corpse record, drawn as many times as there are corpses.
+        private const int DustPuffs = 7;
+        private readonly GraphicsBuffer dustArgs;
+        private readonly Material dustMaterial;
+        private readonly Mesh dustMesh;
         // Stars over stunned goblins (HordeStatusMark.shader): one small ring per horde slot.
         private readonly GraphicsBuffer stunMarkArgs;
         private readonly Material stunMarkMaterial;
@@ -441,6 +484,7 @@ namespace TowerDefense.Runtime
         private readonly MaterialPropertyBlock variantProperties = new();
         private readonly MaterialPropertyBlock variantLodProperties = new();
         private readonly Mesh lowDetailMesh;
+        private readonly bool hasGoblinModel;
         private readonly Mesh stableRenderMesh;
         private readonly Mesh variantRenderMesh;
         private readonly Mesh variantLodRenderMesh;
@@ -462,6 +506,9 @@ namespace TowerDefense.Runtime
         private readonly StatusCommand[] statusUpload;
         private readonly List<AreaEffectCommand> queuedAreaEffects = new(MaxAreaCommands);
         private readonly List<PendingShockwave> pendingShockwaves = new(32);
+        private readonly List<PendingBombWave> pendingBombWaves = new(16);
+        // How fast a bomb's wave spreads out from its core. TEMPORARY (user, 2026-11-14).
+        internal const float BombWaveSpeed = 25f;
         private readonly AreaEffectCommand[] areaEffectUpload = new AreaEffectCommand[MaxAreaCommands];
         private readonly List<ProjectileCommand> queuedProjectiles = new(MaxProjectileCommands);
         private readonly ProjectileCommand[] projectileUpload = new ProjectileCommand[MaxProjectileCommands];
@@ -563,6 +610,11 @@ namespace TowerDefense.Runtime
 
         /// <summary>Ring-buffer size of the GPU corpse layer.</summary>
         public const int CorpseCapacity = 16384;
+        /// <summary>CombatFlags bit of a body drawn with the brute model (HordeSimulation.compute
+        /// CullVisible and RecordCorpse).</summary>
+        internal const uint BruteBodyFlag = 16u;
+        /// <summary>The brutes' own corpse ring: few of them die, and their corpses use their model.</summary>
+        public const int BruteCorpseCapacity = 256;
 
         /// <summary>Values per corpse slot; must match CORPSE_STRIDE in HordeSimulation.compute.</summary>
         public const int CorpseStride = 12;
@@ -615,6 +667,21 @@ namespace TowerDefense.Runtime
 
             lowDetailMesh = EnemyManager.GetLowEnemyMesh();
             stableRenderMesh = lowDetailMesh;
+            // The Meshy goblin with its baked walk, when its local files are there (user, 2026-11-13).
+            hasGoblinModel = GoblinModel.TryGet(out var goblin);
+            if (hasGoblinModel)
+            {
+                stableRenderMesh = goblin.Near.Mesh;
+                lowDetailMesh = goblin.Far.Mesh;
+            }
+            // The Orc Brute's own model (user, 2026-11-14), drawn in the second pair of lists.
+            GoblinModel brute = null;
+            hasBruteModel = hasGoblinModel && GoblinModel.TryGetBrute(out brute);
+            if (hasBruteModel)
+            {
+                variantRenderMesh = brute.Near.Mesh;
+                variantLodRenderMesh = brute.Far.Mesh;
+            }
             // Greybox placeholders: the horde reads as one neutral value; slow,
             // rare and speed bands differ only in brightness.
             material.SetColor("_BaseColor", PlaceholderPalette.Enemy);
@@ -636,6 +703,67 @@ namespace TowerDefense.Runtime
             lodProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
             variantProperties.SetFloat("_VisualScaleMultiplier", 1f);
             variantLodProperties.SetFloat("_VisualScaleMultiplier", 1f);
+            if (hasGoblinModel)
+            {
+                material.SetFloat("_ModelEnabled", 1f);
+                material.SetTexture("_MainTex", goblin.Texture);
+                // The model is its own silhouette; the placeholder spheres were widened to fill gaps.
+                material.SetFloat("_PackingScale", 1f);
+                material.SetFloat("_WalkPoses", GoblinModel.WalkPoses);
+                material.SetFloat("_StrideMetres", goblin.StrideMetres);
+                // Hoods, skull caps, mantles and war paint (HordeGoblinLooks.cginc), goblins only.
+                material.SetFloat("_GoblinLooks", 1f);
+                // The outline stays a thin edge up close (HordeIndirect OutlineWidthAt).
+                material.SetFloat("_OutlineFullAt", OutlineFullAt);
+                material.SetFloat("_GoblinHeight", goblin.Near.Mesh.bounds.max.y);
+                // A dark edge round each near goblin; the far level of detail goes without.
+                properties.SetFloat("_OutlineWidth", GoblinOutlineMetres);
+                variantProperties.SetFloat("_OutlineWidth", GoblinOutlineMetres);
+                lodProperties.SetFloat("_OutlineWidth", 0f);
+                variantLodProperties.SetFloat("_OutlineWidth", 0f);
+                if (airShadowMaterial != null)
+                {
+                    airShadowMaterial.SetFloat("_ModelEnabled", 1f);
+                    airShadowMaterial.SetFloat("_PackingScale", 1f);
+                    airShadowMaterial.SetFloat("_WalkPoses", GoblinModel.WalkPoses);
+                    airShadowMaterial.SetFloat("_StrideMetres", goblin.StrideMetres);
+                    airShadowMaterial.SetFloat("_GoblinLooks", 1f);
+                }
+                properties.SetTexture("_PoseTex", goblin.Near.Poses);
+                lodProperties.SetTexture("_PoseTex", goblin.Far.Poses);
+                variantProperties.SetTexture("_PoseTex", goblin.Near.Poses);
+                variantLodProperties.SetTexture("_PoseTex", goblin.Far.Poses);
+            }
+            if (hasBruteModel)
+            {
+                foreach (var block in new[] { variantProperties, variantLodProperties })
+                {
+                    block.SetTexture("_MainTex", brute.Texture);
+                    block.SetFloat("_StrideMetres", brute.StrideMetres);
+                    block.SetFloat("_ModelBaseScale", BruteBaseScale);
+                    // Always its club (user, 2026-11-15: many kinds made a crowd harder to read);
+                    // its hair and faint paint differ a little, as the goblins'.
+                    block.SetFloat("_HeldFixed", 1f);
+                    // Its club drawn this much nearer the camera, over the goblins round it instead
+                    // of through them (user, 2026-11-15). HordeIndirect.shader _HeldDepthPull.
+                    block.SetFloat("_HeldDepthPull", BruteHeldDepthPull);
+                    block.SetFloat("_GoblinLooks", 1f);
+                    block.SetFloat("_GoblinHeight", brute.Near.Mesh.bounds.max.y);
+                    block.SetVector("_PaintBands", BrutePaintBands);
+                    // The blow's own rows follow the walk, still, raised, struck and the four dead
+                    // poses with their normals; the last three are the blow landing, held and coming
+                    // back (build_brute.py).
+                    block.SetFloat("_WalkPoses", brute.WalkPoseCount);
+                    var blowRow = brute.WalkPoseCount + 11;
+                    // Several blows, each the same number of rows, one after another (w how many).
+                    var blowRows = (Mathf.Min(brute.Near.PoseCount, brute.Far.PoseCount) - blowRow) / brute.BlowCount;
+                    block.SetVector("_AttackRows", blowRows > 3 ? new Vector4(blowRow, blowRows, blowRows - 3, brute.BlowCount) : Vector4.zero);
+                    block.SetVector("_AttackTimes", new Vector4(BruteWindUpSeconds, BruteAfterBlowSeconds, 0f, 0f));
+                }
+                variantProperties.SetTexture("_PoseTex", brute.Near.Poses);
+                variantLodProperties.SetTexture("_PoseTex", brute.Far.Poses);
+                variantLodProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+            }
             clearKernel = compute.FindKernel("ClearGrid");
             spawnKernel = compute.FindKernel("ApplySpawns");
             spawnStates = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, Marshal.SizeOf<AgentState>());
@@ -729,7 +857,13 @@ namespace TowerDefense.Runtime
             // After the corpses: three rotating counters of stunned goblins (see _StunCountBase).
             // Then, per counter, the first MaxStunStars stunned goblins (the star layer's list).
             var stunCountBase = corpseBase + CorpseCapacity * CorpseStride;
-            var auxiliarySize = stunCountBase + 3 + 3 * MaxStunStars;
+            // Then the brutes' corpse ring: its cursor, then its slots.
+            var bruteCorpseCursor = stunCountBase + 3 + 3 * MaxStunStars;
+            var bruteCorpseBase = bruteCorpseCursor + 1;
+            var auxiliarySize = bruteCorpseBase + BruteCorpseCapacity * CorpseStride;
+            compute.SetInt("_BruteCorpseCursor", bruteCorpseCursor);
+            compute.SetInt("_BruteCorpseBase", bruteCorpseBase);
+            compute.SetInt("_BruteCorpseCapacity", hasBruteModel ? BruteCorpseCapacity : 0);
             auxiliary = new GraphicsBuffer(GraphicsBuffer.Target.Structured, auxiliarySize, sizeof(int));
             auxiliary.SetData(new int[auxiliarySize]);
             compute.SetInt("_StunCountBase", stunCountBase);
@@ -744,7 +878,61 @@ namespace TowerDefense.Runtime
                 corpseMaterial.SetBuffer("_Aux", auxiliary);
                 corpseMaterial.SetInt("_CorpseBase", corpseBase);
                 SetCorpseMesh(corpseMesh);
+                if (hasGoblinModel)
+                {
+                    // The model goes from standing to its baked ways of lying dead (one each), drawn like a
+                    // living goblin (texture, facets, outline, shadow).
+                    corpseMaterial.SetFloat("_ModelEnabled", 1f);
+                    corpseMaterial.SetTexture("_MainTex", goblin.Texture);
+                    corpseMaterial.SetTexture("_PoseTex", goblin.Far.Poses);
+                    corpseMaterial.SetFloat("_WalkPoses", GoblinModel.WalkPoses);
+                    corpseMaterial.SetFloat("_OutlineWidth", GoblinOutlineMetres);
+                    corpseMaterial.SetFloat("_PackingScale", 1f);
+                    corpseMaterial.SetFloat("_GoblinLooks", 1f);
+                    corpseMaterial.SetFloat("_OutlineFullAt", OutlineFullAt);
+                    corpseMaterial.SetFloat("_GoblinHeight", goblin.Near.Mesh.bounds.max.y);
+                    SetCorpseMesh(corpseMesh, 0f, 1f);
+                }
+
+                if (hasBruteModel)
+                {
+                    // The brutes' corpses: the same shader on their own ring and model. The ring is
+                    // small, so it draws every slot; an empty one (no birth time) is hidden.
+                    bruteCorpseMesh = brute.Far.Mesh;
+                    bruteCorpseMaterial = new Material(corpseMaterial);
+                    bruteCorpseMaterial.SetInt("_CorpseBase", bruteCorpseBase);
+                    bruteCorpseMaterial.SetFloat("_GoblinLooks", 1f);
+                    bruteCorpseMaterial.SetFloat("_GoblinHeight", brute.Near.Mesh.bounds.max.y);
+                    bruteCorpseMaterial.SetVector("_PaintBands", BrutePaintBands);
+                    bruteCorpseMaterial.SetTexture("_MainTex", brute.Texture);
+                    bruteCorpseMaterial.SetTexture("_PoseTex", brute.Far.Poses);
+                    bruteCorpseMaterial.SetFloat("_WalkPoses", brute.WalkPoseCount);
+                    var bounds = bruteCorpseMesh.bounds;
+                    bruteCorpseMaterial.SetFloat("_BodyHeight", Mathf.Max(0.01f, bounds.max.y));
+                    bruteCorpseMaterial.SetFloat("_BodyRadius", Mathf.Max(0.01f, Mathf.Max(bounds.extents.x, bounds.extents.z)));
+                    bruteCorpseArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 5, sizeof(uint));
+                    bruteCorpseArgs.SetData(new[]
+                    {
+                        bruteCorpseMesh.GetIndexCount(0), (uint)BruteCorpseCapacity, bruteCorpseMesh.GetIndexStart(0),
+                        (uint)bruteCorpseMesh.GetBaseVertex(0), 0u
+                    });
+                }
             }
+            dustArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+            var dustShader = Resources.Load<Shader>("HordeDust");
+            if (dustShader != null)
+            {
+                dustMesh = CreateDustMesh();
+                dustArgs.SetData(new uint[] { dustMesh.GetIndexCount(0), 0u, 0u, 0u, 0u });
+                dustMaterial = new Material(dustShader) { mainTexture = MammothVisual.SoftPuff() };
+                dustMaterial.SetBuffer("_Aux", auxiliary);
+                dustMaterial.SetInt("_CorpseBase", corpseBase);
+            }
+            else
+            {
+                dustArgs.SetData(new uint[5]);
+            }
+
             var stunMarkShader = Resources.Load<Shader>("HordeStatusMark");
             if (stunMarkShader != null)
             {
@@ -831,7 +1019,8 @@ namespace TowerDefense.Runtime
             compute.SetVector("_GridOrigin", new Vector4(field.Origin.x, field.Origin.z, 0f, 0f));
             compute.SetFloat("_CellSize", field.CellSize);
             SetCollisionDiameter(0.72f);
-            compute.SetInt("_AnimatedGoblin", 0);
+            // With the model, far goblins switch to its simpler level by their size on screen.
+            compute.SetInt("_AnimatedGoblin", hasGoblinModel ? 1 : 0);
             compute.SetInt("_SpriteCardRendering", 0);
             compute.SetInt("_StationaryHorde", 0);
             compute.SetInt("_RandomArenaMovement", 0);
@@ -852,8 +1041,11 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(finalizeActiveKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(finalizeActiveKernel, "_ActiveDispatchArgs", activeDispatchArgs);
             compute.SetBuffer(finalizeActiveKernel, "_CorpseDrawArgs", corpseArgs);
+            compute.SetBuffer(finalizeActiveKernel, "_DustDrawArgs", dustArgs);
             compute.SetBuffer(finalizeActiveKernel, "_Aux", auxiliary);
             compute.SetBuffer(simulateKernel, "_Controls", controls);
+            // The pair solve reads each body's speed, to let a faster one go round a slower one.
+            compute.SetBuffer(solveXpbdPairsKernel, "_Controls", controls);
             compute.SetBuffer(simulateKernel, "_Impulses", impulses);
             foreach (var kernel in new[] { simulateKernel, projectileKernel, unlimitedAreaEffectsKernel, solveXpbdPairsKernel,
                          damageKernel, areaEffectKernel })
@@ -938,7 +1130,8 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(cullVisibleKernel, "_LodIndirectArgs", lodIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VariantIndirectArgs", variantIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VariantLodIndirectArgs", variantLodIndirectArgs);
-            compute.SetInt("_GoblinVariantCulling", 0);
+            // 1: brutes (BruteBodyFlag) go to the second pair of lists, drawn with their own model.
+            compute.SetInt("_GoblinVariantCulling", hasBruteModel ? 1 : 0);
             compute.SetInt("_VisibleListCapacity", capacity);
             properties.SetInt("_VisibleIndexOffset", 0);
             lodProperties.SetInt("_VisibleIndexOffset", capacity);
@@ -1132,7 +1325,8 @@ namespace TowerDefense.Runtime
                 AlliedDamageMultiplier = Mathf.Max(0f, definition != null ? definition.alliedDamageMultiplier : 1f),
                 CombatFlags = (definition != null && definition.drainsAllies ? 2u : 0u) |
                               (definition != null && definition.cannotBePushed ? 4u : 0u) |
-                              (definition != null && definition.passesBlockers ? 8u : 0u),
+                              (definition != null && definition.passesBlockers ? 8u : 0u) |
+                              (definition != null && definition.hordeBody == HordeBody.Brute ? BruteBodyFlag : 0u),
                 DefinitionIndex = (uint)index
             };
         }
@@ -1233,6 +1427,17 @@ namespace TowerDefense.Runtime
             var cursor = new int[1];
             auxiliary.GetData(cursor, 0, 0, 1);
             return cursor[0];
+        }
+
+        internal float CorpseClock => corpseClock;
+
+        /// <summary>Plays corpses on when nothing is left alive to dispatch for.</summary>
+        public void AdvanceCorpseClock(float deltaTime)
+        {
+            if (disposed) return;
+            corpseClock += Mathf.Min(Mathf.Max(0f, deltaTime), 0.1f);
+            lastSimulationDelta = Mathf.Min(Mathf.Max(0f, deltaTime), 0.1f);
+            compute.SetFloat("_CorpseClock", corpseClock);
         }
 
         /// <summary>Where recorded corpse <paramref name="index"/> comes to rest (tests).</summary>
@@ -1456,6 +1661,7 @@ namespace TowerDefense.Runtime
             compute.Dispatch(finalizeActiveKernel, 1, 1, 1);
             DispatchProjectiles();
             AdvanceShockwaves(Mathf.Min(deltaTime, 0.1f));
+            AdvanceBombWaves(Mathf.Min(deltaTime, 0.1f));
             DispatchAreaEffects();
             DispatchTargetQueries();
             // Queries observe the pre-movement state. Bound the cached answer by
@@ -1996,6 +2202,18 @@ namespace TowerDefense.Runtime
                     ShadowCastingMode.Off,
                     false,
                     layer);
+                if (bruteCorpseMaterial != null)
+                {
+                    bruteCorpseMaterial.SetFloat("_CorpseClock", corpseClock - (1f - presentationAlpha) * lastSimulationDelta);
+                    Graphics.DrawMeshInstancedIndirect(bruteCorpseMesh, 0, bruteCorpseMaterial, drawBounds, bruteCorpseArgs, 0, null,
+                        ShadowCastingMode.Off, false, layer);
+                }
+                if (dustMaterial != null)
+                {
+                    dustMaterial.SetFloat("_CorpseClock", corpseClock - (1f - presentationAlpha) * lastSimulationDelta);
+                    Graphics.DrawMeshInstancedIndirect(dustMesh, 0, dustMaterial, drawBounds, dustArgs, 0, null,
+                        ShadowCastingMode.Off, false, layer);
+                }
             }
             Graphics.DrawMeshInstancedIndirect(
                 stableRenderMesh,
@@ -2019,12 +2237,26 @@ namespace TowerDefense.Runtime
                 ShadowCastingMode.Off,
                 false,
                 layer);
+            if (hasBruteModel)
+            {
+                Graphics.DrawMeshInstancedIndirect(variantRenderMesh, 0, material, drawBounds, variantIndirectArgs, 0,
+                    variantProperties, ShadowCastingMode.Off, false, layer);
+                Graphics.DrawMeshInstancedIndirect(variantLodRenderMesh, 0, material, drawBounds, variantLodIndirectArgs, 0,
+                    variantLodProperties, ShadowCastingMode.Off, false, layer);
+            }
             if (airShadowMaterial != null)
             {
                 Graphics.DrawMeshInstancedIndirect(stableRenderMesh, 0, airShadowMaterial, drawBounds, indirectArgs, 0, properties,
                     ShadowCastingMode.Off, false, layer);
                 Graphics.DrawMeshInstancedIndirect(lowDetailMesh, 0, airShadowMaterial, drawBounds, lodIndirectArgs, 0, lodProperties,
                     ShadowCastingMode.Off, false, layer);
+                if (hasBruteModel)
+                {
+                    Graphics.DrawMeshInstancedIndirect(variantRenderMesh, 0, airShadowMaterial, drawBounds, variantIndirectArgs, 0,
+                        variantProperties, ShadowCastingMode.Off, false, layer);
+                    Graphics.DrawMeshInstancedIndirect(variantLodRenderMesh, 0, airShadowMaterial, drawBounds, variantLodIndirectArgs, 0,
+                        variantLodProperties, ShadowCastingMode.Off, false, layer);
+                }
             }
         }
 
@@ -2034,13 +2266,42 @@ namespace TowerDefense.Runtime
             properties.SetFloat("_VisualScaleMultiplier", multiplier);
             lodProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
             variantProperties.SetFloat("_VisualScaleMultiplier", multiplier);
-            variantLodProperties.SetFloat("_VisualScaleMultiplier", multiplier);
+            variantLodProperties.SetFloat("_VisualScaleMultiplier", multiplier * (hasBruteModel ? FarLodVisibilityScale : 1f));
             if (corpseMaterial != null) corpseMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
+            if (bruteCorpseMaterial != null) bruteCorpseMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
             if (stunMarkMaterial != null) stunMarkMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
         }
 
         // Three small four-pointed stars around a unit circle on the ground plane; the shader
         // spins and rocks the ring above a stunned goblin's head.
+        // DustPuffs unit quads, all at the origin: HordeDust.shader places and faces each one.
+        private static Mesh CreateDustMesh()
+        {
+            var vertices = new Vector3[DustPuffs * 4];
+            var uvs = new Vector2[DustPuffs * 4];
+            var indices = new int[DustPuffs * 6];
+            for (var puff = 0; puff < DustPuffs; puff++)
+            {
+                var v = puff * 4;
+                uvs[v] = new Vector2(0f, 0f);
+                uvs[v + 1] = new Vector2(1f, 0f);
+                uvs[v + 2] = new Vector2(1f, 1f);
+                uvs[v + 3] = new Vector2(0f, 1f);
+                var i = puff * 6;
+                indices[i] = v;
+                indices[i + 1] = v + 2;
+                indices[i + 2] = v + 1;
+                indices[i + 3] = v;
+                indices[i + 4] = v + 3;
+                indices[i + 5] = v + 2;
+            }
+
+            var mesh = new Mesh { name = "Horde Dust", vertices = vertices, uv = uvs };
+            mesh.SetIndices(indices, MeshTopology.Triangles, 0);
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 10000f);
+            return mesh;
+        }
+
         private static Mesh CreateStunStarsMesh()
         {
             const int stars = 3;
@@ -2203,10 +2464,15 @@ namespace TowerDefense.Runtime
             xpbdPairDispatchArgs?.Dispose();
             auxiliary?.Dispose();
             corpseArgs?.Dispose();
+            dustArgs?.Dispose();
+            if (dustMaterial != null) UnityEngine.Object.Destroy(dustMaterial);
+            if (dustMesh != null) UnityEngine.Object.Destroy(dustMesh);
             stunMarkArgs?.Dispose();
             if (stunMarkMaterial != null) UnityEngine.Object.Destroy(stunMarkMaterial);
             if (stunMarkMesh != null) UnityEngine.Object.Destroy(stunMarkMesh);
             if (corpseMaterial != null) UnityEngine.Object.Destroy(corpseMaterial);
+            if (bruteCorpseMaterial != null) UnityEngine.Object.Destroy(bruteCorpseMaterial);
+            bruteCorpseArgs?.Dispose();
             if (airShadowMaterial != null) UnityEngine.Object.Destroy(airShadowMaterial);
             xpbdCorrectionX?.Dispose();
             xpbdCorrectionY?.Dispose();
@@ -2347,6 +2613,76 @@ namespace TowerDefense.Runtime
             compute.SetInt("_AreaCommandCount", count);
             compute.Dispatch(areaEffectKernel, 1, 1, 1);
             compute.DispatchIndirect(unlimitedAreaEffectsKernel, activeDispatchArgs);
+        }
+
+        /// <summary>
+        /// A bomb (user, 2026-11-14): everything within coreRadius takes coreDamage and is thrown as
+        /// a blast throws; then a wave spreads out to reach at BombWaveSpeed, and each body it passes
+        /// takes damage falling from edgeDamage at the core's edge to nothing at reach, and is
+        /// pushed straight out, hardest near the core. The pushed shove the ones behind them.
+        /// </summary>
+        public bool QueueBomb(Vector3 center, float coreRadius, float reach, float coreDamage, float edgeDamage,
+            float coreKnockback, float waveKnockback, float coreLaunch, float waveLaunch)
+        {
+            if (disposed || coreRadius <= 0f ||
+                !QueueAreaEffect(center, coreRadius, coreDamage, coreKnockback, 0, 0f, 0f, 1, launch: coreLaunch))
+            {
+                return false;
+            }
+
+            if (reach > coreRadius)
+            {
+                pendingBombWaves.Add(new PendingBombWave
+                {
+                    Center = new Vector2(center.x, center.z),
+                    CoreRadius = coreRadius,
+                    CurrentRadius = coreRadius,
+                    Reach = reach,
+                    EdgeDamage = Mathf.Max(0f, edgeDamage),
+                    Knockback = Mathf.Max(0f, waveKnockback),
+                    Launch = Mathf.Max(0f, waveLaunch)
+                });
+            }
+
+            return true;
+        }
+
+        private void AdvanceBombWaves(float deltaTime)
+        {
+            for (var i = pendingBombWaves.Count - 1; i >= 0; i--)
+            {
+                var wave = pendingBombWaves[i];
+                var nextRadius = Mathf.Min(wave.Reach, wave.CurrentRadius + BombWaveSpeed * deltaTime);
+                if (queuedAreaEffects.Count < MaxAreaCommands)
+                {
+                    queuedAreaEffects.Add(new AreaEffectCommand
+                    {
+                        Center = wave.Center,
+                        Radius = nextRadius,
+                        Damage = wave.EdgeDamage,
+                        Knockback = wave.Knockback,
+                        MaxTargets = 0u,
+                        MaxBurnStacks = 1u,
+                        SlowMultiplier = 1f,
+                        // A little behind the front too, so a body walking in fast is not skipped;
+                        // the kernel hits each body only once.
+                        InnerRadius = Mathf.Max(wave.CoreRadius, wave.CurrentRadius - 1f),
+                        Launch = wave.Launch,
+                        FalloffStart = wave.CoreRadius,
+                        FalloffEnd = wave.Reach
+                    });
+                }
+
+                wave.CurrentRadius = nextRadius;
+                if (nextRadius >= wave.Reach - 0.001f)
+                {
+                    pendingBombWaves.RemoveAt(i);
+                }
+                else
+                {
+                    pendingBombWaves[i] = wave;
+                }
+            }
         }
 
         private void AdvanceShockwaves(float deltaTime)

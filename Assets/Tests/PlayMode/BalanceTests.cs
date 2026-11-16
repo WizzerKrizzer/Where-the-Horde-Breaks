@@ -70,7 +70,7 @@ namespace TowerDefense.Tests
             RequireComputeShaders();
             Directory.CreateDirectory(Output);
             var report = new StringBuilder();
-            report.AppendLine("Level 1 road, wave 170 Goblin Runners (12 hp, 5.35 m/s, 1 life) + 45 Orc Brutes (72 hp, 2.28 m/s, 2 lives), 10 lives.");
+            report.AppendLine("Level 1 road, wave 170 Goblin Runners (12 hp, 2.675 m/s, 1 life) + 45 Orc Brutes (72 hp, 2.28 m/s, 2 lives), 10 lives.");
             report.AppendLine("Upgrades = every rank in the tree: spears +32% damage and pierce 4; mammoth +40% damage and +40% charge rate.");
             report.AppendLine();
             foreach (var setup in Setups)
