@@ -43,6 +43,10 @@ Assets/InitTestScene*.unity.meta
 # Models made with Meshy stay local for now (user, 2026-11-11): the mammoth and its pen.
 Assets/Resources/Meshy/
 Assets/Resources/Meshy.meta
+# Skill tree icons drawn by Gemini (user, 2026-11-12), made from Art/UI/SkillTree/Gemini by
+# Tools/SkillTree/import_gemini_icons.py.
+Assets/Resources/Gemini/
+Assets/Resources/Gemini.meta
 
 # Meshy models and Gemini images stay local for now (user, 2026-11-11): the sources in Art/ and the
 # copies the capture tests read.
@@ -56,3 +60,9 @@ Assets/Tests/PlayMode/StyleAssets/Resources/spearhunter-tex.png*
 Assets/Tests/PlayMode/StyleAssets/Resources/stonehide.png*
 Assets/Tests/PlayMode/StyleAssets/meshy-tipi.txt*
 Assets/Tests/PlayMode/StyleAssets/gemini-runner.png*
+
+# Never uploaded (user): scratch work, Unity's recovered scenes and the private handoff notes.
+.codex-temp/
+Assets/_Recovery/
+Assets/_Recovery.meta
+docs/Handoff.md

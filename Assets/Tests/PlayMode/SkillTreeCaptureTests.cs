@@ -96,12 +96,12 @@ namespace TowerDefense.Tests
                 }
                 if (shot.name.Contains("tooltip"))
                 {
-                    // Inspect the Fire Rock as if the mouse rested on it.
+                    // Inspect the Stunning Stones as if the mouse rested on it.
                     var session = Object.FindFirstObjectByType<GameSession>();
                     SkillNodeDefinition fire = null;
                     foreach (var node in session.UpgradeNodes)
                     {
-                        fire = node.id == "rock_fire" ? node : fire;
+                        fire = node.id == "slingers_stun" ? node : fire;
                     }
 
                     typeof(RuntimeHud).GetField("hoveredUpgradeNode", Private).SetValue(hud, fire);

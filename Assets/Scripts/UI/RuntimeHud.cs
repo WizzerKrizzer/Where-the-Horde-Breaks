@@ -97,6 +97,16 @@ namespace TowerDefense.UI
         private static readonly Color NodeFrameInspected = new Color32(255, 255, 255, 255);
         private static readonly Color NodeFill = new Color32(30, 30, 34, 255);
         private static readonly Color NodeFillMaxed = new Color32(48, 42, 28, 255);
+        // The tree's look (user, 2026-11-12, after the tree of a game they like): every node is the
+        // same small coloured tile, its colour tells its kind, its picture is a dark silhouette, and
+        // the links are thick and take the colours of the tiles they join.
+        private static readonly Color TileStat = new Color32(66, 146, 214, 255);
+        private static readonly Color TileSpecial = new Color32(160, 92, 216, 255);
+        private static readonly Color TileUnlock = new Color32(232, 140, 46, 255);
+        private const float TileSize = 64f;
+        private const float RootTileSize = 72f;
+        private const float LinkWidth = 6f;
+        private static readonly Dictionary<long, Texture2D> LinkGradients = new();
         private Text upgradeCurrencyText;
         private Text upgradeDetailTitle;
         private Text upgradeDetailRank;
@@ -894,13 +904,19 @@ namespace TowerDefense.UI
             }
 
             var direction = delta.normalized;
-            from += direction * (prerequisite.isMajorUnlock ? 42f : 34f);
-            to -= direction * (target.isMajorUnlock ? 42f : 34f);
+            from += direction * (NodeTileSize(prerequisite) * 0.5f - 2f);
+            to -= direction * (NodeTileSize(target) * 0.5f - 2f);
             delta = to - from;
-            var image = CreateImage($"Link_{target.id}", parent, (from + to) * 0.5f, new Vector2(Mathf.Max(1f, delta.magnitude), 3f), PlaceholderPalette.Grey(.599f, 0.65f));
+            // Thick, from the colour of the node it starts at to the colour of the one it leads to.
+            var go = new GameObject($"Link_{target.id}");
+            go.transform.SetParent(parent, false);
+            var image = go.AddComponent<RawImage>();
+            image.texture = LinkGradient(NodeKindColor(prerequisite), NodeKindColor(target));
+            image.uvRect = new Rect(0.25f, 0f, 0.5f, 1f);
             image.raycastTarget = false;
-            var go = image.gameObject;
             var rect = go.GetComponent<RectTransform>();
+            rect.anchoredPosition = (from + to) * 0.5f;
+            rect.sizeDelta = new Vector2(Mathf.Max(1f, delta.magnitude), LinkWidth);
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
@@ -909,57 +925,60 @@ namespace TowerDefense.UI
         private void CreateUpgradeNode(Transform parent, SkillNodeDefinition node)
         {
             var position = GetUpgradeTreeNodePosition(node);
-            var size = node.isMajorUnlock ? new Vector2(76f, 76f) : new Vector2(58f, 58f);
-            var button = CreateAnchoredButton($"Node_{node.id}", parent, string.Empty, position, size, new Vector2(0.5f, 0.5f), 10);
+            var tile = NodeTileSize(node);
+            var button = CreateAnchoredButton($"Node_{node.id}", parent, string.Empty, position, new Vector2(tile, tile), new Vector2(0.5f, 0.5f), 10);
             button.onClick.AddListener(() => PurchaseUpgradeNode(node));
+            // The tile shows its own colour; the button only darkens it a little when pressed.
+            var colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = Color.white;
+            colors.selectedColor = Color.white;
+            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+            colors.disabledColor = new Color(0.6f, 0.6f, 0.6f, 1f);
+            button.colors = colors;
             var nodeOutline = button.gameObject.AddComponent<Outline>();
-            nodeOutline.effectColor = PlaceholderPalette.Grey(.55f, 0.72f);
-            nodeOutline.effectDistance = node.isMajorUnlock ? new Vector2(3f, -3f) : new Vector2(2.5f, -2.5f);
+            nodeOutline.effectColor = NodeFrameLocked;
+            nodeOutline.effectDistance = new Vector2(3f, -3f);
             nodeOutline.useGraphicAlpha = false;
 
+            // The rank is a bar along the bottom of the tile, not "0/3" (the numbers are in the
+            // details); a single-rank node needs none, its colour shows whether it is bought.
             var label = button.GetComponentInChildren<Text>();
             label.gameObject.name = "Rank";
-            label.fontStyle = FontStyle.Bold;
-            label.fontSize = node.isMajorUnlock ? 12 : 10;
-            label.alignment = TextAnchor.MiddleCenter;
-            label.raycastTarget = false;
-            var rankTextOutline = label.gameObject.AddComponent<Outline>();
-            rankTextOutline.effectColor = PlaceholderPalette.Grey(.046f, 0.98f);
-            rankTextOutline.effectDistance = new Vector2(1.25f, -1.25f);
-
-            var rankBadgeObject = new GameObject("RankBadge");
-            rankBadgeObject.transform.SetParent(button.transform, false);
-            var rankBadgeRect = rankBadgeObject.AddComponent<RectTransform>();
-            ConfigureCenteredRect(
-                rankBadgeRect,
-                // Inside the bottom of the square, so it never reaches over a nearby link.
-                new Vector2(0f, node.isMajorUnlock ? -29f : -21f),
-                new Vector2(node.isMajorUnlock ? 38f : 34f, 14f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f));
-            label.transform.SetParent(rankBadgeObject.transform, false);
-            var rankLabelRect = label.GetComponent<RectTransform>();
-            rankLabelRect.anchorMin = Vector2.zero;
-            rankLabelRect.anchorMax = Vector2.one;
-            rankLabelRect.offsetMin = Vector2.zero;
-            rankLabelRect.offsetMax = Vector2.zero;
-            upgradeTreeRankBadges.Add(rankBadgeRect);
-            // A single-rank node needs no "0/1": its frame shows whether it is bought.
-            rankBadgeObject.SetActive(node.maxRanks > 1);
-
-            if (SkillTreePixelIcons.TryGet(node.iconKey, out var pixelIcon))
+            label.gameObject.SetActive(false);
+            if (node.maxRanks > 1)
             {
-                // 16x16 pixel art at a whole multiple (3x / 2x) so every pixel stays square.
+                var track = CreateImage("RankTrack", button.transform, Vector2.zero, new Vector2(tile - 12f, 5f), new Color(0.08f, 0.07f, 0.06f, 0.85f));
+                track.raycastTarget = false;
+                track.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+                track.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                track.rectTransform.anchoredPosition = new Vector2(0f, -tile * 0.5f + 7f);
+                var fill = CreateImage("RankFill", track.transform, Vector2.zero, new Vector2(tile - 12f, 5f), new Color(1f, 0.96f, 0.86f, 1f));
+                fill.raycastTarget = false;
+                var fillRect = fill.rectTransform;
+                fillRect.anchorMin = new Vector2(0f, 0f);
+                fillRect.anchorMax = new Vector2(0f, 1f);
+                fillRect.pivot = new Vector2(0f, 0.5f);
+                fillRect.anchoredPosition = Vector2.zero;
+                fillRect.sizeDelta = new Vector2(0f, 0f);
+            }
+
+            var geminiPicture = SkillTreePixelIcons.TryGetGeminiPicture(node.iconKey, out var pixelIcon);
+            if (geminiPicture || SkillTreePixelIcons.TryGetSilhouette(node.iconKey, out pixelIcon))
+            {
+                // The picture in three tones (dark, a shade of the tile, cream), lifted a little
+                // above the rank bar.
                 var pixelObject = new GameObject("PixelIcon");
                 pixelObject.transform.SetParent(button.transform, false);
                 var pixelRect = pixelObject.AddComponent<RectTransform>();
-                ConfigureCenteredRect(pixelRect, new Vector2(0f, node.maxRanks > 1 ? (node.isMajorUnlock ? 6f : 5f) : 0f),
-                    node.isMajorUnlock ? new Vector2(48f, 48f) : new Vector2(32f, 32f),
+                // Three times a 16x16 picture, one and a half times a 32x32 one: big in the tile.
+                // Gemini's pictures fill a little more of it.
+                var iconSize = geminiPicture ? 54f : 48f;
+                ConfigureCenteredRect(pixelRect, new Vector2(0f, node.maxRanks > 1 ? 4f : 0f), new Vector2(iconSize, iconSize),
                     new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
                 var pixelImage = pixelObject.AddComponent<RawImage>();
                 pixelImage.texture = pixelIcon;
                 pixelImage.raycastTarget = false;
-                rankBadgeObject.transform.SetAsLastSibling();
             }
             else
             {
@@ -984,6 +1003,50 @@ namespace TowerDefense.UI
             icon.Kind = ResolveSkillTreeIcon(node);
             icon.color = PlaceholderPalette.Grey(.917f, 1f);
             icon.raycastTarget = false;
+        }
+
+        // The tile's colour by what the node is: a new tower or weapon (and the start), a special,
+        // or a stat bought with Kill Essence.
+        private static Color NodeKindColor(SkillNodeDefinition node)
+        {
+            if (node == null)
+            {
+                return TileStat;
+            }
+
+            var currency = node.costs != null && node.costs.Length > 0 ? node.costs[0].currency : CurrencyType.KillEssence;
+            if (node.startsUnlocked || currency == CurrencyType.VictorySigil)
+            {
+                return TileUnlock;
+            }
+
+            return currency == CurrencyType.ChallengeToken ? TileSpecial : TileStat;
+        }
+
+        private static float NodeTileSize(SkillNodeDefinition node)
+        {
+            return node != null && node.radialPosition.sqrMagnitude < 0.01f ? RootTileSize : TileSize;
+        }
+
+        // A two-texel strip that fades from one colour to the other (drawn with uvRect 0.25-0.75).
+        private static Texture2D LinkGradient(Color from, Color to)
+        {
+            var key = ((long)((Color32)from).GetHashCode() << 32) ^ (uint)((Color32)to).GetHashCode();
+            if (LinkGradients.TryGetValue(key, out var texture) && texture != null)
+            {
+                return texture;
+            }
+
+            texture = new Texture2D(2, 1, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.DontSave
+            };
+            texture.SetPixels(new[] { from, to });
+            texture.Apply(false, true);
+            LinkGradients[key] = texture;
+            return texture;
         }
 
         private void AddNodeEvents(Button button, SkillNodeDefinition node)
@@ -2876,25 +2939,33 @@ namespace TowerDefense.UI
                 var isInspected = selectedUpgradeNode == node || hoveredUpgradeNode == node;
                 if (pixelIcon != null)
                 {
-                    // Pixel-icon nodes: a dark square whose frame colour tells the state; the
-                    // picture dims while the node cannot be bought.
+                    // A tile in its kind's colour: bright once bought or when it can be bought, dark
+                    // while it cannot; a gold frame when it is full, white while looked at.
                     button.interactable = true;
                     var maxed = rank >= maxRank;
                     var affordable = !maxed && session.CanPurchaseUpgrade(nodeId);
+                    var kind = NodeKindColor(node);
                     if (image != null)
                     {
-                        image.color = maxed ? NodeFillMaxed : NodeFill;
+                        image.color = maxed || rank > 0 ? kind
+                            : affordable ? Color.Lerp(kind, Color.black, 0.18f)
+                            : Color.Lerp(kind, Color.black, 0.62f);
                     }
 
-                    pixelIcon.color = maxed || affordable || rank > 0 ? Color.white : new Color(0.5f, 0.5f, 0.5f, 1f);
-                    label.color = maxed ? NodeFrameMaxed : PlaceholderPalette.Grey(.86f, 1f);
+                    pixelIcon.color = maxed || affordable || rank > 0 ? Color.white : new Color(1f, 1f, 1f, 0.55f);
+                    var fill = button.transform.Find("RankTrack/RankFill") as RectTransform;
+                    if (fill != null)
+                    {
+                        var width = (fill.parent as RectTransform).sizeDelta.x;
+                        fill.sizeDelta = new Vector2(width * Mathf.Clamp01(maxRank > 0 ? (float)rank / maxRank : 0f), 0f);
+                    }
+
                     if (outline != null)
                     {
                         outline.effectColor = isInspected ? NodeFrameInspected
                             : maxed ? NodeFrameMaxed
                             : affordable ? NodeFrameAffordable
-                            : rank > 0 ? NodeFrameStarted
-                            : NodeFrameLocked;
+                            : new Color(0f, 0f, 0f, 0.6f);
                     }
 
                     continue;
@@ -2976,13 +3047,14 @@ namespace TowerDefense.UI
                     var node = FindNode(nodes, child.name.Substring(5));
                     var visible = node != null && IsUpgradeNodeRevealed(node) && HasAnyPurchasedPrerequisite(node);
                     child.gameObject.SetActive(visible);
-                    if (visible && child.TryGetComponent<Image>(out var linkImage))
+                    if (visible && child.TryGetComponent<RawImage>(out var linkImage))
                     {
+                        // Full colour once bought, a little dimmer when it can be bought, dark when not.
                         linkImage.color = session.IsUpgradePurchased(node.id)
-                            ? PlaceholderPalette.Grey(.664f, 0.9f)
+                            ? Color.white
                             : session.CanPurchaseUpgrade(node.id)
-                                ? PlaceholderPalette.Grey(.618f, 0.92f)
-                                : PlaceholderPalette.Grey(.404f, 0.52f);
+                                ? new Color(0.8f, 0.8f, 0.8f, 1f)
+                                : new Color(0.38f, 0.38f, 0.38f, 1f);
                     }
                 }
             }
