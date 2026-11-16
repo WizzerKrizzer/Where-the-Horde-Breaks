@@ -68,7 +68,9 @@ namespace TowerDefense.Tests
             void Feed(GameInputState state) => current.SetValue(router, state);
             Feed(default);
             session.StartLevel();
-            Assert.That(weapon.Rock, Is.True, "Level 2 does not use the rock.");
+            // The spear is the active weapon now (user, 2026-11-12); the rock is switched on by hand.
+            weapon.Spear = false;
+            weapon.Rock = true;
             weapon.DevAutoActiveEnabled = false;
 
             // Wait for the horde to come along the road, then aim at its front.

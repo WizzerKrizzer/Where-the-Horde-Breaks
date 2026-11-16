@@ -3,14 +3,33 @@ using UnityEngine;
 namespace TowerDefense.Runtime
 {
     /// <summary>
-    /// A flame on a few camera-facing quads (StyleFlame.shader): a broad outer flame and a narrower
-    /// one inside it, each with its own flicker. The flame stands on this object's position and rises
-    /// along the world's up whatever the parent does. Used for the cavemen's torches; the rock's fire
-    /// will use the same shader.
+    /// A low-poly flame (StyleLowPolyFlame.shader on LowPolyShapes.Flame, user 2026-11-12): faceted,
+    /// yellow at the root to red at the tip, its corners always moving. The flame stands on this
+    /// object's position and rises along the world's up whatever the parent does. Used for the
+    /// cavemen's torches and the burning rock.
     /// </summary>
     public sealed class FlameVisual : MonoBehaviour
     {
+        private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static Material material;
+
+        /// <summary>The flame's material, shared by every low-poly flame (null without the shader).</summary>
+        public static Material Material
+        {
+            get
+            {
+                if (material == null)
+                {
+                    var shader = Shader.Find("TowerDefense/StyleLowPolyFlame");
+                    if (shader != null)
+                    {
+                        material = new Material(shader) { name = "LowPolyFlame" };
+                    }
+                }
+
+                return material;
+            }
+        }
 
         /// <summary>Adds a flame of the given height and width under `parent`, at `localPosition`.</summary>
         public static FlameVisual Attach(Transform parent, Vector3 localPosition, float height, float width)
@@ -23,46 +42,35 @@ namespace TowerDefense.Runtime
             return flame;
         }
 
+        /// <summary>A flame mesh object for an effect part: sized by its own scale (x width, y height).</summary>
+        public static Renderer CreateMesh(Transform parent, string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.AddComponent<MeshFilter>().sharedMesh = LowPolyShapes.Flame;
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = Material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            var block = new MaterialPropertyBlock();
+            block.SetFloat(SeedId, Random.Range(0f, 100f));
+            renderer.SetPropertyBlock(block);
+            return renderer;
+        }
+
         private void Build(float height, float width)
         {
-            var shader = Shader.Find("TowerDefense/StyleFlame");
-            if (shader == null)
+            if (Material == null)
             {
                 return;
             }
 
-            material ??= new Material(shader) { name = "Flame" };
-            var seed = Random.value;
-            foreach (var (scale, strength, offset) in new[] { (1f, 0.95f, 0f), (0.62f, 1f, 0.37f) })
-            {
-                var layer = new GameObject("FlameLayer");
-                layer.transform.SetParent(transform, false);
-                layer.AddComponent<MeshFilter>().sharedMesh = Quad(Mathf.Repeat(seed + offset, 1f), strength);
-                var renderer = layer.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = material;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
-                // The shader reads the flame's size from the object's scale and ignores rotation;
-                // the parent's scale is taken out so `height` and `width` are in metres.
-                var parentScale = transform.lossyScale;
-                layer.transform.localScale = new Vector3(width * scale / Mathf.Max(1e-4f, parentScale.x),
-                    height * scale / Mathf.Max(1e-4f, parentScale.y), 1f);
-            }
-        }
-
-        // A unit quad standing on its bottom edge, its seed and strength in the vertex colour. Each
-        // flame gets its own copy so the seeds differ.
-        private static Mesh Quad(float seed, float strength)
-        {
-            var mesh = new Mesh { name = "FlameQuad" };
-            mesh.vertices = new[] { new Vector3(-0.5f, 0f, 0f), new Vector3(0.5f, 0f, 0f), new Vector3(0.5f, 1f, 0f), new Vector3(-0.5f, 1f, 0f) };
-            mesh.uv = new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) };
-            var color = new Color(seed, 0f, 0f, strength);
-            mesh.colors = new[] { color, color, color, color };
-            mesh.triangles = new[] { 0, 2, 1, 0, 3, 2 };
-            // Bounds generous enough for the camera-facing turn.
-            mesh.bounds = new Bounds(new Vector3(0f, 0.5f, 0f), new Vector3(2f, 2f, 2f));
-            return mesh;
+            var layer = CreateMesh(transform, "FlameLayer");
+            // The shader reads the flame's size from the object's scale and ignores rotation; the
+            // parent's scale is taken out so `height` and `width` are in metres.
+            var parentScale = transform.lossyScale;
+            layer.transform.localScale = new Vector3(width / Mathf.Max(1e-4f, parentScale.x),
+                height / Mathf.Max(1e-4f, parentScale.y), width / Mathf.Max(1e-4f, parentScale.z));
         }
     }
 }

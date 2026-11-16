@@ -1667,7 +1667,11 @@ namespace TowerDefense.Runtime
                    type == UpgradeEffectType.ActiveWeaponShatterShardsFlat ||
                    type == UpgradeEffectType.ActiveWeaponShatterDamagePercent ||
                    type == UpgradeEffectType.ActiveWeaponQuakeRadiusFlat ||
-                   type == UpgradeEffectType.ActiveWeaponQuakeSecondsFlat;
+                   type == UpgradeEffectType.ActiveWeaponQuakeSecondsFlat ||
+                   type == UpgradeEffectType.ActiveWeaponSplashRadiusFlat ||
+                   type == UpgradeEffectType.ActiveWeaponExtraSpearsFlat ||
+                   type == UpgradeEffectType.ActiveWeaponCritChancePercent ||
+                   type == UpgradeEffectType.ActiveWeaponCritMultiplierFlat;
         }
 
         private string FormatBestBotUpgradeEffects(SkillNodeDefinition node)
@@ -2847,6 +2851,27 @@ namespace TowerDefense.Runtime
             activeWeapon.RockShatterDamageFraction = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponShatterDamagePercent) / 100f;
             activeWeapon.RockQuakeRadius = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeRadiusFlat);
             activeWeapon.RockQuakeSeconds = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponQuakeSecondsFlat);
+            // The thrown spear replaces the rock as the first active weapon (user, 2026-11-12: the rock
+            // is slow, fiddly and made for big crowds the first levels do not have). The rock's code
+            // and settings stay for later. TEMPORARY numbers: a runner dies to one spear, one a second;
+            // the rock's damage and cooldown upgrades scale it.
+            activeWeapon.Rock = false;
+            activeWeapon.Spear = true;
+            activeWeapon.DisplayName = "Thrown Spear";
+            activeWeapon.Damage = 12f * activeDamageMultiplier;
+            activeWeapon.CooldownSeconds = 1f * activeCooldownMultiplier;
+            activeWeapon.Radius = ThrownSpear.PickRadius;
+            activeWeapon.MaxTargets = 1;
+            activeWeapon.KnockbackDistance = 0f;
+            activeWeapon.SpearStuckSeconds = 3f;
+            // Spear upgrades (user, 2026-11-12), TEMPORARY numbers: the heavy spear's blow hurts the
+            // goblins around its target for 40% of its damage; the volley throws more spears; a
+            // precise strike deals 3 times the damage, more with upgrades.
+            activeWeapon.SpearSplashRadius = progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponSplashRadiusFlat);
+            activeWeapon.SpearSplashFraction = 0.4f;
+            activeWeapon.SpearExtraSpears = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponExtraSpearsFlat));
+            activeWeapon.SpearCritChance = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCritChancePercent) / 100f);
+            activeWeapon.SpearCritMultiplier = 3f + progression.GetEffectTotal(UpgradeEffectType.ActiveWeaponCritMultiplierFlat);
             // The rock is the weapon on every level (user, 2026-11-08): the crowd-lab weapons of
             // Levels 2, 2.1 (Physics Charge) and 7 (Shockwave Bomb) no longer replace it.
             activeWeapon.AutoFireUnlocked = activeAutoFireUnlocked;

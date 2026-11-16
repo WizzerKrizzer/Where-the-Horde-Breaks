@@ -25,6 +25,17 @@ namespace TowerDefense.Runtime
         // The prehistoric rock (RollingRock) instead of an instant blast: press on a point, drag
         // for the direction along the road, release to drop it.
         public bool Rock { get; set; }
+        // The thrown spear (ThrownSpear, user 2026-11-12), the first active weapon now: a click on a
+        // goblin throws one spear at it. How long it then stands in the ground (TEMPORARY).
+        public bool Spear { get; set; }
+        public float SpearStuckSeconds { get; set; } = 3f;
+        // Spear upgrades (user, 2026-11-12): the heavy spear's blow (radius, share of the damage),
+        // the volley's extra spears, and the precise strike (chance 0-1, times the damage).
+        public float SpearSplashRadius { get; set; }
+        public float SpearSplashFraction { get; set; } = 0.4f;
+        public int SpearExtraSpears { get; set; }
+        public float SpearCritChance { get; set; }
+        public float SpearCritMultiplier { get; set; } = 3f;
         public float RockRollDistance { get; set; } = 8f;
         public bool RockFireTrail { get; set; }
         // Rock specials (user, 2026-11-08), set from the skill tree; 0 = not bought.
@@ -124,7 +135,7 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (Rock)
+            if (Rock && !Spear)
             {
                 UpdateRockAim();
                 return;
@@ -146,11 +157,47 @@ namespace TowerDefense.Runtime
                 return;
             }
 
+            if (Spear)
+            {
+                ThrowSpear(input.Current.PointerWorld);
+                cooldown = CooldownSeconds;
+                return;
+            }
+
             var appliedDamage = ApplyWeaponEffect(input.Current.PointerWorld, out var hitCount);
             TotalDamageEvents += hitCount;
             TotalDamageDealt += appliedDamage;
             cooldown = CooldownSeconds;
             SpawnImpactMarker(input.Current.PointerWorld);
+        }
+
+        private void ThrowSpear(Vector3 point)
+        {
+            var settings = new ThrownSpear.Settings
+            {
+                Damage = Damage,
+                StuckSeconds = SpearStuckSeconds,
+                SplashRadius = SpearSplashRadius,
+                SplashFraction = SpearSplashFraction,
+                CritChance = SpearCritChance,
+                CritMultiplier = SpearCritMultiplier
+            };
+            void Count(float dealt)
+            {
+                TotalDamageEvents++;
+                TotalDamageDealt += dealt;
+            }
+
+            ThrownSpear.Throw(enemies, point, settings, Count);
+            // The volley: the other spears go to points around the click, each at the goblin
+            // nearest its point, a moment apart.
+            for (var i = 0; i < SpearExtraSpears; i++)
+            {
+                var angle = (i * 360f / Mathf.Max(1, SpearExtraSpears) + 30f) * Mathf.Deg2Rad;
+                var offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * ThrownSpear.VolleySpread;
+                settings.Delay = 0.07f * (i + 1);
+                ThrownSpear.Throw(enemies, point + offset, settings, Count);
+            }
         }
 
         private void TryDevAutoFire()
@@ -162,6 +209,13 @@ namespace TowerDefense.Runtime
 
             if (!enemies.TryGetLeadEnemyAimPoint(Radius, out var aimPoint))
             {
+                return;
+            }
+
+            if (Spear)
+            {
+                ThrowSpear(aimPoint);
+                cooldown = CooldownSeconds / Mathf.Clamp(DevAutoEfficiency, 0.1f, 1f);
                 return;
             }
 

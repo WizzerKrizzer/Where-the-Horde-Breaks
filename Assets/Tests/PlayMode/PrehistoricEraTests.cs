@@ -78,12 +78,25 @@ namespace TowerDefense.Tests
                 byId[node.id] = node;
             }
 
-            // The rock with its 12 upgrades, and four towers with 13 nodes each.
-            Assert.That(nodes.Length, Is.EqualTo(65));
+            // The thrown spear with its 7 upgrades (the rock's are hidden for now, user 2026-11-12),
+            // four towers with 13 nodes each, and the mammoth's Brute Tosser.
+            Assert.That(nodes.Length, Is.EqualTo(61));
+            foreach (var id in new[] { "spear_heavy", "spear_volley" })
+            {
+                Assert.That(byId[id].costs[0].currency, Is.EqualTo(CurrencyType.KillEssence), id);
+            }
+            foreach (var hidden in TowerDefense.Runtime.SampleContent.RockNodesForLater())
+            {
+                Assert.That(byId.ContainsKey(hidden.id), Is.False, hidden.id);
+            }
             foreach (var id in new[] { "spear_unlock", "mammoth_unlock", "cave_unlock" })
             {
                 Assert.That(byId[id].costs[0].currency, Is.EqualTo(CurrencyType.VictorySigil), id);
             }
+            // The mammoth also costs 3 Challenge Sigils (user, 2026-11-12).
+            Assert.That(byId["mammoth_unlock"].costs.Length, Is.EqualTo(2));
+            Assert.That(byId["mammoth_unlock"].costs[1].currency, Is.EqualTo(CurrencyType.ChallengeToken));
+            Assert.That(byId["mammoth_unlock"].costs[1].amount, Is.EqualTo(3));
             Assert.That(byId["volley_core"].startsUnlocked && byId["slingers_unlock"].startsUnlocked, Is.True);
 
             // The Slingers are buildable from the start, with nothing bought.
@@ -94,8 +107,14 @@ namespace TowerDefense.Tests
             Assert.That(progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "slingers"), Is.GreaterThan(0f));
             Assert.That(progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "mammoth"), Is.Zero);
 
+            // The mammoth can learn to push the Orc Brutes (Handoff, 2026-11-10), after it is owned.
+            var tosser = byId["mammoth_push_brutes"];
+            Assert.That(tosser.prerequisiteNodeIds, Is.EqualTo(new[] { "mammoth_unlock" }));
+            Assert.That(System.Array.Exists(tosser.effects, e => e.type == UpgradeEffectType.TowerPushesHeavy && e.targetId == "mammoth"), Is.True);
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.TowerPushesHeavy, "mammoth"), Is.Zero);
+
             // Three Kill Essence stats each: damage, speed and range or roll.
-            foreach (var id in new[] { "slingers_damage", "slingers_speed", "slingers_range", "rock_damage", "rock_cooldown", "rock_roll",
+            foreach (var id in new[] { "slingers_damage", "slingers_speed", "slingers_range", "rock_damage", "rock_cooldown",
                          "spear_damage", "spear_speed", "spear_range", "mammoth_damage", "mammoth_health", "mammoth_herd",
                          "cave_damage", "cave_health", "cave_capacity" })
             {
@@ -106,7 +125,7 @@ namespace TowerDefense.Tests
             // Essence upgrades of its own.
             var specials = new[]
             {
-                "slingers_stun", "slingers_ricochet", "slingers_shrapnel", "rock_quake", "rock_fire", "rock_shatter",
+                "slingers_stun", "slingers_ricochet", "slingers_shrapnel", "spear_precise",
                 "spear_poison", "spear_pierce", "spear_big_game", "mammoth_rage", "mammoth_riders", "mammoth_armor",
                 "cave_shields", "cave_chief", "cave_torches"
             };
@@ -267,6 +286,164 @@ namespace TowerDefense.Tests
             Assert.That(Alive(tower), Is.EqualTo(1), "The cavemen did not come back one at a time.");
             yield return new WaitForSeconds(1.1f);
             Assert.That(Alive(tower), Is.EqualTo(2));
+        }
+
+        [UnityTest]
+        public IEnumerator Rocks_ShowTheirModelsAsWideAsTheBall()
+        {
+            if (!RollingRock.ModelsInstalled)
+            {
+                Assert.Ignore("The rocks are not installed (Tools/Animation/install_rocks.sh).");
+            }
+
+            foreach (var fire in new[] { false, true })
+            {
+                var rock = RollingRock.Throw(null, new Vector3(5f, 0f, 5f), Vector3.zero, new RollingRock.Settings { FireTrail = fire });
+                cleanup.Add(rock.gameObject);
+                yield return null;
+                var ball = rock.transform.Find("Rock");
+                Assert.That(ball, Is.Not.Null, "The rock has no ball.");
+                var renderers = ball.GetComponentsInChildren<Renderer>();
+                Assert.That(renderers.Length, Is.GreaterThan(0), "The ball draws nothing.");
+                var bounds = renderers[0].bounds;
+                foreach (var renderer in renderers)
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                    Assert.That(renderer.enabled && renderer.gameObject.activeInHierarchy, Is.True, $"{renderer.name} is hidden.");
+                }
+
+                Debug.Log($"ROCK MODEL ({(fire ? "burning" : "plain")}): {renderers.Length} renderers, " +
+                          $"centre {bounds.center - ball.position}, size {bounds.size}, material {renderers[0].sharedMaterial.name}");
+                var widest = Mathf.Max(bounds.size.x, Mathf.Max(bounds.size.y, bounds.size.z));
+                Assert.That(widest, Is.InRange(1.1f, 1.5f), "The model is not as wide as the ball.");
+                Assert.That((bounds.center - ball.position).magnitude, Is.LessThan(0.2f), "The model is not centred on the ball.");
+                Assert.That(rock.GetComponentInChildren<RockFireVisual>() != null, Is.EqualTo(fire), "Only the fire rock burns.");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Rock_BurstsIntoChipsAtItsEndAndItsFireWithIt()
+        {
+            // No roll: it ends where it lands.
+            var chips = RockDebris.BurstsShown;
+            var fires = RockFireVisual.BurstsShown;
+            var rock = RollingRock.Throw(null, new Vector3(5f, 0f, 5f), Vector3.zero, new RollingRock.Settings { FireTrail = true });
+            cleanup.Add(rock.gameObject);
+            yield return new WaitForSeconds(0.6f);
+            Assert.That(RockDebris.BurstsShown, Is.EqualTo(chips + 1), "The rock did not burst.");
+            Assert.That(RockFireVisual.BurstsShown, Is.EqualTo(fires + 1), "Its fire did not burst with it.");
+            var debris = Object.FindFirstObjectByType<RockDebris>();
+            Assert.That(debris != null && debris.transform.childCount > 0, Is.True, "No chips flew.");
+            cleanup.Add(debris.gameObject);
+            Assert.That(rock == null || rock.transform.Find("Rock").localScale == Vector3.zero, Is.True, "The rock is still there.");
+        }
+
+        // The thrown spear, the first active weapon (user, 2026-11-12): it flies at the goblin nearest
+        // the click, hurts only that one, stands in the ground a while, then sinks away.
+        [UnityTest]
+        public IEnumerator Spear_HitsOneGoblinThenStandsInTheGroundAndSinks()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld(cleanup);
+            var wave = OnlyEnemy(world, "runner", 30, out var runner);
+            runner.maxHealth = 400f;
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            yield return WaitForSpawned(world, 30);
+            yield return new WaitForSeconds(1f);
+            // A goblin to click: the horde answers a frame or two after it is asked.
+            var aim = Vector3.zero;
+            var found = false;
+            for (var i = 0; i < 30 && !found; i++)
+            {
+                found = world.Enemies.TryGetHordeTargetSnapshot(world.Route.Sample(0f), 60f, true, TowerTargetingMode.First, out _, out aim, out _);
+                yield return null;
+            }
+
+            Assert.That(found, Is.True, "No goblin to aim at.");
+            var dealt = 0f;
+            var hits = 0;
+            var spear = ThrownSpear.Throw(world.Enemies, aim, 12f, 0.6f, amount => { dealt += amount; hits++; });
+            cleanup.Add(spear.gameObject);
+            var deadline = Time.realtimeSinceStartup + 3f;
+            while (spear != null && !spear.IsStuck && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(spear != null && spear.IsStuck, Is.True, "The spear never landed.");
+            Assert.That(spear.HasTarget, Is.True, "The spear picked no goblin near the click.");
+            Assert.That(hits, Is.EqualTo(1), "The spear should hit exactly one goblin.");
+            Assert.That(dealt, Is.GreaterThan(0f).And.LessThanOrEqualTo(12.01f), "The spear's damage went to more than one goblin.");
+            // The tip is in the ground and the shaft stands up out of it.
+            var tip = spear.transform.position;
+            var butt = tip - spear.transform.forward * SpearModel.Length;
+            Assert.That(tip.y, Is.LessThan(0f), "The tip is not in the ground.");
+            Assert.That(butt.y, Is.GreaterThan(0.8f), "The spear does not stand up.");
+            yield return new WaitForSeconds(0.3f);
+            Assert.That(spear != null, Is.True, "The spear left too soon.");
+            yield return new WaitForSeconds(1f);
+            Assert.That(spear == null, Is.True, "The spear did not sink away.");
+        }
+
+        // The spear's upgrades (user, 2026-11-12): the heavy spear's blow hurts the goblins around
+        // its target, a precise strike deals 3 times the damage, and the volley throws more spears.
+        [UnityTest]
+        public IEnumerator Spear_HeavyBlowPreciseStrikeAndVolley()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld(cleanup);
+            var wave = OnlyEnemy(world, "runner", 60, out var runner);
+            runner.maxHealth = 400f;
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            yield return WaitForSpawned(world, 60);
+            yield return new WaitForSeconds(1.5f);
+            var aim = Vector3.zero;
+            var found = false;
+            for (var i = 0; i < 30 && !found; i++)
+            {
+                found = world.Enemies.TryGetHordeTargetSnapshot(world.Route.Sample(0f), 60f, true, TowerTargetingMode.First, out _, out aim, out _);
+                yield return null;
+            }
+
+            Assert.That(found, Is.True, "No goblin to aim at.");
+            ThrownSpear.ResetCounters();
+            var dealt = new List<float>();
+            var settings = new ThrownSpear.Settings
+            {
+                Damage = 12f, StuckSeconds = 0.5f, SplashRadius = 2f, SplashFraction = 0.4f, CritChance = 1f, CritMultiplier = 3f
+            };
+            var spear = ThrownSpear.Throw(world.Enemies, aim, settings, dealt.Add);
+            cleanup.Add(spear.gameObject);
+            var deadline = Time.realtimeSinceStartup + 3f;
+            while (spear != null && !spear.IsStuck && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(spear != null && spear.IsStuck && spear.WasCrit, Is.True, "The precise strike did not land.");
+            Assert.That(ThrownSpear.Crits, Is.EqualTo(1));
+            Assert.That(dealt[0], Is.EqualTo(36f).Within(0.01f), "A precise strike should deal 3 times the damage.");
+            Assert.That(ThrownSpear.Shocks, Is.EqualTo(1), "The heavy spear's blow did not shake the ground.");
+            Assert.That(dealt.Count, Is.EqualTo(2), "The blow hurt no goblin around the target.");
+            Assert.That(dealt[1], Is.GreaterThan(0f));
+
+            // The volley: two more spears, a moment apart, each at its own goblin when there is one.
+            var weapon = new GameObject("Weapon").AddComponent<ActiveWeaponController>();
+            cleanup.Add(weapon.gameObject);
+            weapon.Initialize(world.Enemies, null, null);
+            weapon.Damage = 12f;
+            weapon.SpearExtraSpears = 2;
+            ThrownSpear.ResetCounters();
+            typeof(ActiveWeaponController).GetMethod("ThrowSpear", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(weapon, new object[] { aim });
+            Assert.That(ThrownSpear.Thrown, Is.EqualTo(3), "The volley did not throw 3 spears.");
+            yield return new WaitForSeconds(0.8f);
+            Assert.That(ThrownSpear.Stuck, Is.EqualTo(3), "Not all the volley's spears landed.");
+            Assert.That(ThrownSpear.Hits, Is.GreaterThanOrEqualTo(2), "The volley's spears hit too few goblins.");
+            foreach (var other in Object.FindObjectsByType<ThrownSpear>(FindObjectsSortMode.None))
+            {
+                cleanup.Add(other.gameObject);
+            }
         }
 
         [UnityTest]

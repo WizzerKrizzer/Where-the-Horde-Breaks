@@ -16,6 +16,8 @@ Shader "TowerDefense/StyleSkinned"
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Source blend", Float) = 1
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Destination blend", Float) = 0
         _ZWrite ("Depth write", Float) = 1
+        // The fire rock (user, 2026-11-12): the texture's orange cracks glow, unlit and pulsing.
+        _Glow ("Glowing cracks", Float) = 0
     }
 
     CGINCLUDE
@@ -26,6 +28,7 @@ Shader "TowerDefense/StyleSkinned"
     float4 _Color;
     float _ShadowStrength;
     float _ShadowPlane;
+    float _Glow;
     static const float3 LightDirection = float3(-0.533, 0.775, 0.339);
     static const float3 ShadowDirection = float3(-0.147, 0.985, 0.093);
     ENDCG
@@ -95,7 +98,18 @@ Shader "TowerDefense/StyleSkinned"
                 float lighting = saturate(dot(normal, LightDirection));
                 float band = lighting > 0.72 ? 1.0 : (lighting > 0.35 ? 0.8 : 0.58);
                 float3 albedo = _VertexColor > 0.5 ? input.color.rgb : tex2D(_MainTex, input.uv).rgb;
-                return float4(albedo * _Color.rgb * band, _Color.a);
+                float3 color = albedo * _Color.rgb * band;
+                if (_Glow > 0)
+                {
+                    // Bright orange in the texture is molten rock: it ignores the light and breathes,
+                    // each patch on its own beat.
+                    float hot = saturate((albedo.r - albedo.b - 0.2) * 3.0) * saturate((albedo.r - 0.45) * 3.0);
+                    float pulse = 0.5 + 0.5 * sin(_Time.y * 3.2 + dot(input.uv, float2(23.0, 17.0)));
+                    float3 molten = lerp(albedo, float3(1.0, 0.86, 0.5), 0.2 + 0.25 * pulse) * (1.2 + 0.3 * pulse);
+                    color = lerp(color, molten * _Color.rgb, hot * _Glow);
+                }
+
+                return float4(color, _Color.a);
             }
             ENDCG
         }

@@ -13,8 +13,6 @@ namespace TowerDefense.Runtime
         private static readonly Color CrackColor = PlaceholderPalette.Grey(.1f);
         private static readonly Color ShockColor = PlaceholderPalette.Grey(.85f);
         private static readonly Color ScorchColor = new(0.1f, 0.08f, 0.07f, 1f);
-        private static readonly Color FlameOuterColor = new(0.95f, 0.45f, 0.12f, 1f);
-        private static readonly Color FlameInnerColor = new(1f, 0.82f, 0.32f, 1f);
         private static readonly Color RockColor = PlaceholderPalette.Grey(.42f);
 
         private struct Part
@@ -104,7 +102,8 @@ namespace TowerDefense.Runtime
             FirePatchesShown++;
             position.y = 0f;
             var effect = Create("FireTrail", position, seconds);
-            var scorch = effect.AddPart(PrimitiveType.Cylinder, ScorchColor, true);
+            var scorch = effect.AddMesh(LowPolyShapes.Disc, ScorchColor, true);
+            scorch.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
             effect.parts.Add(new Part
             {
                 Transform = scorch,
@@ -122,21 +121,20 @@ namespace TowerDefense.Runtime
             {
                 var spot = Random.insideUnitCircle * radius * 0.6f;
                 var inner = i % 3 == 0;
-                var flame = effect.AddPart(PrimitiveType.Cube, inner ? FlameInnerColor : FlameOuterColor, true);
-                var height = Random.Range(0.35f, 0.7f) * (inner ? 0.7f : 1f);
-                var width = Random.Range(0.14f, 0.22f) * (inner ? 0.75f : 1f);
-                flame.localRotation = Quaternion.Euler(0f, Random.Range(0f, 90f), 0f);
-                var at = new Vector3(spot.x, height * 0.45f, spot.y);
+                // Low-poly flames (user, 2026-11-12), standing on their roots.
+                var flame = effect.AddFlame();
+                var height = Random.Range(0.45f, 0.85f) * (inner ? 0.7f : 1f);
+                var width = Random.Range(0.26f, 0.38f) * (inner ? 0.75f : 1f);
+                var at = new Vector3(spot.x, 0.02f, spot.y);
                 effect.parts.Add(new Part
                 {
                     Transform = flame,
-                    From = new Vector3(spot.x, 0.05f, spot.y),
+                    From = at,
                     To = at,
                     ScaleFrom = Vector3.zero,
                     ScaleTo = new Vector3(width, height, width),
                     Delay = Random.Range(0f, 0.15f),
                     Duration = 0.2f,
-                    Spin = new Vector3(0f, Random.Range(-90f, 90f), 0f),
                     Flicker = Random.Range(7f, 12f),
                     Phase = Random.Range(0f, 6.28f),
                     FadeOut = 0.8f
@@ -161,6 +159,67 @@ namespace TowerDefense.Runtime
             effect.AddDust(Vector3.up * 0.3f, 0.2f, 1.3f, puffs, 0.35f, 0.7f);
         }
 
+        /// <summary>
+        /// The heavy spear's blow (user, 2026-11-12): short cracks run out from where it bit into
+        /// the ground and a ring of dust rolls out to `radius`.
+        /// </summary>
+        public static void SpawnSpearShock(Vector3 center, float radius)
+        {
+            BurstsShown++;
+            center.y = 0f;
+            var effect = Create("SpearShock", center, 0.9f);
+            var cracks = EffectsQuality.Pieces(Random.Range(5, 7));
+            var turn = Random.Range(0f, 360f);
+            for (var i = 0; i < cracks; i++)
+            {
+                var angle = (turn + i * 360f / Mathf.Max(1, cracks) + Random.Range(-15f, 15f)) * Mathf.Deg2Rad;
+                var outward = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                effect.AddCrack(Vector3.zero, outward, radius * Random.Range(0.4f, 0.7f), 0.06f, 0f);
+            }
+
+            effect.AddDust(Vector3.up * 0.05f, radius * 0.3f, radius, EffectsQuality.Pieces(12), 0.26f, 0.6f);
+        }
+
+        /// <summary>
+        /// A precise strike (user, 2026-11-12): a red low-poly burst on the goblin, a few red sparks
+        /// flying off it.
+        /// </summary>
+        public static void SpawnCritBurst(Vector3 position)
+        {
+            BurstsShown++;
+            position.y = 0f;
+            var effect = Create("SpearCrit", position + Vector3.up * 0.45f, 0.35f);
+            var core = effect.AddMesh(LowPolyShapes.Puff, new Color(0.95f, 0.14f, 0.1f, 1f), true);
+            core.localRotation = Random.rotation;
+            effect.parts.Add(new Part
+            {
+                Transform = core,
+                From = Vector3.zero,
+                To = Vector3.zero,
+                ScaleFrom = Vector3.one * 0.5f,
+                ScaleTo = Vector3.one * 1.1f,
+                Duration = 0.22f,
+                Vanish = true
+            });
+            var sparks = EffectsQuality.Pieces(7);
+            for (var i = 0; i < sparks; i++)
+            {
+                var spark = effect.AddMesh(LowPolyShapes.Gem, new Color(1f, 0.45f, 0.3f, 1f), true);
+                var direction = (Random.onUnitSphere + Vector3.up * 0.6f).normalized;
+                spark.localRotation = Quaternion.LookRotation(direction);
+                effect.parts.Add(new Part
+                {
+                    Transform = spark,
+                    From = direction * 0.1f,
+                    To = direction * Random.Range(0.6f, 0.95f),
+                    ScaleFrom = new Vector3(0.07f, 0.07f, 0.22f),
+                    ScaleTo = new Vector3(0.02f, 0.02f, 0.08f),
+                    Duration = 0.3f,
+                    Vanish = true
+                });
+            }
+        }
+
         /// <summary>A small puff where a stone or a rock chip hits the ground.</summary>
         public static void SpawnPuff(Vector3 position, float size = 1f)
         {
@@ -179,9 +238,9 @@ namespace TowerDefense.Runtime
         /// <summary>A chunk of rock that tumbles as it flies (the shattering rock's shards).</summary>
         public static Transform CreateRockChip(Transform parent, float size)
         {
-            var chip = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            chip.name = "RockShard";
-            SpearVisuals.RemoveColliders(chip);
+            var chip = new GameObject("RockShard");
+            chip.AddComponent<MeshFilter>().sharedMesh = LowPolyShapes.Gem;
+            chip.AddComponent<MeshRenderer>();
             chip.transform.SetParent(parent, false);
             chip.transform.localScale = new Vector3(Random.Range(0.8f, 1.3f), Random.Range(0.6f, 1f), Random.Range(0.8f, 1.4f)) * size;
             chip.transform.rotation = Random.rotation;
@@ -221,18 +280,17 @@ namespace TowerDefense.Runtime
             for (var i = 0; i < 2; i++)
             {
                 var inner = i == 1;
-                var flame = effect.AddPart(PrimitiveType.Cube, inner ? FlameInnerColor : FlameOuterColor, true);
-                var width = inner ? 0.08f : 0.13f;
-                var height = inner ? 0.18f : 0.28f;
+                var flame = effect.AddFlame();
+                var width = inner ? 0.12f : 0.2f;
+                var height = inner ? 0.22f : 0.34f;
                 effect.parts.Add(new Part
                 {
                     Transform = flame,
-                    From = top + Vector3.up * height * 0.45f,
-                    To = top + Vector3.up * height * 0.45f,
+                    From = top,
+                    To = top,
                     ScaleFrom = new Vector3(width, height, width),
                     ScaleTo = new Vector3(width, height, width),
                     Duration = 0.01f,
-                    Spin = new Vector3(0f, inner ? -160f : 120f, 0f),
                     Flicker = inner ? 13f : 9f,
                     Phase = Random.Range(0f, 6.28f)
                 });
@@ -326,6 +384,26 @@ namespace TowerDefense.Runtime
             return go.transform;
         }
 
+        private Transform AddMesh(Mesh mesh, Color color, bool unlit = false)
+        {
+            var go = new GameObject(mesh.name);
+            go.transform.SetParent(transform, false);
+            go.transform.localScale = Vector3.zero;
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = unlit ? BootstrapMaterials.GetUnlit(color) : BootstrapMaterials.Get(color);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return go.transform;
+        }
+
+        // A low-poly flame (FlameVisual's mesh), sized by its part's scale.
+        private Transform AddFlame()
+        {
+            var flame = FlameVisual.CreateMesh(transform, "Flame").transform;
+            flame.localScale = Vector3.zero;
+            return flame;
+        }
+
         // A crack: a thin dark slab that opens from start outwards along direction.
         private void AddCrack(Vector3 start, Vector3 direction, float length, float width, float delay)
         {
@@ -352,8 +430,9 @@ namespace TowerDefense.Runtime
             {
                 var angle = (turn + i * 360f / puffs + Random.Range(-12f, 12f)) * Mathf.Deg2Rad;
                 var outward = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                var puff = AddPart(PrimitiveType.Cube, DustColor);
-                puff.localRotation = Quaternion.Euler(0f, Random.Range(0f, 90f), 0f);
+                // A low-poly puff (user, 2026-11-12), not a cube.
+                var puff = AddMesh(LowPolyShapes.Puff, DustColor);
+                puff.localRotation = Random.rotation;
                 var puffSize = size * Random.Range(0.75f, 1.25f);
                 parts.Add(new Part
                 {

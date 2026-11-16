@@ -45,7 +45,7 @@ namespace TowerDefense.Data
         Knight,
         Archer,
         Paladin,
-        // Prehistoric cavemen with clubs, from the Cave.
+        // Prehistoric cavemen with bones, from the Cave.
         Caveman
     }
 
@@ -160,7 +160,15 @@ namespace TowerDefense.Data
         TowerChiefHealthPercent,
         // Torches: the cavemen's blows set goblins burning, this much per second for this long.
         TowerTorchBurnDamagePerSecondFlat,
-        TowerTorchBurnSecondsFlat
+        TowerTorchBurnSecondsFlat,
+        // The thrown spear (user, 2026-11-12). Heavy spear: its blow also hurts goblins within this
+        // many metres of the one it hits.
+        ActiveWeaponSplashRadiusFlat,
+        // Volley: this many more spears fly with each click, at the goblins nearest it.
+        ActiveWeaponExtraSpearsFlat,
+        // Precise strike: the chance (%) a spear deals more, and how many more times its damage.
+        ActiveWeaponCritChancePercent,
+        ActiveWeaponCritMultiplierFlat
     }
 
     /// <summary>The six eras of the campaign. TowerDefinition.eraIndex stores the value.</summary>

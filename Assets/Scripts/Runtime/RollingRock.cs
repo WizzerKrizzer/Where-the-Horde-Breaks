@@ -11,7 +11,9 @@ namespace TowerDefense.Runtime
     /// and pushing aside the goblins in its way. A fire rock leaves a burning trail behind it.
     /// Specials (user, 2026-11-08): a quake stuns the goblins around where it lands, and a
     /// shattering rock bursts into shards at the end of its roll.
-    /// Greybox: a grey ball; the trail, quake and shards are drawn by SpecialEffectVisuals.
+    /// The rock is the Meshy boulder, and the fire rock the burning one with its flames (RockFireVisual),
+    /// when installed (Tools/Animation/install_rocks.sh into the git-ignored Resources/Meshy); otherwise
+    /// a grey ball. The trail, quake and shards are drawn by SpecialEffectVisuals.
     /// </summary>
     public sealed class RollingRock : MonoBehaviour
     {
@@ -117,6 +119,8 @@ namespace TowerDefense.Runtime
         private readonly List<TrailPatch> trail = new();
         private readonly List<Shard> shards = new();
         private bool shattered;
+        private bool burst;
+        private RockFireVisual fire;
 
         public bool IsRolling => state == State.Rolling;
         public float Rolled => rolled;
@@ -163,15 +167,75 @@ namespace TowerDefense.Runtime
                 lateralOffset.y = 0f;
             }
 
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            visual.name = "Rock";
-            RemoveCollider(visual);
-            visual.transform.SetParent(transform, false);
-            visual.transform.localScale = Vector3.one * BallRadius * 2f;
-            visual.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.42f));
-            ball = visual.transform;
+            ball = CreateBall(transform, settings.FireTrail);
+            ball.localScale = Vector3.one * BallRadius * 2f;
             ball.position = dropPoint + Vector3.up * FallHeight;
+            if (settings.FireTrail)
+            {
+                fire = RockFireVisual.Attach(transform, ball, BallRadius);
+            }
+
             state = State.Falling;
+        }
+
+        private static readonly Dictionary<string, Material> ModelMaterials = new();
+
+        /// <summary>True when the Meshy rocks are installed.</summary>
+        public static bool ModelsInstalled => Resources.Load<GameObject>("Meshy/rock") != null &&
+                                              Resources.Load<GameObject>("Meshy/fire-rock") != null;
+
+        // The rolling ball, one metre across (scaled by the caller): the model centred on it, or a sphere.
+        private static Transform CreateBall(Transform parent, bool fire)
+        {
+            var name = fire ? "fire-rock" : "rock";
+            var prefab = Resources.Load<GameObject>("Meshy/" + name);
+            var shader = Shader.Find("TowerDefense/StyleSkinned");
+            if (prefab == null || shader == null)
+            {
+                var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                sphere.name = "Rock";
+                RemoveCollider(sphere);
+                sphere.transform.SetParent(parent, false);
+                sphere.GetComponent<Renderer>().sharedMaterial = BootstrapMaterials.Get(PlaceholderPalette.Grey(.42f));
+                return sphere.transform;
+            }
+
+            if (!ModelMaterials.TryGetValue(name, out var material) || material == null)
+            {
+                material = new Material(shader) { name = name };
+                material.SetTexture("_MainTex", Resources.Load<Texture2D>("Meshy/" + name + "-tex"));
+                material.SetFloat("_Glow", fire ? 1f : 0f);
+                ModelMaterials[name] = material;
+            }
+
+            var pivot = new GameObject("Rock").transform;
+            pivot.SetParent(parent, false);
+            // The model keeps its own import scale and turn; a holder between sizes and centres it.
+            var holder = new GameObject("Model").transform;
+            holder.SetParent(pivot, false);
+            var model = Instantiate(prefab, holder, false);
+            var bounds = new Bounds();
+            var first = true;
+            foreach (var renderer in model.GetComponentsInChildren<Renderer>())
+            {
+                renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                if (first)
+                {
+                    bounds = renderer.bounds;
+                    first = false;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            // Its widest side one metre, its middle on the pivot so it turns about itself.
+            var size = Mathf.Max(0.01f, Mathf.Max(bounds.size.x, Mathf.Max(bounds.size.y, bounds.size.z)));
+            holder.localScale = Vector3.one / size;
+            holder.localPosition = -(bounds.center - pivot.position) / size;
+            return pivot;
         }
 
         private void Update()
@@ -225,14 +289,13 @@ namespace TowerDefense.Runtime
                 ? State.Rolling
                 : State.Fading;
             straightStart = dropPoint;
-            if (state == State.Fading)
-            {
-                Shatter(dropPoint);
-            }
-
             timer = 0f;
             hitTimer = 0f;
             nextTrailAt = 0f;
+            if (state == State.Fading)
+            {
+                End(dropPoint);
+            }
         }
 
         private void Roll()
@@ -285,7 +348,7 @@ namespace TowerDefense.Runtime
             {
                 state = State.Fading;
                 timer = 0f;
-                Shatter(new Vector3(position.x, 0f, position.z));
+                End(new Vector3(position.x, 0f, position.z));
             }
         }
 
@@ -307,6 +370,29 @@ namespace TowerDefense.Runtime
             var axis = route.Sample(ahead) - route.Sample(here);
             axis.y = 0f;
             return axis.sqrMagnitude > 0.0001f ? axis.normalized : Vector3.zero;
+        }
+
+        // The end of the rock (user, 2026-11-12): it bursts, into the Shattering special's shards when
+        // bought, otherwise into harmless chips of itself; its fire bursts with it.
+        private void End(Vector3 center)
+        {
+            if (fire != null)
+            {
+                fire.Burst();
+            }
+
+            Shatter(center);
+            if (shattered || burst)
+            {
+                return;
+            }
+
+            burst = true;
+            var renderer = ball.GetComponentInChildren<Renderer>();
+            var material = renderer != null && ModelMaterials.ContainsValue(renderer.sharedMaterial) ? renderer.sharedMaterial : null;
+            RockDebris.Burst(ball.position, BallRadius, material);
+            ball.localScale = Vector3.zero;
+            timer = FadeSeconds;
         }
 
         private void Shatter(Vector3 center)
