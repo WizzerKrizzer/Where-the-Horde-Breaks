@@ -30,7 +30,8 @@ namespace TowerDefense.UI
             ["essence"] = "capacity",
             ["wall"] = "shield",
             ["wall|up"] = "health",
-            ["slingers|crew"] = "slingers"
+            ["slingers|crew"] = "slingers",
+            ["auto"] = "javelin"
         };
 
         public static bool TryGet(string key, out Texture2D texture)

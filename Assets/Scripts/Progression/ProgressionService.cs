@@ -104,7 +104,7 @@ namespace TowerDefense.Progression
 
             var node = FindNode(nodeId);
             var refundedRank = GetPurchasedRank(nodeId) - 1;
-            var costs = ScaleCosts(node.costs, node.costGrowthMultiplier, refundedRank);
+            var costs = ScaleCosts(node, refundedRank);
             foreach (var cost in costs)
             {
                 profile.AddCurrency(cost.currency, cost.amount);
@@ -133,7 +133,7 @@ namespace TowerDefense.Progression
                 return System.Array.Empty<CurrencyAmount>();
             }
 
-            return ScaleCosts(node.costs, node.costGrowthMultiplier, GetPurchasedRank(nodeId));
+            return ScaleCosts(node, GetPurchasedRank(nodeId));
         }
 
         public void RefundAndResetPurchasedUpgrades()
@@ -149,7 +149,7 @@ namespace TowerDefense.Progression
 
                 for (var rank = 0; rank < purchaseCount.Count(); rank++)
                 {
-                    var costs = ScaleCosts(node.costs, node.costGrowthMultiplier, rank);
+                    var costs = ScaleCosts(node, rank);
                     foreach (var cost in costs)
                     {
                         profile.AddCurrency(cost.currency, cost.amount);
@@ -212,6 +212,20 @@ namespace TowerDefense.Progression
         private static int GetMaxRank(SkillNodeDefinition node)
         {
             return node == null ? 0 : System.Math.Max(1, node.maxRanks);
+        }
+
+        // A node may set the first cost's price for some ranks (user, 2026-11-19: the 5th and 6th
+        // towers and the last two Gatherers are cheaper than the growth formula would make them).
+        private static CurrencyAmount[] ScaleCosts(SkillNodeDefinition node, int purchasedRank)
+        {
+            var scaled = ScaleCosts(node.costs, node.costGrowthMultiplier, purchasedRank);
+            if (scaled.Length > 0 && node.rankCosts != null && purchasedRank >= 0 &&
+                purchasedRank < node.rankCosts.Length && node.rankCosts[purchasedRank] > 0)
+            {
+                scaled[0] = new CurrencyAmount(scaled[0].currency, node.rankCosts[purchasedRank]);
+            }
+
+            return scaled;
         }
 
         private static CurrencyAmount[] ScaleCosts(CurrencyAmount[] baseCosts, float growthMultiplier, int purchasedRank)

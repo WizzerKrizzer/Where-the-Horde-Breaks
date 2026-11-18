@@ -22,6 +22,8 @@ namespace TowerDefense.Data
         [Min(1f)] public float costGrowthMultiplier = 1.2f;
         public string[] prerequisiteNodeIds;
         public CurrencyAmount[] costs;
+        [Tooltip("Optional set price of the first cost for each rank (0 keeps the growth formula's price).")]
+        public int[] rankCosts;
         public UpgradeEffect[] effects;
         public bool isMajorUnlock;
         public bool startsUnlocked;

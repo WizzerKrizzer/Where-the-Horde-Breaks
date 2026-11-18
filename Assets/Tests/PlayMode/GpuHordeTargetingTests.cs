@@ -518,11 +518,24 @@ namespace TowerDefense.Tests
                 Assert.Ignore("Compute shaders are unavailable on this test device.");
             }
 
+            // The scene's own camera would be Camera.main and the LOD would be measured from it,
+            // with the second goblin out of its view (2026-11-18): it is switched off for the test.
+            var otherCameras = new System.Collections.Generic.List<Camera>();
+            foreach (var other in Camera.allCameras)
+            {
+                other.enabled = false;
+                otherCameras.Add(other);
+            }
+
+            // With the goblin model the ortho camera picks the level by size on screen (1080 px
+            // reference): scale 1 is 72 px (full model), scale 0.5 is 36 px (simpler level). The
+            // primitive mesh has no model levels and splits by distance (beyond 32 m).
+            var animated = GoblinModel.TryGet(out _);
             var cameraObject = new GameObject("GPU LOD test camera");
             cameraObject.tag = "MainCamera";
             var camera = cameraObject.AddComponent<Camera>();
             camera.orthographic = true;
-            camera.orthographicSize = 60f;
+            camera.orthographicSize = animated ? 18f : 60f;
             camera.aspect = 1f;
             camera.transform.position = new Vector3(0f, 20f, 0f);
             camera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
@@ -533,9 +546,15 @@ namespace TowerDefense.Tests
                 0.62f);
             var detailedMesh = EnemyManager.GetDetailedEnemyMesh();
             Assert.That(GpuHordeSimulation.TryCreate(2, field, detailedMesh, out var simulation), Is.True);
-            simulation.SpawnBatch(
-                new[] { State(0f, 10f, -60f, false), State(40f, 10f, -20f, false) },
-                2);
+            var near = State(0f, 10f, -60f, false);
+            var far = State(animated ? 10f : 40f, 10f, -20f, false);
+            if (animated)
+            {
+                near.Scale = 1f;
+                far.Scale = 0.5f;
+            }
+
+            simulation.SpawnBatch(new[] { near, far }, 2);
             simulation.Dispatch(
                 1f / 60f,
                 new[] { new Vector4(0f, 1f, 0f, 0f), new Vector4(0f, 1f, 0f, 0f) },
@@ -548,9 +567,18 @@ namespace TowerDefense.Tests
             simulation.ReadLodDrawArgsSynchronous(farArgs);
             simulation.Dispose();
             Object.DestroyImmediate(cameraObject);
-            Assert.That(nearArgs[1], Is.EqualTo(1u));
-            Assert.That(farArgs[1], Is.EqualTo(1u));
-            Assert.That(nearArgs[0], Is.EqualTo(farArgs[0]), "Near/far switching changes mesh topology and can visibly pop across the crowd.");
+            foreach (var other in otherCameras)
+            {
+                other.enabled = true;
+            }
+
+            Assert.That(nearArgs[1], Is.EqualTo(1u), "The near goblin is not in the full model's list.");
+            Assert.That(farArgs[1], Is.EqualTo(1u), "The far goblin is not in the simpler level's list.");
+            if (!animated)
+            {
+                // The model's levels are different meshes on purpose; the primitive one shares one.
+                Assert.That(nearArgs[0], Is.EqualTo(farArgs[0]), "Near/far switching changes mesh topology and can visibly pop across the crowd.");
+            }
         }
 
         [Test]

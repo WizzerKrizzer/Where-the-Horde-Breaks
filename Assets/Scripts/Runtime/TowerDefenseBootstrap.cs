@@ -960,10 +960,10 @@ namespace TowerDefense.Runtime
                         TreeEffect(UpgradeEffectType.PerTypeTowerLimitFlat, 1f, "slingers")
                     }
                 },
-                // Up to six towers (user, 2026-11-18), each dearer than the last: 3, 7, 15, 32 and 70
-                // Kill Essence. TEMPORARY prices.
-                TreeNode("slingers_towers", "More Towers", "One more Slingers tower can be built.", "slingers|plus", new Vector2(-380f, 190f), 5, CurrencyType.KillEssence, 3, 2.2f, "slingers_unlock", false,
-                    TreeEffect(UpgradeEffectType.PerTypeTowerLimitFlat, 1f, "slingers")),
+                // Up to six towers (user, 2026-11-18), each dearer than the last: 3, 7, 15, then 24 and 46
+                // Kill Essence (user, 2026-11-19; they were 32 and 71). TEMPORARY prices.
+                RankCosts(TreeNode("slingers_towers", "More Towers", "One more Slingers tower can be built.", "slingers|plus", new Vector2(-380f, 190f), 5, CurrencyType.KillEssence, 3, 2.2f, "slingers_unlock", false,
+                    TreeEffect(UpgradeEffectType.PerTypeTowerLimitFlat, 1f, "slingers")), 0, 0, 0, 24, 46),
                 // One more slinger on every Slingers tower for a Challenge Sigil each (user, 2026-11-18),
                 // from 2 up to 8; the tipi widens for the 3rd, 5th and 7th.
                 TreeNode("slingers_crew", "Extra Slinger", "Special: one more slinger on every Slingers tower.", "slingers|crew", new Vector2(-420f, 280f), 6, CurrencyType.ChallengeToken, 1, 1f, "slingers_unlock", true,
@@ -976,9 +976,10 @@ namespace TowerDefense.Runtime
                 TreeNode("wall_health", "Thicker Stakes", "The wall has 5 more health.", "wall|up", new Vector2(220f, -385f), 10, CurrencyType.KillEssence, 2, 1.3f, "wall_unlock", false,
                     TreeEffect(UpgradeEffectType.WallHealthFlat, 5f)),
                 // Income (user, 2026-11-18): Kill Essence after every run, won or lost. TEMPORARY numbers.
-                // +3 a rank (user, 2026-11-18), five ranks, doubling in price: 2, 4, 8, 16, 32.
-                TreeNode("essence_gatherers", "Gatherers", "+3 Kill Essence after each run.", "essence", new Vector2(0f, -200f), 5, CurrencyType.KillEssence, 2, 2f, "volley_core", false,
-                    TreeEffect(UpgradeEffectType.LevelEndKillEssenceFlat, 3f)),
+                // +3 a rank (user, 2026-11-18), five ranks: 2, 4, 8, then 10 and 26 (user, 2026-11-19:
+                // the last two 6 cheaper than 16 and 32).
+                RankCosts(TreeNode("essence_gatherers", "Gatherers", "+3 Kill Essence after each run.", "essence", new Vector2(0f, -200f), 5, CurrencyType.KillEssence, 2, 2f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.LevelEndKillEssenceFlat, 3f)), 0, 0, 0, 10, 26),
                 // Slinger stones +12% a rank and throws +8% a rank (user, 2026-11-18; they were 10% and 6%).
                 TreeNode("slingers_damage", "Heavier Stones", "Slinger stones hit harder.", "damage", new Vector2(-481f, -18f), 10, CurrencyType.KillEssence, 2, 1.2f, "slingers_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerDamagePercent, 12f, "slingers")),
@@ -1089,6 +1090,10 @@ namespace TowerDefense.Runtime
                 // A rank of spear speed is 6% (user, 2026-11-18; it was 5%).
                 TreeNode("rock_damage", "Sharper Flint", "The spear hits harder.", "damage", new Vector2(-46f, 146f), 10, CurrencyType.KillEssence, 2, 1.2f, "volley_core", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponDamagePercent, 10f)),
+                // The spear throws itself (user, 2026-11-19): a click turns it on and off, and it throws
+                // at the pointer whenever it is ready. 2 Challenge Sigils, above Sharper Flint.
+                TreeNode("spear_auto", "Auto Throw", "Special: click once and the spear throws itself at the pointer whenever it is ready; click again to stop.", "auto", new Vector2(-88f, 277f), 1, CurrencyType.ChallengeToken, 2, 1f, "rock_damage", true,
+                    TreeEffect(UpgradeEffectType.ActiveWeaponAutoFireUnlock, 1f)),
                 TreeNode("rock_cooldown", "Quick Hands", "The next spear is ready sooner.", "cooldown", new Vector2(-109f, -98f), 8, CurrencyType.KillEssence, 3, 1.2f, "volley_core", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponCooldownPercent, 6f)),
                 // Spear upgrades (user, 2026-11-12), all prices and numbers TEMPORARY. The heavy spear and
@@ -1475,6 +1480,12 @@ namespace TowerDefense.Runtime
                 TreeNode("rock_shatter_damage", "Sharp Shards", "Shatter: each shard deals 10% more of the rock's damage.", "shatter|up", new Vector2(104f, -261f), 5, CurrencyType.KillEssence, 6, 1.25f, "rock_shatter", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponShatterDamagePercent, 10f)),
             };
+        }
+
+        private static SkillNodeDefinition RankCosts(SkillNodeDefinition node, params int[] costs)
+        {
+            node.rankCosts = costs;
+            return node;
         }
 
         private static SkillNodeDefinition TreeNode(string id, string displayName, string description, string iconKey, Vector2 position,

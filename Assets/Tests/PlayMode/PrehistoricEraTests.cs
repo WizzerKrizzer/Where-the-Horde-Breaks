@@ -81,7 +81,8 @@ namespace TowerDefense.Tests
             // The thrown spear with its 7 upgrades (the rock's are hidden for now, user 2026-11-12),
             // four towers with 13 nodes each, and the mammoth's Brute Tosser.
             // +5 (2026-11-18): More Towers, Gatherers, the wall, its health and Extra Slinger.
-            Assert.That(nodes.Length, Is.EqualTo(66));
+            // +1 (2026-11-19): Auto Throw, a special for 2 Challenge Sigils.
+            Assert.That(nodes.Length, Is.EqualTo(67));
             // The heavy spear and the volley are specials, for Challenge Sigils (user, 2026-11-18).
             foreach (var id in new[] { "spear_heavy", "spear_volley" })
             {

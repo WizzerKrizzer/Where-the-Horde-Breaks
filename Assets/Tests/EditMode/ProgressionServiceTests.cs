@@ -178,6 +178,38 @@ namespace TowerDefense.Tests
             Assert.That(progression.GetPurchasedRank("damage"), Is.EqualTo(0));
         }
 
+        // Set prices for some ranks (user, 2026-11-19: the 5th and 6th towers 24 and 46).
+        [Test]
+        public void RankCosts_OverrideTheGrowthPriceAndRefundIt()
+        {
+            var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
+            tree.nodes = new[]
+            {
+                new SkillNodeDefinition
+                {
+                    id = "towers",
+                    maxRanks = 3,
+                    costGrowthMultiplier = 2f,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 10) },
+                    rankCosts = new[] { 0, 7 },
+                    effects = new[] { new UpgradeEffect { type = UpgradeEffectType.ActiveWeaponDamagePercent, value = 2f } }
+                }
+            };
+
+            var profile = new PlayerProfile();
+            profile.AddCurrency(CurrencyType.KillEssence, 100);
+            var progression = new ProgressionService(tree, profile);
+
+            Assert.That(progression.GetCurrentCosts("towers")[0].amount, Is.EqualTo(10));
+            progression.TryPurchase("towers");
+            Assert.That(progression.GetCurrentCosts("towers")[0].amount, Is.EqualTo(7));
+            progression.TryPurchase("towers");
+            Assert.That(progression.GetCurrentCosts("towers")[0].amount, Is.EqualTo(40));
+            Assert.That(profile.GetCurrency(CurrencyType.KillEssence), Is.EqualTo(83));
+            Assert.That(progression.TryRefundLatestRank("towers"), Is.True);
+            Assert.That(profile.GetCurrency(CurrencyType.KillEssence), Is.EqualTo(90));
+        }
+
         [Test]
         public void TryRefundLatestRank_ReturnsOnlyMostRecentRankCost()
         {
