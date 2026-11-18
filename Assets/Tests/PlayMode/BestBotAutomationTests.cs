@@ -28,7 +28,8 @@ namespace TowerDefense.Tests
             Assert.That(session.DevBestBotRunModeName, Is.EqualTo("Snapshot"));
             session.ToggleDevBestBotRunMode();
 
-            var expectedProfiles = new[] { "Best", "Skilled", "Average", "Casual", "Novice" };
+            // Smart (2026-11-18) comes after Novice.
+            var expectedProfiles = new[] { "Best", "Skilled", "Average", "Casual", "Novice", "Smart" };
             for (var i = 0; i < expectedProfiles.Length; i++)
             {
                 Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo(expectedProfiles[i]));
@@ -97,6 +98,8 @@ namespace TowerDefense.Tests
             Assert.That(activeWeapon.DevAutoEfficiency, Is.EqualTo(0.65f).Within(0.001f));
             session.StopDevBestBot();
 
+            session.SelectNextDevBestBotProfile();
+            Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Smart"));
             session.SelectNextDevBestBotProfile();
             Assert.That(session.DevBestBotSelectedProfileName, Is.EqualTo("Best"));
             session.StartAllDevBestBots();

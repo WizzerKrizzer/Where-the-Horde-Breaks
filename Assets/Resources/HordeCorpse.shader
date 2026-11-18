@@ -57,6 +57,21 @@ Shader "TowerDefense/HordeCorpse"
     float _WalkPoses;
     float _OutlineWidth;
     float4 _OutlineColor;
+    // Corpse culling (GpuHordeSimulation, optimization 2026-11-16): instance n draws the slot at
+    // _CorpseVisible[_CorpseVisibleOffset + n]; without it (the brutes' small ring) instance n is slot n.
+    StructuredBuffer<uint> _CorpseVisible;
+    uint _CorpseVisibleOffset;
+    float _CorpseCulled;
+
+    uint CorpseSlot(uint instanceID)
+    {
+        if (_CorpseCulled > 0.5)
+        {
+            return _CorpseVisible[_CorpseVisibleOffset + instanceID];
+        }
+
+        return instanceID;
+    }
 
     struct CorpsePose
     {
@@ -84,6 +99,12 @@ Shader "TowerDefense/HordeCorpse"
     uint CorpseAgent(uint instance)
     {
         return (uint)_Aux[_CorpseBase + instance * CORPSE_STRIDE + 11u] & 0xFFFFu;
+    }
+
+    // What a dead body does not show (what it held, hair it did not wear): one point, nothing posed.
+    bool CorpseHides(uint slot, float2 held)
+    {
+        return _ModelEnabled > 0.5 && (held.x > 0.5 || !GoblinWears(CorpseAgent(slot), held.y));
     }
 
     CorpsePose PoseCorpse(uint instance, float3 vertex, float3 normal, uint vertexID, float outline)
@@ -270,18 +291,25 @@ Shader "TowerDefense/HordeCorpse"
 
             Varyings Vert(Attributes input)
             {
-                CorpsePose pose = PoseCorpse(input.instanceID, input.vertex.xyz, input.normal, input.vertexID, 0.0);
+                Varyings output;
+                uint slot = CorpseSlot(input.instanceID);
+                if (CorpseHides(slot, input.held))
+                {
+                    output = (Varyings)0;
+                    output.position = float4(0.0, 0.0, -1.0, 1.0);
+                    return output;
+                }
+
+                CorpsePose pose = PoseCorpse(slot, input.vertex.xyz, input.normal, input.vertexID, 0.0);
                 float3 world = pose.world;
                 world.y += (1.0 - pose.valid) * -100000.0;
-                uint agent = CorpseAgent(input.instanceID);
-                if (_ModelEnabled > 0.5 && (input.held.x > 0.5 || !GoblinWears(agent, input.held.y))) world.y = -100000.0;
-                Varyings output;
+                uint agent = CorpseAgent(slot);
                 output.uv = input.uv;
                 output.world = world;
                 output.position = UnityWorldToClipPos(world);
                 output.normal = pose.normal;
                 output.mark = (float)pose.mark;
-                output.variation = frac(sin((float)input.instanceID * 78.233) * 43758.5453);
+                output.variation = frac(sin((float)slot * 78.233) * 43758.5453);
                 output.paint = input.held.x < 0.5 && input.held.y < 0.5 ? GoblinPaint(agent, input.vertex.xyz) : 0.0;
                 return output;
             }
@@ -351,14 +379,18 @@ Shader "TowerDefense/HordeCorpse"
 
             float4 VertOutline(Attributes input) : SV_POSITION
             {
-                uint slot = _CorpseBase + input.instanceID * CORPSE_STRIDE;
+                uint corpse = CorpseSlot(input.instanceID);
+                if (_ModelEnabled < 0.5 || _OutlineWidth <= 0.0 || CorpseHides(corpse, input.held))
+                {
+                    return float4(0.0, 0.0, -1.0, 1.0);
+                }
+
+                uint slot = _CorpseBase + corpse * CORPSE_STRIDE;
                 float3 lying = float3(AuxFloat(slot + 2u), 0.3, AuxFloat(slot + 3u));
-                CorpsePose pose = PoseCorpse(input.instanceID, input.vertex.xyz, input.normal, input.vertexID,
+                CorpsePose pose = PoseCorpse(corpse, input.vertex.xyz, input.normal, input.vertexID,
                     OutlineWidthAt(lying, _OutlineWidth));
                 float3 world = pose.world;
                 world.y += (1.0 - pose.valid) * -100000.0;
-                if (_ModelEnabled < 0.5 || _OutlineWidth <= 0.0 || input.held.x > 0.5 ||
-                    !GoblinWears(CorpseAgent(input.instanceID), input.held.y)) world.y = -100000.0;
                 return UnityWorldToClipPos(world);
             }
 
@@ -411,16 +443,22 @@ Shader "TowerDefense/HordeCorpse"
 
             Varyings Vert(Attributes input)
             {
-                CorpsePose pose = PoseCorpse(input.instanceID, input.vertex.xyz, input.normal, input.vertexID, 0.0);
+                Varyings output;
+                uint slot = CorpseSlot(input.instanceID);
+                if (CorpseHides(slot, input.held))
+                {
+                    output.position = float4(0.0, 0.0, -1.0, 1.0);
+                    output.strength = 0.0;
+                    return output;
+                }
+
+                CorpsePose pose = PoseCorpse(slot, input.vertex.xyz, input.normal, input.vertexID, 0.0);
                 // The goblin model always has a shadow, lying down too; the placeholder only in the air.
-                float strength = pose.valid * (_ModelEnabled > 0.5
-                    ? (input.held.x > 0.5 || !GoblinWears(CorpseAgent(input.instanceID), input.held.y) ? 0.0 : 1.0)
-                    : saturate(pose.height / 0.25));
+                float strength = pose.valid * (_ModelEnabled > 0.5 ? 1.0 : saturate(pose.height / 0.25));
                 float3 world = pose.world;
                 world.xz -= ShadowDirection.xz / ShadowDirection.y * world.y;
                 world.y = 0.03;
                 world.y += strength > 0.0 ? 0.0 : -100000.0;
-                Varyings output;
                 output.position = UnityWorldToClipPos(world);
                 output.strength = strength;
                 return output;

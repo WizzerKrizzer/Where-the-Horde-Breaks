@@ -440,7 +440,10 @@ namespace TowerDefense.Runtime
             // Only the chief's blows hurt the goblins next to the one struck (user, 2026-11-11).
             if (appliedDamage > 0f && IsChief && definition.alliedUnitSplashTargets > 1)
             {
-                appliedDamage += enemies.DamageInRadius(targetPosition, CavemanSplashRadius, blow, definition.alliedUnitSplashTargets - 1, out _, targetIndex);
+                // Only the damage really done counts (2026-11-18), reported by the horde.
+                var chiefOwner = owner;
+                enemies.DamageInRadius(targetPosition, CavemanSplashRadius, blow, definition.alliedUnitSplashTargets - 1, out _, targetIndex,
+                    amount => chiefOwner?.RecordDamage(amount));
             }
 
             owner?.RecordDamage(appliedDamage);

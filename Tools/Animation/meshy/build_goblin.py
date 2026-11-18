@@ -4,8 +4,9 @@ detail, rigged and walked here, and baked for the GPU horde.
 The horde draws up to 100 000 goblins in a few instanced draws, so no skinning runs in the game:
 every pose's vertex positions are baked ("vertex animation"), and the shader picks the pose.
 
-- Two levels of detail are made with Blender's collapse decimation: about 4000 triangles near the
-  camera and 350 far away.
+- Three levels of detail are made with Blender's collapse decimation: about 4000 triangles near the
+  camera, 350 far away, and 120 (with what it holds and wears cut down too) for goblins only a few
+  dozen pixels tall (optimization, 2026-11-16).
 - Three things to hold are added in the right hand, each marked with its own number so the shader
   shows one of them (or none) on each goblin: a wooden club (1), a bone (2) and a stone (3). The
   club arm swings forward with the left leg, as in the approved walk.
@@ -50,7 +51,13 @@ PREVIEW = argv[3] if len(argv) > 3 else None
 # visualScale 0.36): the mesh is written in units of that scale.
 HEIGHT = 1.28
 HORDE_SCALE = 0.36
-LODS = (4000, 350)
+LODS = (4000, 350, 60, 24)
+# The things held and worn, decimated only in the third, tiny level (optimization, 2026-11-16: far
+# from the camera, at a few dozen pixels tall, the full club and hair were half the vertices drawn).
+# Halved again for 100 000 enemies (2026-11-16): 107 -> 183 fps there, and the same look at 70 m.
+PIECE_TRIS = (None, None, 10, 0)
+# The fourth level only casts the shadows: no held or worn pieces (0). Its texture seams stay split:
+# welded (48 vertices instead of 147) it drew slower, as the welded tiny level did (2026-11-17).
 POSES = 6
 # 1024: up close (the player may stand in front of them) a face at 512 was a blur (user, 2026-11-15).
 TEX = 1024
@@ -469,7 +476,7 @@ def vertex_normals(p, idx):
 
 levels = []
 stride = None
-for target in LODS:
+for level_number, target in enumerate(LODS):
     bp, buv, bidx = mesh_arrays(body, target)
     # Body uvs move up into the top of the texture; the held and worn things sample the strip
     # below, a fifth of its width each: wood, bone, stone, fur, hide.
@@ -477,7 +484,9 @@ for target in LODS:
     points, uvs, idx, held, wear = [bp], [buv], [bidx], [np.zeros(len(bp))], [np.zeros(len(bp))]
     count = len(bp)
     for number, thing in enumerate(HELD):
-        cp, cuv, cidx = mesh_arrays(thing, None)
+        if PIECE_TRIS[level_number] == 0:
+            continue
+        cp, cuv, cidx = mesh_arrays(thing, PIECE_TRIS[level_number])
         u = (number + 0.1 + 0.8 * (np.arange(len(cp)) % 7) / 6.0) / SEGMENTS
         points.append(cp)
         uvs.append(np.stack([u, np.full(len(cp), 0.5 * STRIP / (TEX + STRIP))], 1))
@@ -486,7 +495,9 @@ for target in LODS:
         wear.append(np.zeros(len(cp)))
         count += len(cp)
     for number, thing in enumerate(WORN):
-        cp, cuv, cidx = mesh_arrays(thing, None)
+        if PIECE_TRIS[level_number] == 0:
+            continue
+        cp, cuv, cidx = mesh_arrays(thing, PIECE_TRIS[level_number])
         # One colour each (the facets shade it): a spread across the strip read as stripes.
         u = np.full(len(cp), (WORN_SEGMENT[thing.name] + 0.5) / SEGMENTS)
         points.append(cp)

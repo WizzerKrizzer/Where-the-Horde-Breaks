@@ -68,6 +68,26 @@ namespace TowerDefense.Runtime
         /// <summary>Where thrower `index` stands.</summary>
         public abstract Vector3 Feet(int index);
 
+        /// <summary>How many throwers this tower has.</summary>
+        public int CrewCount => Crew.Count;
+
+        // The building itself, set back from the tower's spot so its front stays off the road.
+        protected Transform centerPoint;
+
+        /// <summary>
+        /// The middle of the building on the ground (user, 2026-11-18: the range circle must be
+        /// centred on the tower, not on the spot it was placed from).
+        /// </summary>
+        public Vector3 Center => centerPoint != null
+            ? new Vector3(centerPoint.position.x, transform.position.y, centerPoint.position.z)
+            : transform.position;
+
+        /// <summary>One thrower's whole throw, in seconds at normal speed (0: not timed by a cycle).</summary>
+        public virtual float CycleSeconds => 0f;
+
+        /// <summary>How much faster than normal the throws play (faster fire, user 2026-11-18).</summary>
+        public float ThrowSpeed { get; set; } = 1f;
+
         /// <summary>The crew for this tower, or null when it has none or its models are missing.</summary>
         public static TowerCrewVisual TryCreate(TowerActor tower, Data.TowerDefinition definition, Simulation.PathRoute route)
         {
@@ -82,7 +102,9 @@ namespace TowerDefense.Runtime
                 return SpearRockVisual.TryCreate(tower, toRoad);
             }
 
-            return definition.id == "slingers" ? SlingerTowerVisual.TryCreate(tower, toRoad) : null;
+            return definition.id == "slingers"
+                ? SlingerTowerVisual.TryCreate(tower, toRoad, definition.crewSize > 0 ? definition.crewSize : 8)
+                : null;
         }
 
         private static Vector3 ToRoad(Vector3 position, Simulation.PathRoute route)
@@ -303,6 +325,7 @@ namespace TowerDefense.Runtime
             var rock = new GameObject("Rock");
             rock.transform.SetParent(transform, false);
             rock.transform.SetPositionAndRotation(at, Quaternion.LookRotation(toRoad, Vector3.up));
+            centerPoint = rock.transform;
             rock.transform.localScale = new Vector3(scale * RockWiden, scale, scale * RockWiden);
             var body = new GameObject("RockMesh");
             body.transform.SetParent(rock.transform, false);
@@ -696,6 +719,9 @@ namespace TowerDefense.Runtime
         // The throw's cycle and the stone's release in it (approved 2026-11-06).
         private const float Period = 2.6f;
         private const float Release = 1.45f;
+        // The throw is over here: after it the clip only stands still (measured 2026-11-18,
+        // SlingerThrowTimingTests), so he is ready to throw again (user: no waiting after a throw).
+        private const float ThrowEnd = 2.3f;
         private const float DeckHeight = 2.5f;
         private const float TurnDegreesPerSecond = 900f;
         // Waiting: a 3.4 s sway through the throw's first 0.15 s, and a 9 s look 25 degrees each way.
@@ -711,12 +737,48 @@ namespace TowerDefense.Runtime
             (297.5f, 2.05f, 2.54f), (325f, 2.2f, 2.54f), (352.5f, 2.05f, 2.53f), (17.5f, 2.3f, 2.53f),
         };
 
+        // A narrower tipi for a smaller crew (user, 2026-11-18: a tower that wide looks silly with
+        // one or two slingers on it). The tipi is squeezed across, its height kept, and the crew
+        // stands on the seats above scaled with it, so the feet stay on the planks. Which seats
+        // each crew size uses, spread round the front with the ladder between them.
+        // TEMPORARY squeezes.
+        public static readonly int[] CrewSizes = { 2, 4, 6, 8 };
+        private static readonly float[] Squeezes = { 0.55f, 0.7f, 0.85f, 1f };
+        // In the order they fill (user, 2026-11-18: a crew of 3, 5 or 7 stands on the next tipi up,
+        // with one seat still empty): the two beside the ladder first, then outwards.
+        private static readonly int[][] SeatsForCrew =
+        {
+            new[] { 2, 5 },
+            new[] { 3, 4, 1, 6 },
+            new[] { 3, 4, 2, 5, 1, 6 },
+            new[] { 3, 4, 2, 5, 1, 6, 0, 7 },
+        };
+
+        /// <summary>How much narrower than the full tipi the one for this crew is (1: the full 8).</summary>
+        public static float SqueezeFor(int slingers) =>
+            Squeezes[System.Array.IndexOf(CrewSizes, CrewSizeFor(slingers > 0 ? slingers : 8))];
+
+        /// <summary>The crew size a tower of <paramref name="slingers"/> is drawn as: 2, 4, 6 or 8.</summary>
+        public static int CrewSizeFor(int slingers)
+        {
+            foreach (var size in CrewSizes)
+            {
+                if (slingers <= size)
+                {
+                    return size;
+                }
+            }
+
+            return CrewSizes[CrewSizes.Length - 1];
+        }
+
         private sealed class Kind
         {
             public GameObject Prefab;
             public AnimationClip Throw;
             public Texture2D Texture;
-            public Mesh Tipi;
+            public string TipiText;
+            public readonly Mesh[] Tipis = new Mesh[4];
             public Material TipiMaterial;
             public float Fit;
             public float MinY;
@@ -729,9 +791,11 @@ namespace TowerDefense.Runtime
         private Kind kind;
         private int last = -1;
 
-        public override float ReleaseLead => Release;
+        public override float ReleaseLead => Release / Mathf.Max(0.05f, ThrowSpeed);
 
-        public static SlingerTowerVisual TryCreate(TowerActor tower, Vector3 toRoad)
+        public override float CycleSeconds => ThrowEnd;
+
+        public static SlingerTowerVisual TryCreate(TowerActor tower, Vector3 toRoad, int slingers = 8)
         {
             var kind = Load();
             if (kind == null)
@@ -741,20 +805,24 @@ namespace TowerDefense.Runtime
 
             var visual = MakeRoot<SlingerTowerVisual>(tower, "SlingerTower");
             visual.kind = kind;
-            visual.Build(tower.transform.position, toRoad);
+            visual.Build(tower.transform.position, toRoad, System.Array.IndexOf(CrewSizes, CrewSizeFor(slingers)), Mathf.Clamp(slingers, 1, 8));
             visual.FinishBuild();
             return visual;
         }
 
-        private void Build(Vector3 at, Vector3 toRoad)
+        private void Build(Vector3 at, Vector3 toRoad, int variant, int slingers)
         {
+            var squeeze = Squeezes[variant];
+            kind.Tipis[variant] ??= Triangles(kind.TipiText, squeeze);
+            var tipiMesh = kind.Tipis[variant];
             // The ladder (the tipi's -Z) faces the road.
-            at -= toRoad * BackOff(-kind.Tipi.bounds.min.z);
+            at -= toRoad * BackOff(-tipiMesh.bounds.min.z);
             var place = Matrix4x4.TRS(at, Quaternion.LookRotation(-toRoad, Vector3.up), Vector3.one);
             var tipi = new GameObject("Tipi");
             tipi.transform.SetParent(transform, false);
+            centerPoint = tipi.transform;
             tipi.transform.SetPositionAndRotation(at, Quaternion.LookRotation(-toRoad, Vector3.up));
-            tipi.AddComponent<MeshFilter>().sharedMesh = kind.Tipi;
+            tipi.AddComponent<MeshFilter>().sharedMesh = tipiMesh;
             var renderer = tipi.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = kind.TipiMaterial;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -763,8 +831,11 @@ namespace TowerDefense.Runtime
             var body = Textured("Slinger", kind.Texture, deck);
             var rope = Textured("Sling", kind.Texture, deck, true);
             var facing = Mathf.Atan2(toRoad.x, toRoad.z) * Mathf.Rad2Deg;
-            foreach (var (angle, radius, height) in Seats)
+            var seats = SeatsForCrew[variant];
+            for (var s = 0; s < Mathf.Min(slingers, seats.Length); s++)
             {
+                var (angle, radius, height) = Seats[seats[s]];
+                radius *= squeeze;
                 var outward = new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad));
                 var seat = place.MultiplyPoint3x4(outward * radius + Vector3.up * height);
                 var slinger = MakeThrower(kind.Prefab, seat, facing, kind.Fit, kind.MinY, body, rope);
@@ -805,8 +876,8 @@ namespace TowerDefense.Runtime
                 slinger.Pivot.localRotation = Quaternion.Euler(0f, slinger.Yaw, 0f);
                 if (slinger.Throwing)
                 {
-                    slinger.Time += dt;
-                    if (slinger.Time >= Period)
+                    slinger.Time += dt * Mathf.Max(0.05f, ThrowSpeed);
+                    if (slinger.Time >= ThrowEnd)
                     {
                         slinger.Throwing = false;
                         slinger.IdleTime = 0f;
@@ -855,7 +926,7 @@ namespace TowerDefense.Runtime
                 Prefab = prefab,
                 Throw = hurl,
                 Texture = Resources.Load<Texture2D>(Meshy + "stonehide-tex"),
-                Tipi = Triangles(tipi.text),
+                TipiText = tipi.text,
                 TipiMaterial = Textured("Tipi", null, 0f, true)
             };
 
@@ -871,7 +942,8 @@ namespace TowerDefense.Runtime
         }
 
         // Triangles baked by a Blender script, one per line: 'ax ay az bx by bz cx cy cz nx ny nz r g b'.
-        private static Mesh Triangles(string text)
+        // Squeeze narrows it across (x and z), its height kept.
+        private static Mesh Triangles(string text, float squeeze)
         {
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
@@ -892,10 +964,11 @@ namespace TowerDefense.Runtime
                     v[i] = float.Parse(parts[i], culture);
                 }
 
-                var a = new Vector3(v[0], v[1], v[2]);
-                var b = new Vector3(v[3], v[4], v[5]);
-                var c = new Vector3(v[6], v[7], v[8]);
-                var facing = new Vector3(v[9], v[10], v[11]);
+                var a = new Vector3(v[0] * squeeze, v[1], v[2] * squeeze);
+                var b = new Vector3(v[3] * squeeze, v[4], v[5] * squeeze);
+                var c = new Vector3(v[6] * squeeze, v[7], v[8] * squeeze);
+                // A normal is squeezed the other way.
+                var facing = new Vector3(v[9] / squeeze, v[10], v[11] / squeeze);
                 var normal = Vector3.Cross(b - a, c - a);
                 if (normal.sqrMagnitude < 1e-10f)
                 {

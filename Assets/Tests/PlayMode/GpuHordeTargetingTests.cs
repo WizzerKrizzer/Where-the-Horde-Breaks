@@ -94,6 +94,119 @@ namespace TowerDefense.Tests
                 "Dense pressure turned the crowd into a sideways-moving wave.");
         }
 
+        // The bomb's wave pushes hardest near the core (HordeBlastTests checks the rest in a jammed
+        // road, where the packed crowd near the core cannot move and the push measured there varied
+        // more than the falloff: 2026-11-17). Here goblins stand apart, so contacts add nothing.
+        [UnityTest]
+        public IEnumerator BombWave_PushesHarderNearTheCore()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            var field = new HordeFlowField(
+                new[] { new Vector3(-60f, 0f, 0f), new Vector3(60f, 0f, 0f) },
+                null, 6f, 0.62f);
+            var distances = new[] { 9f, 11f, 13f, -10f, -12f, 22f, 25f, 28f, 31f, -24f, -27f };
+            Assert.That(GpuHordeSimulation.TryCreate(distances.Length, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var states = new GpuHordeSimulation.AgentState[distances.Length];
+            var controls = new Vector4[distances.Length];
+            for (var i = 0; i < distances.Length; i++)
+            {
+                states[i] = State(distances[i], 100f, 0f, false);
+                controls[i] = new Vector4(0f, 1f, 0f, 0f);
+            }
+
+            simulation.SpawnBatch(states, states.Length);
+            simulation.Dispatch(1f / 60f, controls, new Vector2[distances.Length]);
+            Assert.That(simulation.QueueBomb(Vector3.zero, 6f, 50f, 1000f, 10f, 4f, 6f, 1.6f, 0.2f), Is.True);
+            var push = new float[distances.Length];
+            try
+            {
+                for (var tick = 0; tick < 150; tick++)
+                {
+                    simulation.Dispatch(1f / 60f, controls, new Vector2[distances.Length]);
+                    simulation.ReadStatesSynchronous(states, states.Length);
+                    for (var i = 0; i < distances.Length; i++)
+                    {
+                        push[i] = Mathf.Max(push[i], states[i].KnockbackVelocity.x * Mathf.Sign(distances[i]));
+                    }
+
+                    if (tick % 10 == 0) yield return null;
+                }
+            }
+            finally
+            {
+                simulation.Dispose();
+            }
+
+            float near = 0f, far = 0f;
+            int nearCount = 0, farCount = 0;
+            for (var i = 0; i < distances.Length; i++)
+            {
+                if (Mathf.Abs(distances[i]) < 14f) { near += push[i]; nearCount++; }
+                else { far += push[i]; farCount++; }
+            }
+
+            near /= nearCount;
+            far /= farCount;
+            Debug.Log($"Bomb wave alone: pushed at {near:F2} m/s at 9-13 m, {far:F2} m/s at 22-31 m.");
+            Assert.That(far, Is.GreaterThan(0.1f), "The wave did not reach 22-31 m.");
+            Assert.That(near, Is.GreaterThan(far * 1.15f), "The wave should push hardest near the core.");
+        }
+
+        // A new GPU buffer holds a destroyed buffer's data (2026-11-17). A wave begun between Update
+        // and LateUpdate culls before its first tick, with these buffers: stale group counts in them
+        // hung the graphics card ("d3d12: failed to wait for fence").
+        [UnityTest]
+        public IEnumerator NewSimulation_StartsWithEmptyDispatchCounts()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU required.");
+            for (var round = 0; round < 4; round++)
+            {
+                var stale = new List<GraphicsBuffer>();
+                for (var i = 0; i < 16; i++)
+                {
+                    var args = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
+                    args.SetData(new uint[] { 123456789u, 7u, 9u });
+                    stale.Add(args);
+                    var counts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, GpuHordeSimulation.DiagnosticsCount, sizeof(uint));
+                    var junk = new uint[GpuHordeSimulation.DiagnosticsCount];
+                    for (var j = 0; j < junk.Length; j++) junk[j] = 987654321u;
+                    counts.SetData(junk);
+                    stale.Add(counts);
+                }
+
+                yield return null;
+                foreach (var buffer in stale) buffer.Dispose();
+                yield return null;
+                yield return null;
+
+                var field = new HordeFlowField(
+                    new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                    null, 2.31f, 0.62f);
+                Assert.That(GpuHordeSimulation.TryCreate(64, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+                var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                var dispatchArgs = new uint[3];
+                ((GraphicsBuffer)typeof(GpuHordeSimulation).GetField("activeDispatchArgs", flags).GetValue(simulation)).GetData(dispatchArgs);
+                var pairArgs = new uint[3];
+                ((GraphicsBuffer)typeof(GpuHordeSimulation).GetField("xpbdPairDispatchArgs", flags).GetValue(simulation)).GetData(pairArgs);
+                var diagnostics = new uint[GpuHordeSimulation.DiagnosticsCount];
+                simulation.SynchronizeDiagnostics(diagnostics);
+                try
+                {
+                    // Checked before culling: with stale counts the cull would hang the card.
+                    Assert.That(dispatchArgs, Is.EqualTo(new uint[] { 0u, 1u, 1u }), "Active dispatch arguments before the first tick.");
+                    Assert.That(pairArgs, Is.EqualTo(new uint[] { 0u, 1u, 1u }), "Pair dispatch arguments before the first tick.");
+                    Assert.That(diagnostics, Is.All.EqualTo(0u), "Counts before the first tick.");
+                    // What LateUpdate does before the first tick.
+                    simulation.RefreshVisibilityForRendering();
+                    simulation.SynchronizeDiagnostics(diagnostics);
+                }
+                finally
+                {
+                    simulation.Dispose();
+                }
+            }
+        }
+
         [UnityTest]
         public IEnumerator ContactProjection_SeparatesOverlappingAgents()
         {
@@ -2171,8 +2284,10 @@ namespace TowerDefense.Tests
                 float blockCapacity = 20f,
                 Vector3 combatAxis = default,
                 float combatHalfLength = 0f,
-                float combatHalfDepth = 0f)
+                float combatHalfDepth = 0f,
+                CombatTargetKind kind = CombatTargetKind.Barrier)
             {
+                TargetKind = kind;
                 Position = position;
                 CurrentHealth = health;
                 MaximumHealth = health;
@@ -2184,7 +2299,7 @@ namespace TowerDefense.Tests
 
             public Vector3 Position { get; }
             public bool IsAlive => CurrentHealth > 0f;
-            public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
+            public CombatTargetKind TargetKind { get; }
             public float CombatRadius => 0.6f;
             public Vector3 CombatAxis { get; }
             public float CombatHalfLength { get; }
@@ -2203,6 +2318,70 @@ namespace TowerDefense.Tests
             public void TakeDamage(float damage, EnemyActor source) => CurrentHealth -= damage;
             public void ApplyGpuCombatState(float authoritativeHealth, bool destroyed, EnemyDefinition sourceDefinition) =>
                 CurrentHealth = destroyed ? 0f : authoritativeHealth;
+        }
+
+        // The Orc Brute's swing reaches past the unit it hits (user, 2026-11-16): the two of our
+        // units nearest behind the struck one also take a share of the blow, one further back takes
+        // nothing, and the struck one takes the most.
+        [UnityTest]
+        public IEnumerator Brute_BlowSplashesTheTwoUnitsBehindTheOneItHits()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are unavailable on this test device.");
+            }
+
+            var field = new HordeFlowField(
+                new[] { new Vector3(-10f, 0f, 0f), new Vector3(10f, 0f, 0f) },
+                null,
+                4f,
+                0.62f);
+            Assert.That(GpuHordeSimulation.TryCreate(1, field, EnemyManager.GetDetailedEnemyMesh(), out var simulation), Is.True);
+            var state = State(-5f, 100f, -15f, false);
+            state.Mass = 1f;
+            state.MaxHealth = 100f;
+            state.AttackDamage = 20f;
+            state.AttackInterval = 0.3f;
+            state.WallDamageMultiplier = 1f;
+            state.AlliedDamageMultiplier = 1f;
+            state.CombatFlags = GpuHordeSimulation.BruteBodyFlag;
+            simulation.SpawnBatch(new[] { state }, 1);
+            var targets = new ICombatTarget[]
+            {
+                new TestCombatTarget(new Vector3(-4.3f, 0f, 0f), 1000f, kind: CombatTargetKind.AlliedUnit),
+                new TestCombatTarget(new Vector3(-3.3f, 0f, 0.3f), 1000f, kind: CombatTargetKind.AlliedUnit),
+                new TestCombatTarget(new Vector3(-2.6f, 0f, -0.3f), 1000f, kind: CombatTargetKind.AlliedUnit),
+                new TestCombatTarget(new Vector3(0.5f, 0f, 0f), 1000f, kind: CombatTargetKind.AlliedUnit)
+            };
+            var controls = new[] { new Vector4(4.8f, 1f, 0f, 0f) };
+            var impulses = new Vector2[1];
+            var lowest = new Dictionary<ICombatTarget, float>();
+            for (var frame = 0; frame < 240; frame++)
+            {
+                simulation.SynchronizeDynamicTargets(targets);
+                simulation.Dispatch(1f / 60f, controls, impulses);
+                while (simulation.TryDequeueEvent(out var slot, out var type, out var value, out var generation, out _))
+                {
+                    if ((type == 3u || type == 4u) && simulation.TryGetDynamicTarget(slot, generation, out var hit))
+                    {
+                        lowest[hit] = Mathf.Min(lowest.TryGetValue(hit, out var before) ? before : 1000f, value);
+                    }
+                }
+
+                if (frame % 10 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            simulation.Dispose();
+            float Lost(ICombatTarget target) => 1000f - (lowest.TryGetValue(target, out var health) ? health : 1000f);
+            Debug.Log($"Brute splash: struck lost {Lost(targets[0]):F1}, behind {Lost(targets[1]):F1} and {Lost(targets[2]):F1}, far {Lost(targets[3]):F1}.");
+            Assert.That(Lost(targets[0]), Is.GreaterThan(0f), "The brute did not hit the unit in front of it.");
+            Assert.That(Lost(targets[1]), Is.GreaterThan(0f), "The first unit behind took nothing from the swing.");
+            Assert.That(Lost(targets[2]), Is.GreaterThan(0f), "The second unit behind took nothing from the swing.");
+            Assert.That(Lost(targets[1]), Is.LessThan(Lost(targets[0])), "A unit behind took as much as the struck one.");
+            Assert.That(Lost(targets[3]), Is.Zero, "A unit far behind was hit by the swing.");
         }
 
         // An Orc Brute takes more room than a goblin (user, 2026-11-14: goblins stood inside its

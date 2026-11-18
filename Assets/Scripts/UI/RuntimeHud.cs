@@ -94,7 +94,6 @@ namespace TowerDefense.UI
         private static readonly Color NodeFrameAffordable = new Color32(112, 204, 92, 255);
         private static readonly Color NodeFrameStarted = new Color32(196, 196, 186, 255);
         private static readonly Color NodeFrameMaxed = new Color32(232, 188, 70, 255);
-        private static readonly Color NodeFrameInspected = new Color32(255, 255, 255, 255);
         private static readonly Color NodeFill = new Color32(30, 30, 34, 255);
         private static readonly Color NodeFillMaxed = new Color32(48, 42, 28, 255);
         // The tree's look (user, 2026-11-12, after the tree of a game they like): every node is the
@@ -2306,7 +2305,7 @@ namespace TowerDefense.UI
             }
             if (devBestBotRunAllButton != null)
             {
-                devBestBotRunAllButton.GetComponentInChildren<Text>().text = session.DevBestBotRunAll ? "RUNNING ALL" : "RUN ALL 5";
+                devBestBotRunAllButton.GetComponentInChildren<Text>().text = session.DevBestBotRunAll ? "RUNNING ALL" : "RUN ALL 6";
                 HighlightSpeedButton(devBestBotRunAllButton, session.DevBestBotRunAll);
                 devBestBotRunAllButton.interactable = !session.DevBestBotRunning;
             }
@@ -2962,10 +2961,15 @@ namespace TowerDefense.UI
 
                     if (outline != null)
                     {
-                        outline.effectColor = isInspected ? NodeFrameInspected
-                            : maxed ? NodeFrameMaxed
+                        // The frame keeps saying whether it can be bought while it is looked at (user,
+                        // 2026-11-18: it turned white on hover, hiding that); looked at, it is only
+                        // brighter and thicker.
+                        var frame = maxed ? NodeFrameMaxed
                             : affordable ? NodeFrameAffordable
+                            : isInspected ? new Color(0.55f, 0.55f, 0.55f, 1f)
                             : new Color(0f, 0f, 0f, 0.6f);
+                        outline.effectColor = isInspected && (maxed || affordable) ? Color.Lerp(frame, Color.white, 0.35f) : frame;
+                        outline.effectDistance = isInspected ? new Vector2(5f, -5f) : new Vector2(3f, -3f);
                     }
 
                     continue;
@@ -3274,8 +3278,22 @@ namespace TowerDefense.UI
                     return string.Empty;
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                 {
-                    var currentValue = tower != null ? tower.perTypeLimit : Mathf.RoundToInt(currentBonus);
-                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "placement limit");
+                    // The towers that can be built now: the tower's own limit and all bought so far.
+                    var currentValue = (tower != null ? tower.perTypeLimit : 0) + currentBonus;
+                    return FormatProgressionValues(currentValue, currentValue + (hasNextRank ? effect.value : 0f), currentValue + effect.value * remainingRanks, "towers");
+                }
+                case UpgradeEffectType.UnlockWall:
+                    return FormatUnlockProgression(currentBonus > 0f, hasNextRank, "No wall", $"Wall of {session.Level.wallHealth:0} health");
+                case UpgradeEffectType.WallHealthFlat:
+                {
+                    var wallHealth = session.Level.wallHealth;
+                    return FormatProgressionValues(wallHealth + currentBonus, wallHealth + nextBonus, wallHealth + maxBonus, "wall health");
+                }
+                case UpgradeEffectType.TowerCrewFlat:
+                {
+                    // tower.crewSize already holds the bought throwers.
+                    var crew = tower != null ? tower.crewSize : 2;
+                    return FormatProgressionValues(crew, crew + (hasNextRank ? effect.value : 0f), crew + effect.value * remainingRanks, "throwers a tower");
                 }
                 case UpgradeEffectType.TowerDamagePercent:
                 {
@@ -3411,7 +3429,7 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.BaseLivesFlat:
                     return FormatProgressionValues(session.Level.startingLives + currentBonus, session.Level.startingLives + nextBonus, session.Level.startingLives + maxBonus, "base lives");
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
-                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, $"{FormatCurrencySymbol(CurrencyType.KillEssence)} per level");
+                    return FormatProgressionValues(currentBonus, nextBonus, maxBonus, $"{FormatCurrencySymbol(CurrencyType.KillEssence)} after each run");
                 case UpgradeEffectType.UnlockEra:
                     return FormatUnlockProgression(currentBonus > 0f, hasNextRank, "Era locked", "Era unlocked");
                 default:
@@ -3547,7 +3565,7 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.ActiveWeaponRadiusFlat: return $"+{effect.value:0.#} radius";
                 case UpgradeEffectType.ActiveWeaponPierceFlat: return $"+{effect.value:0.#} targets";
                 case UpgradeEffectType.ActiveWeaponAutoFireUnlock: return "Enable auto-fire";
-                case UpgradeEffectType.PerTypeTowerLimitFlat: return $"+{effect.value:0.#} limit";
+                case UpgradeEffectType.PerTypeTowerLimitFlat: return $"+{effect.value:0.#} tower";
                 case UpgradeEffectType.TowerDamageFlat: return $"+{effect.value:0.#} damage";
                 case UpgradeEffectType.TowerDamagePercent: return $"+{effect.value:0.#}% damage";
                 case UpgradeEffectType.TowerFireRateFlat: return $"+{effect.value:0.#} shots / second";
@@ -3572,6 +3590,8 @@ namespace TowerDefense.UI
                 case UpgradeEffectType.TowerFireDurationFlat: return $"+{effect.value:0.#}s duration";
                 case UpgradeEffectType.BaseLivesFlat: return $"+{effect.value:0.#} life";
                 case UpgradeEffectType.LevelEndKillEssenceFlat: return $"+{effect.value:0.#} essence";
+                case UpgradeEffectType.WallHealthFlat: return $"+{effect.value:0.#} wall health";
+                case UpgradeEffectType.TowerCrewFlat: return $"+{effect.value:0.#} thrower";
                 case UpgradeEffectType.UnlockTower: return FormatTowerUnlockText(effect.targetId);
                 case UpgradeEffectType.UnlockEra: return "Unlock era";
                 default: return string.Empty;

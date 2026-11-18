@@ -104,7 +104,11 @@ namespace TowerDefense.Runtime
             new("Skilled", 0.58f, 0.03f, 0.98f, 0.96f, 0.96f, 2, true, true, false),
             new("Average", 0.56f, 0.07f, 0.94f, 0.88f, 0.90f, 1, true, true, false),
             new("Casual", 0.53f, 0.12f, 0.85f, 0.76f, 0.80f, 1, true, false, false),
-            new("Novice", 0.51f, 0.15f, 0.65f, 0.72f, 0.76f, 1, true, false, false)
+            new("Novice", 0.51f, 0.15f, 0.65f, 0.72f, 0.76f, 1, true, false, false),
+            // The smart player (user, 2026-11-18): the first tower and the wall first, then three
+            // Gatherers, then whatever adds the most kills for its price; towers where the road
+            // turns and before the wall. The "Best" profile above is kept as it was.
+            new("Smart", 0.60f, 0.00f, 1.00f, 1.00f, 1.00f, 0, false, true, true, true)
         };
         private static readonly DevAutoUpgradeGoal[] DevAutoUpgradePriority =
         {
@@ -149,8 +153,12 @@ namespace TowerDefense.Runtime
         public IReadOnlyList<TowerDefinition> AllTowerDefinitions => allTowerDefinitions;
         public IReadOnlyList<TowerDefinition> UnlockedTowerDefinitions => towers?.AvailableTowers ?? System.Array.Empty<TowerDefinition>();
         public float PathLength => path?.TotalLength ?? 0f;
-        public float BaseActiveWeaponDamage => baseActiveWeaponDamage;
-        public float BaseActiveWeaponCooldown => baseActiveWeaponCooldown;
+        // The thrown spear's own numbers, before upgrades (user, 2026-11-18: 12 damage, every 0.7 s).
+        // The tree's tooltips read them here, so they show what the spear really does.
+        public const float SpearDamage = 12f;
+        public const float SpearCooldown = 0.7f;
+        public float BaseActiveWeaponDamage => activeWeapon != null && activeWeapon.Spear ? SpearDamage : baseActiveWeaponDamage;
+        public float BaseActiveWeaponCooldown => activeWeapon != null && activeWeapon.Spear ? SpearCooldown : baseActiveWeaponCooldown;
         public float BaseActiveWeaponRadius => baseActiveWeaponRadius;
         public int BaseActiveWeaponMaxTargets => baseActiveWeaponMaxTargets;
         public int RewardTestMultiplier => rewardTestMultiplier;
@@ -758,9 +766,19 @@ namespace TowerDefense.Runtime
                     return;
                 }
 
-                if (state.PlaceTower && towers.AvailableTowers.Count > state.SelectedTowerIndex)
+                // A click on a built tower selects it, to change its targeting (user, 2026-11-18).
+                if (state.PlaceTower && towers.GetTowerAt(state.PointerWorld) != null)
                 {
-                    var selectedTower = towers.AvailableTowers[state.SelectedTowerIndex];
+                    towers.TrySelectNearest(state.PointerWorld);
+                }
+                else if (state.PlaceTower && towers.SelectedTower != null)
+                {
+                    // A click away from the towers lets go of the selected one, and builds nothing.
+                    towers.ClearSelection();
+                }
+                else if (state.PlaceTower && towers.GetPlaceableTower(state.SelectedTowerIndex) != null)
+                {
+                    var selectedTower = towers.GetPlaceableTower(state.SelectedTowerIndex);
                     var blockReason = towers.GetPlacementBlockReason(selectedTower, state.PointerWorld);
                     if (string.IsNullOrEmpty(blockReason) && towers.TryPlace(selectedTower, state.PointerWorld))
                     {
@@ -1440,6 +1458,11 @@ namespace TowerDefense.Runtime
 
         private int TryBuyBestBotUpgrades()
         {
+            if (RunningDevBestBotProfile.Smart)
+            {
+                return TryBuySmartBotUpgrades();
+            }
+
             var bought = 0;
             var guard = 0;
             while (guard++ < 200)
@@ -1536,6 +1559,8 @@ namespace TowerDefense.Runtime
 
             if (bought > 0)
             {
+                // A tower bought now (the Slingers for 1 Kill Essence) can be built this planning.
+                towers.SetAvailableTowers(GetUnlockedTowers());
                 ApplyProgressionStats();
                 profileStore.Save(profile);
             }
@@ -1620,7 +1645,11 @@ namespace TowerDefense.Runtime
 
         private static bool IsTowerUpgradeEffect(UpgradeEffectType type)
         {
+            // The wall counts with the towers: the bot spends on it from the same share.
             return type == UpgradeEffectType.UnlockTower ||
+                   type == UpgradeEffectType.UnlockWall ||
+                   type == UpgradeEffectType.WallHealthFlat ||
+                   type == UpgradeEffectType.TowerCrewFlat ||
                    type == UpgradeEffectType.PerTypeTowerLimitFlat ||
                    type == UpgradeEffectType.TowerDamageFlat ||
                    type == UpgradeEffectType.TowerDamagePercent ||
@@ -1763,6 +1792,12 @@ namespace TowerDefense.Runtime
                     return $"+{effect.value:0} base lives";
                 case UpgradeEffectType.LevelEndKillEssenceFlat:
                     return $"+{effect.value:0} Kill Essence after each run";
+                case UpgradeEffectType.UnlockWall:
+                    return "Builds the wall";
+                case UpgradeEffectType.WallHealthFlat:
+                    return $"+{effect.value:0} wall health";
+                case UpgradeEffectType.TowerCrewFlat:
+                    return $"+{effect.value:0} thrower on each {target} tower";
                 case UpgradeEffectType.UnlockEra:
                     return $"Unlocks the {target} era";
                 default:
@@ -1914,6 +1949,13 @@ namespace TowerDefense.Runtime
                     return effect.targetId == "archer" ? 180f : 120f;
                 case UpgradeEffectType.PerTypeTowerLimitFlat:
                     return 55f * effect.value * towerFactor;
+                // The wall holds the horde where the towers can hit it (2026-11-18).
+                case UpgradeEffectType.UnlockWall:
+                    return 150f;
+                case UpgradeEffectType.WallHealthFlat:
+                    return 6f * effect.value;
+                case UpgradeEffectType.TowerCrewFlat:
+                    return 40f * effect.value * towerFactor;
                 case UpgradeEffectType.TowerDamageFlat:
                     return 18f * effect.value * towerFactor;
                 case UpgradeEffectType.TowerDamagePercent:
@@ -2030,6 +2072,11 @@ namespace TowerDefense.Runtime
 
         private bool TryPlaceBestBotTower(TowerDefinition definition)
         {
+            if (RunningDevBestBotProfile.Smart && definition != null && definition.behavior == TowerBehavior.Projectile)
+            {
+                return TryPlaceSmartBotTower(definition);
+            }
+
             if (definition == null || path == null || path.TotalLength <= 0f)
             {
                 return false;
@@ -2156,6 +2203,9 @@ namespace TowerDefense.Runtime
             running = true;
             activeWeapon.CanFire = true;
             enemies.BeginWave(level.wave, path, level.useDataHordePrototype);
+            // The map's wall (if any, and bought) stands whole again and the horde can hit it.
+            ConfigureLevelWall();
+            LevelWall.Active?.BeginRun(enemies);
         }
 
         public void ResetToPlanning()
@@ -2164,6 +2214,8 @@ namespace TowerDefense.Runtime
             enemies.EnemyKilled -= OnEnemyKilled;
             enemies.EnemyEscaped -= OnEnemyEscaped;
             enemies.StopWave();
+            // A tower bought in the upgrades can be built at once.
+            towers.SetAvailableTowers(GetUnlockedTowers());
             ApplyProgressionStats();
             towers.LoadLayout(profile.GetOrCreateLayout(level.id).placements);
             lives = maxLivesForRun;
@@ -2526,9 +2578,10 @@ namespace TowerDefense.Runtime
         {
             killRewardMassProgress += mass;
             var essenceReward = 0;
+            // 1 Kill Essence for every 10 goblins killed (user, 2026-11-18; it was 2).
             while (killRewardMassProgress >= 10f)
             {
-                essenceReward += 2;
+                essenceReward += 1;
                 killRewardMassProgress -= 10f;
             }
 
@@ -2742,8 +2795,19 @@ namespace TowerDefense.Runtime
             profileStore.Save(profile);
         }
 
+        // The wall is bought (1 Kill Essence) and its health upgraded (user, 2026-11-18).
+        private void ConfigureLevelWall()
+        {
+            if (LevelWall.Active != null && progression != null)
+            {
+                LevelWall.Active.Configure(progression.GetEffectTotal(UpgradeEffectType.UnlockWall) > 0f,
+                    progression.GetEffectTotal(UpgradeEffectType.WallHealthFlat));
+            }
+        }
+
         private void ApplyProgressionStats()
         {
+            ConfigureLevelWall();
             var bonusLives = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.BaseLivesFlat));
             var towerDamageMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerDamagePercent) / 100f;
             var towerFireRateMultiplier = 1f + progression.GetEffectTotal(UpgradeEffectType.TowerFireRatePercent) / 100f;
@@ -2773,6 +2837,15 @@ namespace TowerDefense.Runtime
                     var baseFireRate = 1f / Mathf.Max(0.01f, towerDefinition.fireInterval);
                     towerDefinition.damage = baseDamage * (1f + perTypeDamagePercent / 100f) + perTypeDamageFlat;
                     towerDefinition.fireInterval = 1f / Mathf.Max(0.01f, baseFireRate * (1f + perTypeFireRatePercent / 100f) + perTypeFireRateFlat);
+                    // More throwers (user, 2026-11-18): each throws as often as before, so the tower
+                    // throws that much more often.
+                    var extraCrew = Mathf.RoundToInt(progression.GetEffectTotal(UpgradeEffectType.TowerCrewFlat, towerDefinition.id));
+                    if (towerDefinition.crewSize > 0 && extraCrew > 0)
+                    {
+                        var crew = Mathf.Min(8, towerDefinition.crewSize + extraCrew);
+                        towerDefinition.fireInterval *= towerDefinition.crewSize / (float)crew;
+                        towerDefinition.crewSize = crew;
+                    }
                     towerDefinition.projectileSpeed *= 1f + perTypeProjectileSpeedPercent / 100f;
                     var perTypeAimAssist = Mathf.Clamp01(progression.GetEffectTotal(UpgradeEffectType.TowerAimAssistPercent, towerDefinition.id) / 100f);
                     towerDefinition.aimAssistStrength = towerDefinition.behavior == TowerBehavior.Projectile ? perTypeAimAssist : 0f;
@@ -2858,8 +2931,9 @@ namespace TowerDefense.Runtime
             activeWeapon.Rock = false;
             activeWeapon.Spear = true;
             activeWeapon.DisplayName = "Thrown Spear";
-            activeWeapon.Damage = 12f * activeDamageMultiplier;
-            activeWeapon.CooldownSeconds = 1f * activeCooldownMultiplier;
+            activeWeapon.Damage = SpearDamage * activeDamageMultiplier;
+            // Every 0.7 s, not 1 s (user, 2026-11-18, balancing level 1).
+            activeWeapon.CooldownSeconds = SpearCooldown * activeCooldownMultiplier;
             activeWeapon.Radius = ThrownSpear.PickRadius;
             activeWeapon.MaxTargets = 1;
             activeWeapon.KnockbackDistance = 0f;
@@ -2931,6 +3005,7 @@ namespace TowerDefense.Runtime
             private readonly float alliedUnitDamage;
             private readonly float barracksRespawnSeconds;
             private readonly int barracksCapacity;
+            private readonly int crewSize;
 
             public TowerBaseStats(TowerDefinition tower)
             {
@@ -2943,10 +3018,12 @@ namespace TowerDefense.Runtime
                 alliedUnitDamage = tower.alliedUnitDamage;
                 barracksRespawnSeconds = tower.barracksRespawnSeconds;
                 barracksCapacity = tower.barracksCapacity;
+                crewSize = tower.crewSize;
             }
 
             public void Apply(TowerDefinition tower)
             {
+                tower.crewSize = crewSize;
                 tower.range = range;
                 tower.damage = damage;
                 tower.fireInterval = fireInterval;
@@ -3071,6 +3148,289 @@ namespace TowerDefense.Runtime
             Other
         }
 
+        // ---- The Smart bot (user, 2026-11-18) ----
+
+        // Goblin health on level 1 runs from 8 to 14: the share of a goblin one hit of `damage` is
+        // worth, averaged over that range (a goblin that takes 2 hits is worth half a kill a hit).
+        private static float SmartKillsPerHit(float damage)
+        {
+            var kills = 0f;
+            var count = 0;
+            for (var health = 8f; health <= 14.001f; health += 0.5f)
+            {
+                kills += 1f / Mathf.Max(1f, Mathf.Ceil(health / Mathf.Max(0.1f, damage)));
+                count++;
+            }
+
+            return kills / Mathf.Max(1, count);
+        }
+
+        // Kills a second of the towers and of the spear, as the bot rates them.
+        private static float SmartTowerKillRate(int towerCount, float damage, float interval)
+        {
+            return towerCount / Mathf.Max(0.05f, interval) * SmartKillsPerHit(damage);
+        }
+
+        private static float SmartSpearKillRate(float damage, float cooldown)
+        {
+            return 1f / Mathf.Max(0.05f, cooldown) * SmartKillsPerHit(damage);
+        }
+
+        // About how many more kills a run one more rank of this node brings.
+        private float SmartNodeValue(SkillNodeDefinition node)
+        {
+            const float runSeconds = 30f;
+            var slingers = GetTowerDefinition("slingers");
+            var unlocked = progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "slingers") > 0f;
+            var towerCount = slingers != null && unlocked ? towers.GetPerTypeLimit(slingers) : 0;
+            var damage = slingers != null ? slingers.damage : 0f;
+            var interval = slingers != null ? slingers.fireInterval : 1f;
+            var baseDamage = GetTowerBaseDamage("slingers");
+            var baseRate = GetTowerBaseFireRate("slingers");
+            var towerRate = SmartTowerKillRate(towerCount, damage, interval);
+            var spearRate = SmartSpearKillRate(activeWeapon.Damage, activeWeapon.CooldownSeconds);
+            var value = 0f;
+            foreach (var effect in node.effects ?? Array.Empty<UpgradeEffect>())
+            {
+                switch (effect.type)
+                {
+                    case UpgradeEffectType.PerTypeTowerLimitFlat when effect.targetId == "slingers" && unlocked:
+                        value += SmartTowerKillRate(1, damage, interval) * runSeconds;
+                        break;
+                    case UpgradeEffectType.TowerDamagePercent when effect.targetId == "slingers":
+                        value += (SmartTowerKillRate(towerCount, damage + baseDamage * effect.value / 100f, interval) - towerRate) * runSeconds;
+                        break;
+                    case UpgradeEffectType.TowerFireRatePercent when effect.targetId == "slingers":
+                    {
+                        var rate = 1f / Mathf.Max(0.05f, interval) + baseRate * effect.value / 100f;
+                        value += (SmartTowerKillRate(towerCount, damage, 1f / rate) - towerRate) * runSeconds;
+                        break;
+                    }
+                    case UpgradeEffectType.TowerRangeFlat when effect.targetId == "slingers":
+                        // A little more road in reach: about 6% more throws for 0.4 m.
+                        value += towerRate * 0.15f * effect.value * runSeconds;
+                        break;
+                    case UpgradeEffectType.ActiveWeaponDamagePercent:
+                        value += (SmartSpearKillRate(activeWeapon.Damage + SpearDamage * effect.value / 100f, activeWeapon.CooldownSeconds) - spearRate) * runSeconds;
+                        break;
+                    case UpgradeEffectType.ActiveWeaponCooldownPercent:
+                        value += (SmartSpearKillRate(activeWeapon.Damage, Mathf.Max(0.1f, activeWeapon.CooldownSeconds - SpearCooldown * effect.value / 100f)) - spearRate) * runSeconds;
+                        break;
+                    case UpgradeEffectType.WallHealthFlat when progression.GetEffectTotal(UpgradeEffectType.UnlockWall) > 0f:
+                        // About four goblins hit it at once: 5 health holds them about 1.25 s longer.
+                        value += (towerRate + spearRate) * effect.value / 4f;
+                        break;
+                    case UpgradeEffectType.LevelEndKillEssenceFlat:
+                        // Kill Essence later on: 10 kills each, worth half of that now.
+                        value += effect.value * 5f;
+                        break;
+                    case UpgradeEffectType.TowerCrewFlat when effect.targetId == "slingers":
+                        value += towerRate * runSeconds;
+                        break;
+                }
+            }
+
+            return value;
+        }
+
+        private bool SmartCanEverBuy(SkillNodeDefinition node)
+        {
+            if (node == null || !AreUpgradePrerequisitesMet(node) ||
+                progression.GetPurchasedRank(node.id) >= progression.GetMaxRank(node.id))
+            {
+                return false;
+            }
+
+            // Saving up only makes sense in Kill Essence; sigils come from elsewhere, so a sigil
+            // node counts only once there are enough of them.
+            foreach (var cost in progression.GetCurrentCosts(node.id))
+            {
+                if (cost.currency != CurrencyType.KillEssence && profile.GetCurrency(cost.currency) < cost.amount)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // The next node to buy now, or null to save up for it.
+        private SkillNodeDefinition PickSmartBotNode()
+        {
+            var nodes = progression.GetNodes();
+            // The first tower, the wall, and then three Gatherers come first, saved up for.
+            foreach (var id in new[] { "slingers_unlock", "wall_unlock" })
+            {
+                var first = FindSmartNode(nodes, id);
+                if (SmartCanEverBuy(first))
+                {
+                    return progression.CanPurchase(id) ? first : null;
+                }
+            }
+
+            var gatherers = FindSmartNode(nodes, "essence_gatherers");
+            if (SmartCanEverBuy(gatherers) && progression.GetPurchasedRank(gatherers.id) < 3)
+            {
+                return progression.CanPurchase(gatherers.id) ? gatherers : null;
+            }
+
+            SkillNodeDefinition best = null;
+            SkillNodeDefinition bestAffordable = null;
+            var bestRatio = 0f;
+            var bestAffordableRatio = 0f;
+            foreach (var node in nodes)
+            {
+                if (!SmartCanEverBuy(node))
+                {
+                    continue;
+                }
+
+                var value = SmartNodeValue(node);
+                if (value <= 0f)
+                {
+                    continue;
+                }
+
+                var ratio = value / Mathf.Max(1f, GetBestBotWeightedUpgradeCost(node));
+                if (ratio > bestRatio)
+                {
+                    bestRatio = ratio;
+                    best = node;
+                }
+
+                if (progression.CanPurchase(node.id) && ratio > bestAffordableRatio)
+                {
+                    bestAffordableRatio = ratio;
+                    bestAffordable = node;
+                }
+            }
+
+            // Saves up for the best one, unless something affordable now is nearly as good.
+            if (best != null && progression.CanPurchase(best.id))
+            {
+                return best;
+            }
+
+            return bestAffordable != null && bestAffordableRatio >= bestRatio * 0.7f ? bestAffordable : null;
+        }
+
+        private static SkillNodeDefinition FindSmartNode(SkillNodeDefinition[] nodes, string id)
+        {
+            foreach (var node in nodes)
+            {
+                if (node != null && node.id == id)
+                {
+                    return node;
+                }
+            }
+
+            return null;
+        }
+
+        private int TryBuySmartBotUpgrades()
+        {
+            var bought = 0;
+            for (var guard = 0; guard < 200; guard++)
+            {
+                var node = PickSmartBotNode();
+                if (node == null || !progression.TryPurchase(node.id))
+                {
+                    break;
+                }
+
+                bought++;
+                // Each purchase changes the numbers the next choice is rated on.
+                towers.SetAvailableTowers(GetUnlockedTowers());
+                ApplyProgressionStats();
+                devBestBotPurchases.Add(new BestBotPurchaseRecord
+                {
+                    LevelId = level.id,
+                    LevelName = level.displayName,
+                    Attempt = devBestBotAttemptCount + 1,
+                    DisplayName = node.displayName,
+                    Rank = progression.GetPurchasedRank(node.id),
+                    MaxRank = progression.GetMaxRank(node.id),
+                    EffectSummary = FormatBestBotUpgradeEffects(node)
+                });
+            }
+
+            if (bought > 0)
+            {
+                profileStore.Save(profile);
+            }
+
+            return bought;
+        }
+
+        // Where a tower covers the most road that counts: where the road turns (the horde piles up
+        // there) and the stretch before the wall (it waits there). Towers may stand close together.
+        private bool TryPlaceSmartBotTower(TowerDefinition definition)
+        {
+            if (path == null || path.TotalLength <= 0f)
+            {
+                return false;
+            }
+
+            const float step = 0.5f;
+            var samples = Mathf.CeilToInt(path.TotalLength / step);
+            var roadPoints = new Vector3[samples + 1];
+            var roadWeights = new float[samples + 1];
+            var wallDistance = LevelWall.Active != null && LevelWall.Active.IsBuilt
+                ? path.TotalLength - level.wallDistanceFromEnd
+                : path.TotalLength;
+            for (var i = 0; i <= samples; i++)
+            {
+                var distance = Mathf.Min(path.TotalLength, i * step);
+                roadPoints[i] = path.Sample(distance);
+                var weight = 1f + 2f * GetPathTurnStrength(distance / path.TotalLength);
+                if (distance <= wallDistance && distance > wallDistance - 6f)
+                {
+                    weight += 2f;
+                }
+
+                // Past the wall the goblins are already through.
+                roadWeights[i] = distance > wallDistance + 0.5f ? 0f : weight;
+            }
+
+            var min = level.cameraMinBounds;
+            var max = level.cameraMaxBounds;
+            var range = Mathf.Max(1f, definition.range);
+            var bestScore = 0f;
+            var bestPosition = Vector3.zero;
+            var found = false;
+            for (var x = min.x; x <= max.x; x += 1f)
+            {
+                for (var z = min.y; z <= max.y; z += 1f)
+                {
+                    var candidate = new Vector3(x, 0f, z);
+                    if (!towers.CanPlace(definition, candidate))
+                    {
+                        continue;
+                    }
+
+                    // The range is measured from the building, set back about 1.3 m from the road.
+                    var center = candidate - towers.FacingRoad(candidate) * 1.3f;
+                    var score = 0f;
+                    for (var i = 0; i <= samples; i++)
+                    {
+                        if ((roadPoints[i] - center).sqrMagnitude <= range * range)
+                        {
+                            score += roadWeights[i];
+                        }
+                    }
+
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestPosition = candidate;
+                        found = true;
+                    }
+                }
+            }
+
+            return found && towers.TryPlace(definition, bestPosition);
+        }
+
         private readonly struct BestBotSkillProfile
         {
             public readonly string Name;
@@ -3083,6 +3443,7 @@ namespace TowerDefense.Runtime
             public readonly bool AllowBaseLives;
             public readonly bool ReceivesPerfectReward;
             public readonly bool ReceivesChallengeReward;
+            public readonly bool Smart;
 
             public BestBotSkillProfile(
                 string name,
@@ -3094,8 +3455,10 @@ namespace TowerDefense.Runtime
                 int incomePolicy,
                 bool allowBaseLives,
                 bool receivesPerfectReward,
-                bool receivesChallengeReward)
+                bool receivesChallengeReward,
+                bool smart = false)
             {
+                Smart = smart;
                 Name = name;
                 TowerSpendTarget = Mathf.Clamp01(towerSpendTarget);
                 OtherSpendTarget = Mathf.Clamp(otherSpendTarget, 0f, 1f - TowerSpendTarget);

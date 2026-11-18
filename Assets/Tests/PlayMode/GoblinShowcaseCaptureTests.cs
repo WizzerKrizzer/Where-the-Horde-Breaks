@@ -324,6 +324,19 @@ namespace TowerDefense.Tests
                 Name = "brutes_in_crowd_low", Count = 500, Brutes = 30, Burst = 25, WarmUp = 7f, Seconds = 8f,
                 Free = (_, focus, forward) => (focus + forward * 9f + Vector3.up * 2.2f, focus + Vector3.up * 0.6f)
             });
+            // Corpse culling (optimization, 2026-11-16): bombs leave bodies along the road, and the
+            // camera, at 40 m, slides along over them, so bodies cross the screen's edges.
+            shots.Add(new Shot
+            {
+                Name = "corpses_pan", Count = 3000, Brutes = 150, Burst = 60, Width = 14f, Road = Straight(300f), WarmUp = 6f,
+                Seconds = 9f, FollowUntil = 0.2f,
+                Each = Bombs((0.3f, -14f, 0f, 4f, 1000f), (0.7f, 0f, 2f, 4f, 1000f), (1.1f, 14f, -2f, 4f, 1000f)),
+                Free = (t, focus, _) =>
+                {
+                    var look = focus + Vector3.right * (Mathf.Clamp(t - 2f, 0f, 7f) * 7f - 24f);
+                    return (look + new Vector3(0f, 38f, -14f), look);
+                }
+            });
             shots.Add(new Shot { Name = "brutes_bomb", Count = 500, Brutes = 30, Burst = 25, WarmUp = 7f, Seconds = 6f, FollowUntil = 1f, Height = _ => 9f, Each = Bombs((1f, 0f, 0f, 3.5f, 1000f)) });
 
             // ---- goblins and brutes together, for a look at the whole (user, 2026-11-16): one in
@@ -422,6 +435,7 @@ namespace TowerDefense.Tests
         public IEnumerator TearDown()
         {
             Time.timeScale = 1f;
+            GpuHordeSimulation.TinyLevelOffForTests = false;
             yield return Clean();
             foreach (var renderer in hidden)
             {
@@ -452,6 +466,8 @@ namespace TowerDefense.Tests
                 }
             }
 
+            // Without the tiny level of detail, to compare side by side (optimization, 2026-11-16).
+            GpuHordeSimulation.TinyLevelOffForTests = Environment.GetEnvironmentVariable("HORDE_NO_TINY") == "1";
             var wanted = Environment.GetEnvironmentVariable("GOBLIN_SHOTS");
             var names = string.IsNullOrEmpty(wanted) ? null : new HashSet<string>(wanted.Split(','));
             foreach (var other in Camera.allCameras)
@@ -590,6 +606,359 @@ namespace TowerDefense.Tests
             Object.Destroy(target);
             Object.Destroy(pixel);
             Object.Destroy(cameraObject);
+        }
+
+        private sealed class StressCase
+        {
+            public string Name;
+            public Shot Shot;
+            public bool Draw = true;
+            public bool Simulate = true;
+            public bool Shadows = true;
+            public int Msaa = 4;
+            public int Width = 1920;
+            public int Height = 1080;
+            // Bombs this many times over the crowd before measuring (a road full of corpses), then
+            // no more bombs while measuring.
+            public int CorpseBombs;
+        }
+
+        /// <summary>
+        /// The heavy test for optimization (user, 2026-11-16: a test hard enough for the RTX 5070 Ti,
+        /// measured before and after). Sandboxes, not levels: 20 000 goblins and brutes on a long road
+        /// with bombs, a crowd packing into a narrow pass, and a crowd fighting at a barrier. The
+        /// camera renders the way the game does (at the end of each frame, without waiting for the
+        /// graphics card), so a frame's time is what a player gets. The ablation cases of the first
+        /// sandbox (no horde drawn, no simulation, no shadows, no MSAA, half resolution) show where
+        /// the time goes. STRESS_CASES picks cases by name prefix. Writes
+        /// Logs/Reports/Performance/stress.txt.
+        /// </summary>
+        [UnityTest, Timeout(3600000), Explicit("The heavy optimization benchmark; writes Logs/Reports/Performance/stress.txt.")]
+        public IEnumerator MeasureStress()
+        {
+            PrehistoricTowerTests.RequireComputeShaders();
+            if (!GoblinModel.TryGet(out _))
+            {
+                Assert.Ignore("Resources/Meshy/goblin.bytes is missing (Meshy files stay local).");
+            }
+
+            foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+            {
+                foreach (var renderer in root.GetComponentsInChildren<Renderer>())
+                {
+                    if (renderer.enabled)
+                    {
+                        renderer.enabled = false;
+                        hidden.Add(renderer);
+                    }
+                }
+            }
+
+            foreach (var other in Camera.allCameras)
+            {
+                other.enabled = false;
+            }
+
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = -1;
+
+            Func<Shot> horde = () => new Shot
+            {
+                Name = "horde", Count = 20000, Brutes = 1000, Burst = 400, Width = 34f, Road = Straight(1400f),
+                WarmUp = 25f, Follow = false, Height = _ => 100f, Each = BombsEvery(0.6f, 40f, 6f)
+            };
+            Func<Shot> pass = () => new Shot
+            {
+                Name = "pass", Count = 4000, Brutes = 200, Burst = 80, Width = 16f, WarmUp = 25f, Follow = false, At = 60f,
+                Height = _ => 30f,
+                Road = new[] { new Vector3(-60f, 0f, 0f), new Vector3(-6f, 0f, 0f), new Vector3(-2f, 0f, 0f), new Vector3(2f, 0f, 0f), new Vector3(6f, 0f, 0f), new Vector3(200f, 0f, 0f) },
+                Widths = new[] { 16f, 16f, 3.4f, 3.4f, 16f, 16f }
+            };
+            Func<Shot> barrier = () => new Shot
+            {
+                Name = "barrier", Count = 2000, Brutes = 100, Burst = 40, Width = 8f, Road = Straight(200f), WarmUp = 30f,
+                Follow = false, At = 95f, Height = _ => 11f,
+                Setup = world =>
+                {
+                    world.Barrier.health = 100000000f;
+                    Assert.That(world.Towers.TryPlace(world.Barrier, world.Route.Sample(100f)), Is.True, "The barrier could not be placed.");
+                }
+            };
+            Func<Shot> heavy = () => new Shot
+            {
+                Name = "heavy", Count = 50000, Brutes = 2500, Burst = 1500, Width = 80f, Road = Straight(2400f),
+                WarmUp = 40f, Tune = wave => wave.enforceSpawnClearance = false, Follow = false, Height = _ => 100f, Each = BombsEvery(0.6f, 40f, 6f)
+            };
+            // The user's second heavy case (2026-11-16): 100 000 enemies with explosions.
+            Func<Shot> huge = () => new Shot
+            {
+                Name = "huge", Count = 100000, Brutes = 5000, Burst = 3000, Width = 120f, Road = Straight(2400f),
+                WarmUp = 50f, Tune = wave => wave.enforceSpawnClearance = false, Follow = false, Height = _ => 100f, Each = BombsEvery(0.6f, 40f, 6f)
+            };
+            var cases = new List<StressCase>
+            {
+                new StressCase { Name = "huge 100000 (5000 brutes), 100 m, bombs", Shot = huge() },
+                new StressCase { Name = "huge - no bombs", Shot = NoBombs(huge()) },
+                new StressCase { Name = "huge - no horde drawn", Shot = huge(), Draw = false },
+                new StressCase { Name = "huge - no shadows", Shot = huge(), Shadows = false },
+                new StressCase { Name = "huge - no simulation", Shot = huge(), Simulate = false },
+                new StressCase { Name = "huge 100000, 160 m, bombs", Shot = Retarget(huge(), 160f) },
+                new StressCase { Name = "huge 100000, 25 m, bombs", Shot = Retarget(huge(), 25f) },
+                new StressCase { Name = "heavy 50000 (2500 brutes), 100 m, bombs", Shot = heavy() },
+                new StressCase { Name = "heavy - no horde drawn", Shot = heavy(), Draw = false },
+                new StressCase { Name = "heavy - no simulation", Shot = heavy(), Simulate = false },
+                new StressCase { Name = "heavy - no shadows", Shot = heavy(), Shadows = false },
+                new StressCase { Name = "heavy - no MSAA", Shot = heavy(), Msaa = 1 },
+                new StressCase { Name = "heavy - 960x540", Shot = heavy(), Width = 960, Height = 540 },
+                new StressCase { Name = "heavy 50000, 160 m, bombs", Shot = Retarget(heavy(), 160f) },
+                new StressCase { Name = "heavy 50000, 25 m, bombs", Shot = Retarget(heavy(), 25f) },
+                new StressCase { Name = "corpses: heavy after 40 big bombs, 100 m", Shot = heavy(), CorpseBombs = 40 },
+                new StressCase { Name = "corpses: heavy after 40 big bombs, 25 m", Shot = Retarget(heavy(), 25f), CorpseBombs = 40 },
+                new StressCase { Name = "horde 20000 (1000 brutes), 100 m, bombs", Shot = horde() },
+                new StressCase { Name = "zoomed out 20000, 160 m, bombs", Shot = Retarget(horde(), 160f) },
+                new StressCase { Name = "close 20000, 25 m, bombs", Shot = Retarget(horde(), 25f) },
+                new StressCase { Name = "close 20000, 11 m, bombs", Shot = Retarget(horde(), 11f) },
+                new StressCase { Name = "pass 4000 (200 brutes) into 3.4 m, 30 m", Shot = pass() },
+                new StressCase { Name = "barrier 2000 (100 brutes) fighting, 11 m", Shot = barrier() },
+            };
+
+            var wanted = Environment.GetEnvironmentVariable("STRESS_CASES");
+            var report = new System.Text.StringBuilder();
+            report.AppendLine($"Stress, {DateTime.Now:yyyy-MM-dd HH:mm}, {SystemInfo.graphicsDeviceName}, {SystemInfo.processorType}");
+            report.AppendLine("Each case 8 s; the camera renders at the end of each frame like the game, without waiting for the card.");
+            foreach (var stress in cases)
+            {
+                if (!string.IsNullOrEmpty(wanted) && !Array.Exists(wanted.Split(','), w => stress.Name.StartsWith(w)))
+                {
+                    continue;
+                }
+
+                yield return MeasureStressCase(stress, report);
+                yield return Clean();
+            }
+
+            Directory.CreateDirectory("Logs/Reports/Performance");
+            File.WriteAllText("Logs/Reports/Performance/stress.txt", report.ToString());
+            Debug.Log("STRESS\n" + report);
+        }
+
+        private IEnumerator MeasureStressCase(StressCase stress, System.Text.StringBuilder report)
+        {
+            var shot = stress.Shot;
+            var cameraObject = new GameObject("Stress Camera");
+            cleanup.Add(cameraObject);
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.fieldOfView = CavemenLevelTwoCaptureTests.GameFieldOfView();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = PlaceholderPalette.Background;
+            camera.farClipPlane = 2000f;
+            cameraObject.tag = "MainCamera";
+            var target = new RenderTexture(stress.Width, stress.Height, 24) { antiAliasing = stress.Msaa };
+            cleanup.Add(target);
+            camera.targetTexture = target;
+
+            var world = Build(shot);
+            shot.Setup?.Invoke(world);
+            world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
+            Time.timeScale = 1f;
+            var focus = world.Route.Sample(shot.At);
+            focus.y = 0f;
+            CavemenLevelTwoCaptureTests.PlaceGameCamera(camera, focus, shot.Height(0f));
+            var started = Time.time;
+            while (Time.time - started < shot.WarmUp || world.Enemies.TotalSpawned < shot.Count)
+            {
+                if (Time.time - started > shot.WarmUp + 40f)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+
+            var simulation = PrehistoricTowerTests.Simulation(world);
+            if (shot.Name != "barrier" && simulation != null)
+            {
+                // The middle of the living crowd, once, before measuring.
+                var states = new GpuHordeSimulation.AgentState[world.Enemies.TotalSpawned];
+                simulation.ReadStatesSynchronous(states, states.Length);
+                var sum = Vector2.zero;
+                var alive = 0;
+                foreach (var state in states)
+                {
+                    if (state.Status == 1u)
+                    {
+                        sum += state.Position;
+                        alive++;
+                    }
+                }
+
+                if (alive > 0)
+                {
+                    focus = new Vector3(sum.x / alive, 0f, sum.y / alive);
+                }
+            }
+
+            CavemenLevelTwoCaptureTests.PlaceGameCamera(camera, focus, shot.Height(0f));
+            if (stress.CorpseBombs > 0)
+            {
+                for (var bomb = 0; bomb < stress.CorpseBombs; bomb++)
+                {
+                    var at = focus + new Vector3(Mathf.Sin(bomb * 2.39f) * 70f, 0f, Mathf.Cos(bomb * 1.71f) * 25f);
+                    world.Enemies.Bomb(at, 9f, 30f, 1000f, 10f, 4f, 6f);
+                    yield return null;
+                }
+
+                var settle = Time.time;
+                while (Time.time - settle < 4f)
+                {
+                    yield return null;
+                }
+
+                shot.Each = null;
+            }
+
+            if (!stress.Draw)
+            {
+                camera.cullingMask &= ~(1 << world.Horde.gameObject.layer);
+            }
+
+            var shadowField = typeof(GpuHordeSimulation).GetField("airShadowMaterial",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            object shadow = null;
+            if (!stress.Shadows && simulation != null)
+            {
+                shadow = shadowField.GetValue(simulation);
+                shadowField.SetValue(simulation, null);
+            }
+
+            if (!stress.Simulate)
+            {
+                Time.timeScale = 0f;
+            }
+
+            var times = new List<double>();
+            var gpu = new List<double>();
+            var cpu = new List<double>();
+            var timing = new FrameTiming[1];
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var last = -1.0;
+            var measureStart = Time.realtimeSinceStartup;
+            var alivePeak = 0;
+            var trace = Environment.GetEnvironmentVariable("STRESS_TRACE") == "1" ? new System.Text.StringBuilder() : null;
+            // STRESS_PROFILE=1: wait for the graphics card after each part of a tick and time the
+            // parts (the waits slow the frames; only the parts' shares count).
+            var parts = new Dictionary<string, double>();
+            var ticks = 0;
+            if (Environment.GetEnvironmentVariable("STRESS_PROFILE") == "1" && simulation != null)
+            {
+                var syncBuffer = (GraphicsBuffer)typeof(GpuHordeSimulation).GetField("auxiliary",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(simulation);
+                var one = new int[1];
+                var partClock = System.Diagnostics.Stopwatch.StartNew();
+                GpuHordeSimulation.ProfileMarkForTests = label =>
+                {
+                    syncBuffer.GetData(one, 0, 0, 1);
+                    var elapsed = partClock.Elapsed.TotalMilliseconds;
+                    partClock.Restart();
+                    if (label == "before tick")
+                    {
+                        ticks++;
+                        return;
+                    }
+
+                    parts[label] = (parts.TryGetValue(label, out var sum) ? sum : 0.0) + elapsed;
+                };
+            }
+
+            while (Time.realtimeSinceStartup - measureStart < 8f)
+            {
+                if (stress.Simulate)
+                {
+                    shot.Each?.Invoke(world, Time.realtimeSinceStartup - measureStart, focus);
+                }
+
+                FrameTimingManager.CaptureFrameTimings();
+                yield return null;
+                var now = clock.Elapsed.TotalMilliseconds;
+                if (last >= 0.0)
+                {
+                    times.Add(now - last);
+                    trace?.AppendLine($"{Time.realtimeSinceStartup - measureStart:F4} {now - last:F3} {world.Horde.SimulationTicksLastFrame} {world.Horde.Performance.SimMs:F3} {world.Horde.Performance.DrawMs:F3}");
+                }
+
+                last = now;
+                if (FrameTimingManager.GetLatestTimings(1, timing) > 0)
+                {
+                    if (timing[0].gpuFrameTime > 0) gpu.Add(timing[0].gpuFrameTime);
+                    if (timing[0].cpuMainThreadFrameTime > 0) cpu.Add(timing[0].cpuMainThreadFrameTime);
+                }
+
+                alivePeak = Mathf.Max(alivePeak, world.Enemies.ActiveEnemyCount);
+            }
+
+            GpuHordeSimulation.ProfileMarkForTests = null;
+            foreach (var part in parts)
+            {
+                Debug.Log($"STRESSPART {stress.Name}: {part.Key} {part.Value / Mathf.Max(1, ticks):F3} ms a tick");
+            }
+
+            if (trace != null)
+            {
+                Directory.CreateDirectory("Logs/Reports/Performance");
+                File.WriteAllText($"Logs/Reports/Performance/trace-{stress.Name.Split(',')[0].Replace(' ', '_')}.txt", trace.ToString());
+            }
+
+            Time.timeScale = 1f;
+            if (shadow != null)
+            {
+                shadowField.SetValue(simulation, shadow);
+            }
+
+            times.Sort();
+            var average = Mean(times);
+            var worst = times.Count > 0 ? times[Mathf.Min(times.Count - 1, (int)(times.Count * 0.99))] : 0.0;
+            var corpseCursor = 0;
+            if (simulation != null)
+            {
+                var aux = (GraphicsBuffer)typeof(GpuHordeSimulation).GetField("auxiliary",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(simulation);
+                var cursor = new int[1];
+                aux.GetData(cursor, 0, 0, 1);
+                corpseCursor = cursor[0];
+            }
+
+            var line = $"{stress.Name,-46} {1000.0 / average,5:F0} fps ({average:F2} ms), 1% low {1000.0 / worst:F0} fps ({worst:F2} ms)" +
+                $" | GPU {Mean(gpu):F2} ms | CPU main {Mean(cpu):F2} ms | {world.Enemies.TotalSpawned} spawned, {alivePeak} alive, {corpseCursor} corpses, {times.Count} frames";
+            report.AppendLine(line);
+            Debug.Log("STRESS " + line);
+        }
+
+        private static Shot NoBombs(Shot shot)
+        {
+            shot.Each = null;
+            return shot;
+        }
+
+        private static Shot Retarget(Shot shot, float height)
+        {
+            shot.Height = _ => height;
+            return shot;
+        }
+
+        private static double Mean(List<double> values)
+        {
+            if (values.Count == 0)
+            {
+                return 0.0;
+            }
+
+            var sum = 0.0;
+            foreach (var value in values)
+            {
+                sum += value;
+            }
+
+            return sum / values.Count;
         }
 
         private IEnumerator Measure(Shot shot, Camera camera, RenderTexture target, Texture2D pixel, System.Text.StringBuilder report)

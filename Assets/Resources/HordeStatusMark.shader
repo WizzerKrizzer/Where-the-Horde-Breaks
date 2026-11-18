@@ -71,6 +71,7 @@ Shader "TowerDefense/HordeStatusMark"
                 float airHeight;
                 float airSpeed;
                 float landingTimer;
+                float edgeWalk;
             };
 
             // Must stay at or below HordeEnemyManager.StunSpeedMultiplier plus a margin; ordinary

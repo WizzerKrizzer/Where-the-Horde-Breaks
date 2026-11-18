@@ -168,7 +168,14 @@ namespace TowerDefense.Data
         ActiveWeaponExtraSpearsFlat,
         // Precise strike: the chance (%) a spear deals more, and how many more times its damage.
         ActiveWeaponCritChancePercent,
-        ActiveWeaponCritMultiplierFlat
+        ActiveWeaponCritMultiplierFlat,
+        // The level's wall (user, 2026-11-18): bought for 1 Kill Essence like the first tower; until
+        // then there is none. Then more health for it.
+        UnlockWall,
+        WallHealthFlat,
+        // More throwers on a crewed tower (user, 2026-11-18): each a Challenge Sigil; the Slingers
+        // start with 2 and the tipi widens at 3, 5 and 7.
+        TowerCrewFlat
     }
 
     /// <summary>The six eras of the campaign. TowerDefinition.eraIndex stores the value.</summary>

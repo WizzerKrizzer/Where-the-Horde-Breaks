@@ -84,7 +84,9 @@ namespace TowerDefense.Data
         // throw raises a dust cloud at the thrower's feet, the spear knocks the goblins it passes
         // through along its line (knockbackDistance) and sticks in the ground where it stops.
         public bool throwsSpears;
-        // How many hunters stand on the tower and take turns throwing (Spear Throwers: 3).
+        // How many hunters stand on the tower and take turns throwing (Spear Throwers: 3; the
+        // slinger tipi: 2, 4, 6 or 8, 0 keeping its full 8). A crew throws only as fast as its
+        // throwers' cycles allow, so faster fire also makes each throw quicker (TowerActor).
         public int crewSize;
         // The targeting a newly built tower starts with; the player can still change it.
         public TowerTargetingMode defaultTargetingMode = TowerTargetingMode.First;

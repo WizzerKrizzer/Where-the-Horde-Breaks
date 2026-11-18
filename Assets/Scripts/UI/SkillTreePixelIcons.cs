@@ -24,7 +24,13 @@ namespace TowerDefense.UI
         private static readonly HashSet<string> PlainSilhouettes = new() { "health", "fire" };
         private static readonly Dictionary<string, string> Fallbacks = new()
         {
-            ["volley"] = "javelin|plus"
+            ["volley"] = "javelin|plus",
+            // Stand-ins until they have drawings of their own (2026-11-18).
+            ["slingers|plus"] = "slingers",
+            ["essence"] = "capacity",
+            ["wall"] = "shield",
+            ["wall|up"] = "health",
+            ["slingers|crew"] = "slingers"
         };
 
         public static bool TryGet(string key, out Texture2D texture)

@@ -50,6 +50,13 @@ float3 GoblinLocal(uint agentIndex, uint vertexID, float2 held, float3 normal, f
     float holding = _HeldFixed > 0.5 ? _HeldFixed
         : (_HeldFixed < -0.5 ? 1.0 + floor(GoblinHash(agentIndex, 31.7171) * 2.999) : GoblinHeld(agentIndex));
     hidden = (held.x > 0.5 && abs(held.x - holding) > 0.5) || !GoblinWears(agentIndex, held.y);
+    if (hidden)
+    {
+        // Not drawn: skip the posing (optimization, 2026-11-16: the things a goblin does not hold
+        // or wear are about half the far model's vertices). The callers drop it out of sight.
+        return float3(0.0, 0.0, 0.0);
+    }
+
     // No two alike: each a little taller or shorter, and turned a few degrees off the road.
     float size = lerp(0.9, 1.1, GoblinHash(agentIndex, 91.3458));
     float offCourse = radians(16.0) * (GoblinHash(agentIndex, 57.5811) - 0.5);

@@ -87,6 +87,7 @@ Shader "TowerDefense/HordeAirShadow"
                 float airHeight;
                 float airSpeed;
                 float landingTimer;
+                float edgeWalk;
             };
 
             StructuredBuffer<AgentState> _AgentStates;
@@ -139,7 +140,8 @@ Shader "TowerDefense/HordeAirShadow"
                 world.y += strength > 0.0 ? 0.0 : -100000.0;
 
                 Varyings output;
-                output.position = UnityWorldToClipPos(world);
+                // No shadow (dead, on the ground's level or a thing not held): one point, no area.
+                output.position = strength > 0.0 ? UnityWorldToClipPos(world) : float4(0.0, 0.0, -1.0, 1.0);
                 output.strength = strength;
                 return output;
             }

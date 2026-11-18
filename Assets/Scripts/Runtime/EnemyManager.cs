@@ -640,11 +640,16 @@ namespace TowerDefense.Runtime
             }
         }
 
-        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipHordeIndex = -1)
+        /// <summary>
+        /// Damage to the enemies in the circle. With <paramref name="onDealt"/> the damage really
+        /// done is reported through it (for the GPU horde a few frames later) and only that should
+        /// be counted; the return value is then 0 for the horde.
+        /// </summary>
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipHordeIndex = -1, System.Action<float> onDealt = null)
         {
             if (hordePrototype != null && hordePrototype.IsRunning)
             {
-                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets, out hitCount, skipHordeIndex);
+                return hordePrototype.DamageInRadius(center, radius, damage, maxTargets, out hitCount, skipHordeIndex, onDealt);
             }
 
             var radiusSq = radius * radius;
@@ -673,6 +678,11 @@ namespace TowerDefense.Runtime
             {
                 appliedDamage += damageCandidates[i].enemy.ApplyDamage(damage);
                 hitCount++;
+            }
+
+            if (appliedDamage > 0f)
+            {
+                onDealt?.Invoke(appliedDamage);
             }
 
             return appliedDamage;

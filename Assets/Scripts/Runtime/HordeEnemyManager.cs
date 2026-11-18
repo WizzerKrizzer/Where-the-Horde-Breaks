@@ -66,6 +66,10 @@ namespace TowerDefense.Runtime
         [NonSerialized] private IReadOnlyList<ICombatTarget> combatTargets;
         // Mass hit by area effects that asked for a report, by report id, until taken.
         [NonSerialized] private readonly Dictionary<int, float> areaReports = new();
+        // Area damage whose real amount comes back from the GPU later (event 11), by report id, and
+        // the next id (above any a tower uses for its own reports).
+        [NonSerialized] private readonly Dictionary<int, Action<float>> damageReports = new();
+        [NonSerialized] private int nextDamageReportId = 1 << 24;
         // Living Shamans (agent indices) and the time to each one's next heal.
         [NonSerialized] private readonly List<int> healers = new();
         [NonSerialized] private readonly List<float> healerTimers = new();
@@ -82,6 +86,8 @@ namespace TowerDefense.Runtime
         [NonSerialized] private GameObject boundaryDebugObject;
         [NonSerialized] private Mesh boundaryDebugMesh;
         private float elapsed;
+        // Seconds the horde has simulated since the wave began (the game's own clock for it).
+        public float SimulatedSeconds => elapsed;
         private float spawnElapsed;
         [NonSerialized] private int spawnLaneCursor;
         [NonSerialized] private Vector3[] spawnLanePositions;
@@ -343,6 +349,9 @@ namespace TowerDefense.Runtime
                 wave.centerSeekingArena,
                 path.StartPoint);
             gpuSimulation.SetSpeedColorMode(wave.colorEnemiesBySpeed);
+            // Back to the middle once it has walked along an edge (user, 2026-11-17): the middle
+            // part is 70% of the half-width away from the edge. TEMPORARY number.
+            gpuSimulation.SetEdgeWalk(wave.edgeWalkBeforeCentre, wave.roadHalfWidth * 0.7f);
             spawnLanePositions = wave.enforceSpawnClearance
                 ? CreateEntranceSpawnProbes()
                 : null;
@@ -517,8 +526,11 @@ namespace TowerDefense.Runtime
             // Retain any excess fixed-tick debt. Dropping it used to advance
             // spawning on a different clock than collision resolution, so slow
             // frames changed both density and contact quality.
-            gpuSimulationAccumulator += Mathf.Max(0f, Time.unscaledDeltaTime) *
-                Mathf.Max(0f, Time.timeScale);
+            // While frames are recorded at a fixed rate (Time.captureFramerate) the horde follows the
+            // game clock, so a clip plays at real speed however slowly the frames are written.
+            gpuSimulationAccumulator += Time.captureFramerate > 0
+                ? Mathf.Max(0f, Time.deltaTime)
+                : Mathf.Max(0f, Time.unscaledDeltaTime) * Mathf.Max(0f, Time.timeScale);
             var pendingFixedSteps = Mathf.FloorToInt(
                 (gpuSimulationAccumulator + 0.000001f) / fixedGpuStep);
             if (pendingFixedSteps <= 0)
@@ -582,7 +594,22 @@ namespace TowerDefense.Runtime
         private void SpawnDueEnemies()
         {
             if (totalSpawned >= spawnSequence.Count) return;
-            if (wave.enforceSpawnClearance && spawnWindowRemaining <= 0)
+            if (wave.enforceSpawnClearance && wave.continuousSpawnRate > 0f)
+            {
+                // A random gap before each one (exponential, as in a Poisson stream), capped at three
+                // times the average so the stream never stops for long. Clumps and short gaps come
+                // by chance, so no rhythm shows.
+                var meanGap = 1f / wave.continuousSpawnRate;
+                var due = 0;
+                while (spawnElapsed + 0.0001f >= nextSpawnWindowTime && due < 64)
+                {
+                    spawnWindowRemaining++;
+                    due++;
+                    var gap = -Mathf.Log(1f - UnityEngine.Random.Range(0f, 0.999f)) * meanGap;
+                    nextSpawnWindowTime += Mathf.Min(gap, meanGap * 3f);
+                }
+            }
+            else if (wave.enforceSpawnClearance && spawnWindowRemaining <= 0)
             {
                 if (spawnElapsed + 0.0001f < nextSpawnWindowTime)
                 {
@@ -696,6 +723,11 @@ namespace TowerDefense.Runtime
 
                 definitions[totalSpawned] = definition;
                 health[totalSpawned] = Mathf.Max(1f, definition != null ? definition.maxHealth : 1f);
+                if (definition != null && definition.role == EnemyRole.Runner &&
+                    wave.runnerHealthMin > 0f && wave.runnerHealthMax >= wave.runnerHealthMin)
+                {
+                    health[totalSpawned] = UnityEngine.Random.Range(wave.runnerHealthMin, wave.runnerHealthMax);
+                }
                 if (definition != null && definition.healsEnemies && definition.healAmount > 0f)
                 {
                     healers.Add(totalSpawned);
@@ -1039,6 +1071,11 @@ namespace TowerDefense.Runtime
             var openingSpeedMultiplier = wave != null && elapsed < wave.openingSpeedDuration
                 ? Mathf.Max(1f, wave.openingSpeedMultiplier)
                 : 1f;
+            if (wave != null && wave.walkAtFullSpeed)
+            {
+                openingSpeedMultiplier *= gpuSimulation.FullSpeedFactor;
+            }
+
             gpuSimulation.SetMovementSpeedMultiplier(openingSpeedMultiplier);
             gpuSimulation.DispatchFixedTick(
                 null,
@@ -1242,7 +1279,13 @@ namespace TowerDefense.Runtime
             return gpuSimulation != null ? gpuSimulation.CreateProjectileId() : 0u;
         }
 
-        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipIndex = -1)
+        /// <summary>
+        /// Damage to the goblins in the circle. On the GPU the result is not known at once: with
+        /// <paramref name="onDealt"/> it returns 0 and calls it a few frames later with the damage
+        /// really done, only when some was (user, 2026-11-18: a spear in empty ground counted its
+        /// full damage). Without it, it returns the most it could have done, as before.
+        /// </summary>
+        public float DamageInRadius(Vector3 center, float radius, float damage, int maxTargets, out int hitCount, int skipIndex = -1, Action<float> onDealt = null)
         {
             hitCount = 0;
             if (damage <= 0f || radius <= 0f || activeCount <= 0)
@@ -1250,8 +1293,24 @@ namespace TowerDefense.Runtime
                 return 0f;
             }
 
-            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(center, radius, damage, 0f, maxTargets, 0f, 0f, 0, skipAgent: skipIndex))
+            var reportId = 0;
+            if (onDealt != null && gpuSimulation != null)
             {
+                reportId = nextDamageReportId++;
+                if (nextDamageReportId >= int.MaxValue - 1)
+                {
+                    nextDamageReportId = 1 << 24;
+                }
+            }
+
+            if (gpuSimulation != null && gpuSimulation.QueueAreaEffect(center, radius, damage, 0f, maxTargets, 0f, 0f, 0, skipAgent: skipIndex, reportId: reportId))
+            {
+                if (reportId != 0)
+                {
+                    damageReports[reportId] = onDealt;
+                    return 0f;
+                }
+
                 hitCount = maxTargets > 0 ? Mathf.Min(maxTargets, activeCount) : activeCount;
                 return damage * hitCount;
             }
@@ -1280,6 +1339,11 @@ namespace TowerDefense.Runtime
                 {
                     break;
                 }
+            }
+
+            if (appliedDamage > 0f)
+            {
+                onDealt?.Invoke(appliedDamage);
             }
 
             return appliedDamage;
@@ -1680,6 +1744,22 @@ namespace TowerDefense.Runtime
                 out var generation,
                 out var sourceIndex))
             {
+                if (eventType == 11u)
+                {
+                    // The damage an area effect really did (DamageInRadius with a report).
+                    if (damageReports.Remove(eventIndex, out var report) && eventValue > 0f)
+                    {
+                        report(eventValue);
+                    }
+
+                    continue;
+                }
+
+                if (eventType == 7u && damageReports.ContainsKey(eventIndex))
+                {
+                    continue;
+                }
+
                 if (eventType == 7u)
                 {
                     // An area effect's report: the mass of grounded bodies it hit.

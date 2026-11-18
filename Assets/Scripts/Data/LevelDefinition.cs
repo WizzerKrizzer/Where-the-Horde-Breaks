@@ -24,6 +24,12 @@ namespace TowerDefense.Data
         public Vector3 groundSize = new(82f, 0.1f, 50f);
         public EnvironmentTilePackageId environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
         public bool useDataHordePrototype;
+        // A plain wall across the road this many metres before its end; 0 health means no wall
+        // (user, 2026-11-17). TEMPORARY numbers.
+        public float wallHealth;
+        public float wallDistanceFromEnd = 3f;
+        // Which greybox scenery the map gets: 0 none, 1 level 1 (river, rocks, trees, bushes).
+        public int sceneryLayout;
         public Vector3 cameraPosition = new(0f, 24f, -20f);
         public float cameraFieldOfView = 45f;
         public float cameraMinHeight = 8f;

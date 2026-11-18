@@ -37,6 +37,13 @@ namespace TowerDefense.Runtime
 
         public Level Near { get; private set; }
         public Level Far { get; private set; }
+
+        /// <summary>The third, tiny level for goblins a few dozen pixels tall (optimization,
+        /// 2026-11-16); the far level again for an older file with two.</summary>
+        public Level Tiny { get; private set; }
+        /// <summary>The fourth level, only for the tiny goblins' shadows: no held or worn pieces
+        /// (optimization, 2026-11-17); the tiny level again for an older file with three.</summary>
+        public Level Shadow { get; private set; }
         public Texture2D Texture { get; private set; }
 
         /// <summary>How far a goblin moves in one walk cycle, metres at the horde's goblin scale; the
@@ -125,6 +132,8 @@ namespace TowerDefense.Runtime
             {
                 Near = levels[0],
                 Far = levels[count > 1 ? 1 : 0],
+                Tiny = levels[count > 2 ? 2 : (count > 1 ? 1 : 0)],
+                Shadow = levels[count > 3 ? 3 : (count > 2 ? 2 : (count > 1 ? 1 : 0))],
                 StrideMetres = stride,
                 WalkPoseCount = walkPoses,
                 BlowCount = Mathf.Max(1, blows),

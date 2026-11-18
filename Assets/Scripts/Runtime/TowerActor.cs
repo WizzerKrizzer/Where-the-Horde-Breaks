@@ -30,6 +30,9 @@ namespace TowerDefense.Runtime
         public float FireRateMultiplier => fireRateMultiplier;
         public float DamageDealt { get; private set; }
         public Vector3 Position => transform.position;
+
+        /// <summary>Where its range is measured from: the middle of its building (user, 2026-11-18).</summary>
+        public Vector3 RangeCenter => crewVisual != null ? crewVisual.Center : transform.position;
         public bool IsAlive => gameObject.activeSelf && (definition == null || definition.behavior != TowerBehavior.Barrier || health > 0f);
         public CombatTargetKind TargetKind => CombatTargetKind.Barrier;
         public float CombatRadius => definition != null && definition.behavior == TowerBehavior.Barrier ? CombatHalfDepth : 0.7f;
@@ -181,7 +184,7 @@ namespace TowerDefense.Runtime
                     return;
                 case TowerBehavior.SlowAura:
                     UpdateAuraVisual();
-                    enemies.ApplySlowAura(transform.position, definition.range, definition.slowPercent, definition.slowCapacity);
+                    enemies.ApplySlowAura(RangeCenter, definition.range, definition.slowPercent, definition.slowCapacity);
                     return;
             }
 
@@ -205,6 +208,15 @@ namespace TowerDefense.Runtime
                 if (!TryPeekTarget(out var aim, out var aimIndex))
                 {
                     return;
+                }
+
+                // Faster fire makes the throws themselves quicker (user, 2026-11-18): the crew must
+                // keep up with the tower's interval, each thrower throwing once per crew's turn.
+                var interval = definition.fireInterval / fireRateMultiplier;
+                if (crewVisual.CycleSeconds > 0f && crewVisual.CrewCount > 0)
+                {
+                    // 5% to spare: each is ready a moment before his turn, so the tower never waits.
+                    crewVisual.ThrowSpeed = Mathf.Max(1f, 1.05f * crewVisual.CycleSeconds / (crewVisual.CrewCount * Mathf.Max(0.01f, interval)));
                 }
 
                 var thrower = crewVisual.StartThrow(aim);
@@ -237,7 +249,7 @@ namespace TowerDefense.Runtime
                 return true;
             }
 
-            var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
+            var target = enemies.GetEnemyByTargetingMode(RangeCenter, definition.range, definition.canHitFlying, targetingMode);
             if (target == null)
             {
                 return false;
@@ -246,7 +258,7 @@ namespace TowerDefense.Runtime
             Fire(target);
             if (definition.doubleShotChance > 0f && Random.value < definition.doubleShotChance)
             {
-                var secondTarget = enemies.GetNearestEnemyExcept(transform.position, definition.range, definition.canHitFlying, target) ?? target;
+                var secondTarget = enemies.GetNearestEnemyExcept(RangeCenter, definition.range, definition.canHitFlying, target) ?? target;
                 Fire(secondTarget);
             }
 
@@ -282,13 +294,13 @@ namespace TowerDefense.Runtime
         {
             aim = transform.position;
             hordeIndex = -1;
-            if (enemies.TryGetHordeTargetSnapshot(transform.position, definition.range, definition.canHitFlying, targetingMode, out hordeIndex, out var position, out _))
+            if (enemies.TryGetHordeTargetSnapshot(RangeCenter, definition.range, definition.canHitFlying, targetingMode, out hordeIndex, out var position, out _))
             {
                 aim = position;
                 return true;
             }
 
-            var target = enemies.GetEnemyByTargetingMode(transform.position, definition.range, definition.canHitFlying, targetingMode);
+            var target = enemies.GetEnemyByTargetingMode(RangeCenter, definition.range, definition.canHitFlying, targetingMode);
             if (target == null)
             {
                 return false;
@@ -445,7 +457,7 @@ namespace TowerDefense.Runtime
             }
 
             if (!enemies.TryGetHordeTargetSnapshot(
-                    transform.position,
+                    RangeCenter,
                     definition.range,
                     definition.canHitFlying,
                     targetingMode,
@@ -520,7 +532,7 @@ namespace TowerDefense.Runtime
             }
 
             if (definition.pierce > 0 || !enemies.TryGetSecondaryHordeTargetSnapshot(
-                    transform.position,
+                    RangeCenter,
                     definition.range,
                     definition.canHitFlying,
                     targetingMode,
@@ -587,8 +599,9 @@ namespace TowerDefense.Runtime
 
             if (definition.shrapnelTargets > 0 && definition.shrapnelDamageFraction > 0f)
             {
-                RecordDamage(enemies.DamageInRadius(impactPosition + direction * ShrapnelReach, ShrapnelRadius,
-                    damage * definition.shrapnelDamageFraction, definition.shrapnelTargets, out _, targetIndex));
+                // Only the damage really done counts (2026-11-18), reported by the horde.
+                enemies.DamageInRadius(impactPosition + direction * ShrapnelReach, ShrapnelRadius,
+                    damage * definition.shrapnelDamageFraction, definition.shrapnelTargets, out _, targetIndex, RecordDamage);
                 // The stone bursts: a puff where it struck and pebbles hopping on in a fan.
                 SpecialEffectVisuals.SpawnPuff(impactPosition, 0.9f);
                 var pebbles = Mathf.Clamp(definition.shrapnelTargets, 2, 6);
@@ -629,7 +642,7 @@ namespace TowerDefense.Runtime
                     yield break;
                 }
 
-                RecordDamage(enemies.DamageInRadius(to, RicochetRadius, damage, 1, out _, skipIndex));
+                enemies.DamageInRadius(to, RicochetRadius, damage, 1, out _, skipIndex, RecordDamage);
                 from = to;
             }
         }
@@ -1080,7 +1093,7 @@ namespace TowerDefense.Runtime
             selectionDisc.SetActive(selected);
             if (selected)
             {
-                selectionDisc.transform.position = transform.position + Vector3.up * 0.24f;
+                selectionDisc.transform.position = RangeCenter + Vector3.up * 0.24f;
                 selectionDisc.transform.localScale = new Vector3(definition.range * 2f, 0.035f, definition.range * 2f);
             }
         }

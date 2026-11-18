@@ -674,9 +674,10 @@ namespace TowerDefense.Runtime
             RiderVolleys++;
             var center = beast.position + beast.forward * RiderReach;
             center.y = 0f;
-            var dealt = enemies.DamageInRadius(center, RiderRadius, definition.riderDamage * tower.DamageMultiplier,
-                definition.riderCount, out _);
-            tower.RecordDamage(dealt);
+            // Only the damage really done counts (2026-11-18), reported by the horde.
+            var riderTower = tower;
+            enemies.DamageInRadius(center, RiderRadius, definition.riderDamage * tower.DamageMultiplier,
+                definition.riderCount, out _, -1, amount => riderTower?.RecordDamage(amount));
             for (var i = 0; i < definition.riderCount; i++)
             {
                 var spot = UnityEngine.Random.insideUnitCircle * RiderRadius * 0.7f;

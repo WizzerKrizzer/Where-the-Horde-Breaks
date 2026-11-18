@@ -244,6 +244,18 @@ namespace TowerDefense.Runtime
             }
         }
 
+        // A hit that did damage: counted, and a precise strike shows its burst.
+        private void Hit(float dealt, bool crit, Vector3 at)
+        {
+            Hits++;
+            onDamage?.Invoke(dealt);
+            if (crit)
+            {
+                Crits++;
+                SpecialEffectVisuals.SpawnCritBurst(at);
+            }
+        }
+
         private void Land()
         {
             Release();
@@ -267,25 +279,19 @@ namespace TowerDefense.Runtime
                 }
 
                 // Its goblin died on the way, or the horde never named one: the nearest one there.
+                // Counted only when it really hits one (user, 2026-11-18: a spear thrown into
+                // empty ground counted its full damage); the horde says so a few frames later.
                 if (dealt <= 0f)
                 {
-                    dealt = enemies.DamageInRadius(target, FallbackRadius, damage, 1, out _);
+                    var crit = WasCrit;
+                    var at = target;
+                    enemies.DamageInRadius(target, FallbackRadius, damage, 1, out _, onDealt: amount => Hit(amount, crit, at));
                 }
             }
 
             if (dealt > 0f)
             {
-                Hits++;
-                onDamage?.Invoke(dealt);
-                if (WasCrit)
-                {
-                    Crits++;
-                    SpecialEffectVisuals.SpawnCritBurst(target);
-                }
-            }
-            else
-            {
-                WasCrit = false;
+                Hit(dealt, WasCrit, target);
             }
 
             // The heavy spear: the blow shakes the ground and hurts the goblins around (not the one
@@ -296,11 +302,8 @@ namespace TowerDefense.Runtime
                 SpecialEffectVisuals.SpawnSpearShock(target, settings.SplashRadius);
                 if (enemies != null)
                 {
-                    var splash = enemies.DamageInRadius(target, settings.SplashRadius, settings.Damage * settings.SplashFraction, 24, out _, hordeIndex);
-                    if (splash > 0f)
-                    {
-                        onDamage?.Invoke(splash);
-                    }
+                    enemies.DamageInRadius(target, settings.SplashRadius, settings.Damage * settings.SplashFraction, 24, out _, hordeIndex,
+                        amount => onDamage?.Invoke(amount));
                 }
             }
 

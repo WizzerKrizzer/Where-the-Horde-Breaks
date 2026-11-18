@@ -53,6 +53,7 @@ namespace TowerDefense.Tests
             slingers.shrapnelTargets = 3;
             slingers.shrapnelDamageFraction = 0.4f;
             world.Towers.SetAvailableTowers(new[] { slingers });
+            world.Towers.SetPerTypeLimitBonus("slingers", 1);
             Assert.That(world.Towers.TryPlace(slingers, TowerSpot), Is.True);
             var wave = OnlyEnemy(world, "runner", 90, 400f);
             world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);

@@ -47,9 +47,10 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            var selectedIndex = Mathf.Clamp(input.Current.SelectedTowerIndex, 0, towers.AvailableTowers.Count - 1);
-            var definition = towers.AvailableTowers[selectedIndex];
-            if (towers.CountOf(definition) >= towers.GetPerTypeLimit(definition))
+            // The ghost shows exactly the tower a click would build, and none over a built tower,
+            // where a click selects it instead.
+            var definition = towers.GetPlaceableTower(input.Current.SelectedTowerIndex);
+            if (definition == null || towers.GetTowerAt(input.Current.PointerWorld) != null)
             {
                 SetVisible(false);
                 return;
@@ -73,7 +74,9 @@ namespace TowerDefense.Runtime
                 ghost.transform.SetPositionAndRotation(position, Quaternion.LookRotation(towers.FacingRoad(position), Vector3.up));
                 SetGhostColor(overlapped.Count > 0 ? GhostRed : canPlace ? GhostClear : GhostBlocked);
             }
-            rangeDisc.transform.position = position + Vector3.up * 0.24f;
+            // Centred on the building the ghost shows, as the built tower's range is.
+            var ghostVisual = ghost != null ? ghost.GetComponentInChildren<TowerCrewVisual>() : null;
+            rangeDisc.transform.position = (ghostVisual != null ? ghostVisual.Center : position) + Vector3.up * 0.24f;
             rangeDisc.transform.localScale = new Vector3(definition.range * 2f, 0.025f, definition.range * 2f);
 
             previewRenderer.material = BootstrapMaterials.Get(overlapped.Count > 0 ? OverlapRed
@@ -140,7 +143,7 @@ namespace TowerDefense.Runtime
                 var actor = stand.AddComponent<TowerActor>();
                 built = (definition.throwsSpears
                     ? (TowerCrewVisual)SpearRockVisual.TryCreate(actor, Vector3.forward)
-                    : SlingerTowerVisual.TryCreate(actor, Vector3.forward))?.gameObject;
+                    : SlingerTowerVisual.TryCreate(actor, Vector3.forward, definition.crewSize > 0 ? definition.crewSize : 8))?.gameObject;
                 Destroy(stand);
             }
             else if (definition.barracksUnitType == TowerDefense.Data.AlliedUnitType.Caveman && definition.behavior == TowerDefense.Data.TowerBehavior.Barracks)

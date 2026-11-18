@@ -419,7 +419,7 @@ namespace TowerDefense.Tests
         internal static World CreateWorld(List<Object> cleanup)
         {
             var content = SampleContent.Create();
-            var world = new World { Level = content.Level, Wave = content.LevelOneTestWave };
+            var world = new World { Level = content.LevelOneTestLevel, Wave = content.LevelOneTestWave };
             foreach (var definition in content.Towers)
             {
                 if (definition.id == "spear_thrower")

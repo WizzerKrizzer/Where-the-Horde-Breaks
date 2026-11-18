@@ -156,12 +156,33 @@ namespace TowerDefense.Runtime
                 return "Too close to enemy path";
             }
 
+            // Trees, big rocks and the river (LevelScenery, 2026-11-17).
+            if (checkGround && LevelScenery.BlocksTower(route, position, BorderRadius(border, position)))
+            {
+                return "Blocked by trees, rocks or water";
+            }
+
             if (towers.Count(tower => tower.Definition == definition) >= GetPerTypeLimit(definition))
             {
                 return $"{definition.displayName} limit reached";
             }
 
             return string.Empty;
+        }
+
+        private static float BorderRadius(Vector2[] border, Vector3 position)
+        {
+            var radius = 0.5f;
+            if (border != null)
+            {
+                foreach (var point in border)
+                {
+                    radius = Mathf.Max(radius, (point - new Vector2(position.x, position.z)).magnitude);
+                }
+            }
+
+            // The outline's corners reach further than most of it; three quarters reads fair.
+            return radius * 0.75f;
         }
 
         public bool TryPlace(TowerDefinition definition, Vector3 position)
@@ -286,9 +307,68 @@ namespace TowerDefense.Runtime
 
         public bool TrySelectNearest(Vector3 position, float radius = 1.15f)
         {
-            var tower = GetNearestTower(position, radius);
+            var tower = GetTowerAt(position) ?? GetNearestTower(position, radius);
             SetSelectedTower(tower);
             return tower != null;
+        }
+
+        /// <summary>The tower whose border the point is inside, or null (a click on a tower, user 2026-11-18).</summary>
+        public TowerActor GetTowerAt(Vector3 position)
+        {
+            var point = new Vector2(position.x, position.z);
+            foreach (var tower in towers)
+            {
+                if (tower != null && tower.gameObject.activeSelf && borders.TryGetValue(tower, out var border) && Contains(border, point))
+                {
+                    return tower;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool Contains(Vector2[] polygon, Vector2 point)
+        {
+            var inside = false;
+            for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+            {
+                if ((polygon[i].y > point.y) != (polygon[j].y > point.y) &&
+                    point.x < (polygon[j].x - polygon[i].x) * (point.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x)
+                {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        }
+
+        /// <summary>
+        /// The tower a click would build: the one picked with 1-9, or, when that one is not there or
+        /// all of its kind are built, the first that can still be built (user, 2026-11-18: a bought
+        /// tower must go down with a click, no key first). Null when none can be.
+        /// </summary>
+        public TowerDefinition GetPlaceableTower(int selectedIndex)
+        {
+            if (AvailableTowers == null || AvailableTowers.Count == 0)
+            {
+                return null;
+            }
+
+            if (selectedIndex >= 0 && selectedIndex < AvailableTowers.Count &&
+                CountOf(AvailableTowers[selectedIndex]) < GetPerTypeLimit(AvailableTowers[selectedIndex]))
+            {
+                return AvailableTowers[selectedIndex];
+            }
+
+            foreach (var definition in AvailableTowers)
+            {
+                if (definition != null && CountOf(definition) < GetPerTypeLimit(definition))
+                {
+                    return definition;
+                }
+            }
+
+            return null;
         }
 
         public TowerActor GetNearestTower(Vector3 position, float radius = 1.15f)
@@ -317,6 +397,9 @@ namespace TowerDefense.Runtime
         {
             SetSelectedTower(null);
         }
+
+        /// <summary>No tower selected (a click away from the towers, user 2026-11-18).</summary>
+        public void ClearSelection() => SetSelectedTower(null);
 
         private void SetSelectedTower(TowerActor tower)
         {

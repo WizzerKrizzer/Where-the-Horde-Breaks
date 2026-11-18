@@ -10,6 +10,8 @@
 #pragma kernel QueryTargets
 #pragma kernel ClearVisibility
 #pragma kernel CullVisible
+#pragma kernel ClearCorpseVisibility
+#pragma kernel CullCorpses
 #pragma kernel FinalizeActiveDispatch
 #pragma kernel ApplyDynamicTargetCommands
 #pragma kernel ClearDynamicTargetGrid
@@ -28,8 +30,8 @@
 #pragma kernel FinalizeXpbdPairDispatch
 #pragma kernel ClearXpbdCorrections
 #pragma kernel SolveXpbdPairs
-#pragma kernel SolveXpbdWalls
 #pragma kernel ApplyXpbdCorrections
+#pragma kernel PrepareXpbdBodies
 #pragma kernel MeasureXpbdGridDiagnostics
 #pragma kernel MeasureXpbdPairDiagnostics
 #pragma kernel MeasureXpbdBodyDiagnostics
@@ -79,6 +81,8 @@ struct AgentState
     float airHeight;
     float airSpeed;
     float landingTimer;
+    // Metres walked pressed to a road edge, for the walk back to the middle (IntegrateXpbdBody).
+    float edgeWalk;
 };
 
 struct XpbdPair
@@ -374,6 +378,12 @@ RWByteAddressBuffer _CorpseDrawArgs;
 #define CORPSE_MAX_AIR_SPEED 7.5
 // Dust puffs a corpse raises (HordeDust.shader): written with the corpse draw count.
 RWByteAddressBuffer _DustDrawArgs;
+// Corpse culling (optimization, 2026-11-16: every corpse in the ring was drawn, on screen or not,
+// with the far model; a full ring cost 4-5 ms a frame). CullCorpses lists the slots on screen,
+// the far model's first, the tiny model's from _CorpseCapacity on; the draw arguments count them.
+RWStructuredBuffer<uint> _CorpseVisible;
+RWByteAddressBuffer _CorpseTinyDrawArgs;
+uint _CorpseCulling;
 StructuredBuffer<float4> _FlowVectors;
 StructuredBuffer<float4> _FlowData;
 RWStructuredBuffer<uint> _CellCounts;
@@ -418,6 +428,18 @@ RWStructuredBuffer<XpbdPair> _XpbdPairs;
 RWStructuredBuffer<uint> _XpbdPairCount;
 RWByteAddressBuffer _XpbdPairDispatchArgs;
 RWStructuredBuffer<int> _XpbdCorrectionX;
+// What the pair solve needs of each body, packed once a tick (PrepareXpbdBodies; optimization,
+// 2026-11-16): the solve read a dozen fields scattered over each 208-byte state, for both bodies of
+// every pair, in every pass. Only the position changes between passes (ApplyXpbdCorrections).
+// A: position, inverse mass, contact strength (-1: not alive). B: scale, brute radius scale,
+// speed (control times slow), walking speed. C: facing, knockback velocity.
+RWStructuredBuffer<float4> _XpbdBodyA;
+RWStructuredBuffer<float4> _XpbdBodyB;
+RWStructuredBuffer<float4> _XpbdBodyC;
+// The same, read only, for the pair solve (D3D11.0 allows a kernel 8 writable buffers).
+StructuredBuffer<float4> _XpbdBodyARead;
+StructuredBuffer<float4> _XpbdBodyBRead;
+StructuredBuffer<float4> _XpbdBodyCRead;
 RWStructuredBuffer<int> _XpbdCorrectionY;
 RWStructuredBuffer<uint> _XpbdCorrectionCounts;
 RWStructuredBuffer<float> _XpbdWallLambdas;
@@ -433,6 +455,10 @@ RWByteAddressBuffer _IndirectArgs;
 RWByteAddressBuffer _LodIndirectArgs;
 RWByteAddressBuffer _VariantIndirectArgs;
 RWByteAddressBuffer _VariantLodIndirectArgs;
+// The third, tiny level of detail, goblins then brutes, below _TinyLodMaxHeightPixels (0: none).
+RWByteAddressBuffer _TinyIndirectArgs;
+RWByteAddressBuffer _VariantTinyIndirectArgs;
+float _TinyLodMaxHeightPixels;
 RWByteAddressBuffer _ActiveDispatchArgs;
 
 uint _AgentCount;
@@ -476,6 +502,10 @@ float _KnockbackDamping;
 // Fraction of an over-threshold knockback difference exchanged between XPBD contact pairs.
 float _ImpulseTransfer;
 float _MovementSpeedMultiplier;
+// Edge walking (GpuHordeSimulation.SetEdgeWalk): metres along an edge before the walk back, and
+// the distance from the edge it walks back to. 0 is off.
+float _EdgeWalkBeforeCentre;
+float _EdgeCentreDistance;
 float _ShockwavePropagationSpeed;
 // The fixed-step XPBD contract is configured from CrowdSolverProfile.
 float _XpbdContactCompliance;
@@ -848,6 +878,70 @@ void RecordCorpse(AgentState state, float2 toss, float lift)
 // A body a blast kills: the shove the blast gave it alive is mostly replaced by its death throw
 // (BlastDeathThrow), which sets how it flies; keep is the share of the shove it keeps (0 for a
 // body crushed where it stood). Presentation only, like RecordCorpse.
+// The brute's swing is long enough to reach past the one it hits (user, 2026-11-16): up to
+// BRUTE_SPLASH_TARGETS more of our units standing behind the struck one, along the blow, take a
+// share of it. Only units (kind 1), never a barricade. TEMPORARY numbers: within 1.6 m behind,
+// 0.9 m to either side, for 40% of the blow.
+#define BRUTE_SPLASH_TARGETS 2u
+#define BRUTE_SPLASH_REACH 1.6
+#define BRUTE_SPLASH_WIDTH 0.9
+#define BRUTE_SPLASH_SHARE 0.4
+
+void BruteSplash(uint attacker, uint struck, float2 towardStruck, uint damageUnits)
+{
+    float towardLength = length(towardStruck);
+    if (towardLength < 0.0001) return;
+    float2 forward = towardStruck / towardLength;
+    float2 sideways = float2(-forward.y, forward.x);
+    float2 strikePoint = _DynamicTargetsRead[struck].position;
+    uint best[BRUTE_SPLASH_TARGETS];
+    float bestAlong[BRUTE_SPLASH_TARGETS];
+    [unroll]
+    for (uint slot = 0u; slot < BRUTE_SPLASH_TARGETS; slot++)
+    {
+        best[slot] = 0xFFFFFFFFu;
+        bestAlong[slot] = 1e30;
+    }
+
+    uint activeTargetCount = min(_DynamicTargetActiveCountRead[0], _DynamicTargetCapacity);
+    [loop]
+    for (uint targetSlot = 0u; targetSlot < activeTargetCount; targetSlot++)
+    {
+        uint other = _DynamicTargetActiveIndicesRead[targetSlot];
+        if (other == struck) continue;
+        DynamicTargetState candidate = _DynamicTargetsRead[other];
+        if (candidate.status != 1u || candidate.kind != 1u) continue;
+        float2 fromStrike = candidate.position - strikePoint;
+        float along = dot(fromStrike, forward);
+        if (along <= 0.0 || along > BRUTE_SPLASH_REACH + candidate.radius) continue;
+        if (abs(dot(fromStrike, sideways)) > BRUTE_SPLASH_WIDTH + candidate.radius) continue;
+        // Keep the nearest behind the struck one.
+        [unroll]
+        for (uint place = 0u; place < BRUTE_SPLASH_TARGETS; place++)
+        {
+            if (along < bestAlong[place])
+            {
+                float swapAlong = bestAlong[place];
+                uint swapIndex = best[place];
+                bestAlong[place] = along;
+                best[place] = other;
+                along = swapAlong;
+                other = swapIndex;
+            }
+        }
+    }
+
+    uint splashUnits = max(1u, (uint)round((float)damageUnits * BRUTE_SPLASH_SHARE));
+    [unroll]
+    for (uint hit = 0u; hit < BRUTE_SPLASH_TARGETS; hit++)
+    {
+        if (best[hit] == 0xFFFFFFFFu) continue;
+        InterlockedAdd(_DynamicTargetDamage[best[hit]], splashUnits);
+        uint previousAttacker;
+        InterlockedExchange(_DynamicTargetLastAttacker[best[hit]], attacker + 1u, previousAttacker);
+    }
+}
+
 void RecordBlastCorpse(AgentState state, float2 toss, float lift, float keep)
 {
     state.knockbackVelocity *= keep;
@@ -1136,7 +1230,10 @@ void FinalizeActiveDispatch(uint3 id : SV_DispatchThreadID)
     _ActiveDispatchArgs.Store(8, 1u);
     if (_CorpseCapacity > 0u)
     {
-        _CorpseDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
+        if (_CorpseCulling == 0u)
+        {
+            _CorpseDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
+        }
         _DustDrawArgs.Store(4, min((uint)max(0, _Aux[0]), _CorpseCapacity));
     }
 }
@@ -1253,6 +1350,8 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
         float radiusSq = command.radius * command.radius;
         uint hitCount = 0u;
         float hitMass = 0.0;
+        // The damage it really did, for its report (event 11): a spear in empty ground did none.
+        float dealtDamage = 0.0;
         float usedSlowCapacity = 0.0;
         bool commandComplete = false;
         [loop]
@@ -1335,6 +1434,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
                     {
                         float appliedDamage = max(0.0, command.damage - state.armor) * (1.0 - saturate(state.physicalResistance));
                         state.health -= appliedDamage;
+                        dealtDamage += appliedDamage;
                         if (state.health <= 0.0)
                         {
                             state.health = 0.0;
@@ -1383,6 +1483,7 @@ void ApplyAreaEffect(uint3 id : SV_DispatchThreadID)
         if (command.reportId != 0u)
         {
             EmitEvent(command.reportId, 7u, hitMass);
+            EmitEvent(command.reportId, 11u, dealtDamage);
         }
     }
 }
@@ -1909,10 +2010,14 @@ void QueryTargets(uint3 id : SV_DispatchThreadID)
                 }
 
                 float score = -distanceSq;
-                if (query.mode == 1u) score = state.progress;
-                else if (query.mode == 2u) score = -state.progress;
+                // How far along the road it is: the flow's distance left to the exit, measured where
+                // it stands now (user, 2026-11-18: "First" ignored the goblins at the front, as it
+                // went by the order they were spawned in, never updated on the GPU).
+                float along = -SampleIntegration(state.position);
+                if (query.mode == 1u) score = along;
+                else if (query.mode == 2u) score = -along;
                 else if (query.mode == 3u) score = state.health - reservedDamage;
-                else if (query.mode == 4u) score = state.mass * 100000.0 + state.progress;
+                else if (query.mode == 4u) score = state.mass * 100000.0 + along * 0.001;
                 if (best.index < 0 || score > best.score || (abs(score - best.score) < 0.0001 && distanceSq < bestDistanceSq))
                 {
                     best.secondPosition = best.position;
@@ -1949,6 +2054,11 @@ void ClearVisibility(uint3 id : SV_DispatchThreadID)
     _LodIndirectArgs.Store(4, 0u);
     _VariantIndirectArgs.Store(4, 0u);
     _VariantLodIndirectArgs.Store(4, 0u);
+    _TinyIndirectArgs.Store(4, 0u);
+    _VariantTinyIndirectArgs.Store(4, 0u);
+    // The tiny ones' shadows (the fourth level), drawn from the arguments after the tiny ones.
+    _TinyIndirectArgs.Store(24, 0u);
+    _VariantTinyIndirectArgs.Store(24, 0u);
 }
 
 [numthreads(64, 1, 1)]
@@ -2015,7 +2125,23 @@ void CullVisible(uint3 id : SV_DispatchThreadID)
         // Keep every card in the stable draw list; the model path retains its LOD.
         bool useLod = _SpriteCardRendering == 0u &&
             (_AnimatedGoblin != 0u ? projectedHeight < _LodProjection.w : cameraDistance > 32.0);
-        if (_CullingEnabled != 0 && useLod)
+        bool useTiny = _AnimatedGoblin != 0u && projectedHeight < _TinyLodMaxHeightPixels;
+        if (_CullingEnabled != 0 && useLod && useTiny)
+        {
+            if (secondGoblinModel)
+            {
+                _VariantTinyIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _VariantTinyIndirectArgs.InterlockedAdd(24, 1u);
+                _VisibleIndices[_VisibleListCapacity * 5u + visibleIndex] = index;
+            }
+            else
+            {
+                _TinyIndirectArgs.InterlockedAdd(4, 1u, visibleIndex);
+                _TinyIndirectArgs.InterlockedAdd(24, 1u);
+                _VisibleIndices[_VisibleListCapacity * 4u + visibleIndex] = index;
+            }
+        }
+        else if (_CullingEnabled != 0 && useLod)
         {
             if (secondGoblinModel)
             {
@@ -2042,6 +2168,69 @@ void CullVisible(uint3 id : SV_DispatchThreadID)
             }
         }
         InterlockedAdd(_Diagnostics[4], 1u);
+    }
+}
+
+[numthreads(1, 1, 1)]
+void ClearCorpseVisibility(uint3 id : SV_DispatchThreadID)
+{
+    _CorpseDrawArgs.Store(4, 0u);
+    _CorpseTinyDrawArgs.Store(4, 0u);
+}
+
+bool CorpseOnScreen(float2 position)
+{
+    float4 clip = mul(_ViewProjection, float4(position.x, 0.0, position.y, 1.0));
+    // Generous: a body lies about its length from its spot, and a thrown one is up in the air.
+    float margin = max(1.5, clip.w * 0.12);
+    return clip.w > 0.0 && abs(clip.x) <= clip.w + margin && abs(clip.y) <= clip.w + margin;
+}
+
+[numthreads(64, 1, 1)]
+void CullCorpses(uint3 id : SV_DispatchThreadID)
+{
+    uint slot = id.x;
+    if (_CorpseCapacity == 0u || slot >= min((uint)max(0, _Aux[0]), _CorpseCapacity))
+    {
+        return;
+    }
+
+    uint offset = _CorpseBase + slot * CORPSE_STRIDE;
+    if (asfloat(_Aux[offset + 5u]) <= 0.0)
+    {
+        return;
+    }
+
+    float2 start = float2(asfloat(_Aux[offset]), asfloat(_Aux[offset + 1u]));
+    float2 rest = float2(asfloat(_Aux[offset + 2u]), asfloat(_Aux[offset + 3u]));
+    if (_CullingEnabled != 0 && !CorpseOnScreen(rest) && !CorpseOnScreen(start) &&
+        !CorpseOnScreen((start + rest) * 0.5))
+    {
+        return;
+    }
+
+    // The tiny model by the same measure as the living (CullVisible).
+    bool tiny = false;
+    if (_CullingEnabled != 0 && _TinyLodMaxHeightPixels > 0.0)
+    {
+        float scale = asfloat(_Aux[offset + 4u]);
+        float cameraDistance = distance(rest, _LodCameraPosition);
+        float viewingDistance = sqrt(cameraDistance * cameraDistance + _LodProjection.x * _LodProjection.x);
+        float projectedHeight = 2.4 * scale * _LodProjection.y /
+            (_LodProjection.z > 0.5 ? 1.0 : max(0.1, viewingDistance));
+        tiny = projectedHeight < _TinyLodMaxHeightPixels;
+    }
+
+    uint visibleIndex;
+    if (tiny)
+    {
+        _CorpseTinyDrawArgs.InterlockedAdd(4, 1u, visibleIndex);
+        _CorpseVisible[_CorpseCapacity + visibleIndex] = slot;
+    }
+    else
+    {
+        _CorpseDrawArgs.InterlockedAdd(4, 1u, visibleIndex);
+        _CorpseVisible[visibleIndex] = slot;
     }
 }
 
@@ -2080,6 +2269,28 @@ float XpbdPairDiameter(AgentState first, AgentState second)
     diameter += max(_CollisionDiameter * 0.5, first.scale * _XpbdBodyRadiusPerVisualScale) * (BruteRadiusScale(first) - 1.0);
     diameter += max(_CollisionDiameter * 0.5, second.scale * _XpbdBodyRadiusPerVisualScale) * (BruteRadiusScale(second) - 1.0);
     return diameter;
+}
+
+// XpbdPairDiameter from packed bodies (_XpbdBodyB: scale, brute radius scale).
+float XpbdPackedPairDiameter(float4 first, float4 second)
+{
+    if (_XpbdUsePerBodyRadius == 0u)
+    {
+        return _CollisionDiameter;
+    }
+
+    float diameter = max(_CollisionDiameter, (first.x + second.x) * _XpbdBodyRadiusPerVisualScale);
+    diameter += max(_CollisionDiameter * 0.5, first.x * _XpbdBodyRadiusPerVisualScale) * (first.y - 1.0);
+    diameter += max(_CollisionDiameter * 0.5, second.x * _XpbdBodyRadiusPerVisualScale) * (second.y - 1.0);
+    return diameter;
+}
+
+// XpbdBodyRadius from a packed body.
+float XpbdPackedBodyRadius(float4 body)
+{
+    return _XpbdUsePerBodyRadius != 0u
+        ? max(_CollisionDiameter * 0.5, body.x * _XpbdBodyRadiusPerVisualScale) * body.y
+        : _CollisionDiameter * 0.5;
 }
 
 // Resolve outside the five-percent shell used to classify a shallow
@@ -2190,6 +2401,31 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
         desiredSpeed *= lerp(1.0, 0.6, smoothstep(0.15, 0.6, fill) * walking * (1.0 - passing));
     }
     float2 desiredVelocity = flow * min(desiredSpeed, _XpbdMaximumSpeed) + passSteer;
+    // Back to the middle of the road (user, 2026-11-17): a goblin carried to the edge, by a turn
+    // or by the crowd, walks along it for _EdgeWalkBeforeCentre metres and then little by little
+    // steps sideways, away from the edge, until it is _EdgeCentreDistance from it. Back in the
+    // middle its count starts again. TEMPORARY numbers: up to 0.6 m/s sideways, over 2 m.
+    if (_EdgeWalkBeforeCentre > 0.0 && !shockwaveRiding && control.x > 0.0)
+    {
+        float edgeDistance = SampleBoundaryDistance(state.position);
+        float onEdge = XpbdSolveDistance(XpbdBodyRadius(state)) + 0.15;
+        if (edgeDistance >= _EdgeCentreDistance)
+        {
+            state.edgeWalk = 0.0;
+        }
+        else
+        {
+            if (edgeDistance <= onEdge || state.edgeWalk >= _EdgeWalkBeforeCentre)
+                state.edgeWalk += state.locomotionSpeed * simulationDelta;
+            float2 awayFromEdge = SampleBoundaryNormal(state.position);
+            float2 sideways = float2(-flow.y, flow.x);
+            float side = dot(awayFromEdge, sideways);
+            float ramp = saturate((state.edgeWalk - _EdgeWalkBeforeCentre) / 2.0);
+            float easeIn = saturate((_EdgeCentreDistance - edgeDistance) / 0.3);
+            if (abs(side) > 0.2)
+                desiredVelocity += sideways * (sign(side) * 0.6 * ramp * easeIn);
+        }
+    }
     if (shockwaveRiding) desiredVelocity = 0.0;
     bool releasedBlockerThisTick = state.padding2 < -0.5;
 
@@ -2334,6 +2570,8 @@ void IntegrateXpbdBody(uint index, AgentState state, float4 control, float simul
                     uint next = (coming + min(step, 2u)) % BRUTE_BLOWS;
                     state.flags = (state.flags & ~(15u << BLOW_SHIFT_LANDED)) | (coming << BLOW_SHIFT_LANDED) | (next << BLOW_SHIFT_COMING)
                         | BLOW_LANDED_FLAG;
+                    BruteSplash(index, targetIndex, target.position - state.position,
+                        max(1u, (uint)round(state.attackDamage * max(0.0, state.alliedDamageMultiplier) * 1024.0)));
                 }
 
                 if (target.thornsDamage > 0.0)
@@ -2709,6 +2947,20 @@ void FinalizeXpbdPairDispatch(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(64, 1, 1)]
+void PrepareXpbdBodies(uint3 id : SV_DispatchThreadID)
+{
+    uint activeSlot = id.x;
+    if (activeSlot >= _DiagnosticsRead[3]) return;
+    uint index = _ActiveIndicesRead[activeSlot];
+    AgentState state = _StatesRead[index];
+    bool alive = state.status == 1u;
+    _XpbdBodyA[index] = float4(state.position, rcp(max(0.1, state.mass)), alive ? ContactStrength(state) : -1.0);
+    _XpbdBodyB[index] = float4(state.scale, BruteRadiusScale(state), _Controls[index].x * state.slowMultiplier,
+        state.locomotionSpeed);
+    _XpbdBodyC[index] = float4(state.facing, state.knockbackVelocity);
+}
+
+[numthreads(64, 1, 1)]
 void ClearXpbdCorrections(uint3 id : SV_DispatchThreadID)
 {
     uint activeSlot = id.x;
@@ -2735,13 +2987,14 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     uint count = min(_XpbdPairCount[0], _XpbdPairCapacity);
     if (pairIndex >= count) return;
     XpbdPair pair = _XpbdPairs[pairIndex];
-    AgentState first = _StatesRead[pair.first];
-    if (first.status != 1u) return;
+    float4 firstA = _XpbdBodyARead[pair.first];
+    if (firstA.w < 0.0) return;
+    float2 firstPosition = firstA.xy;
     bool isBlocker = (pair.second & 0x80000000u) != 0u;
     float2 firstGradient = 0.0;
     float2 secondGradient = 0.0;
     float constraint = 0.0;
-    float inverseFirst = rcp(max(0.1, first.mass));
+    float inverseFirst = firstA.z;
     float inverseSecond = 0.0;
     float deepContactWeight = 1.0;
     float contactStrength = 1.0;
@@ -2754,11 +3007,11 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         if (target.status != 1u || target.blockCapacity <= 0.0) return;
         float axisLengthSq = dot(target.axis, target.axis);
         float alongTarget = axisLengthSq > 0.0001
-            ? clamp(dot(first.position - target.position, target.axis),
+            ? clamp(dot(firstPosition - target.position, target.axis),
                 -target.segmentHalfLength, target.segmentHalfLength)
             : 0.0;
         float2 closestTargetPoint = target.position + target.axis * alongTarget;
-        float2 targetDelta = first.position - closestTargetPoint;
+        float2 targetDelta = firstPosition - closestTargetPoint;
         float distanceSq = dot(targetDelta, targetDelta);
         float distanceToTarget = sqrt(max(distanceSq, 0.00000001));
         float2 normal = distanceSq > 0.00000001
@@ -2767,21 +3020,23 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         // A static barricade is a hard surface, so its contact distance is the
         // physical one. The solve skin only gives crowd contacts room to relax.
         constraint = distanceToTarget -
-            (XpbdBodyRadius(first) + max(0.05, target.halfDepth));
+            (XpbdPackedBodyRadius(_XpbdBodyBRead[pair.first]) + max(0.05, target.halfDepth));
         firstGradient = normal;
     }
     else
     {
-        AgentState second = _StatesRead[pair.second];
-        if (second.status != 1u) return;
-        contactStrength = min(ContactStrength(first), ContactStrength(second));
+        float4 secondA = _XpbdBodyARead[pair.second];
+        if (secondA.w < 0.0) return;
+        contactStrength = min(firstA.w, secondA.w);
         if (contactStrength <= 0.0) return;
-        float2 delta = second.position - first.position;
+        float4 firstB = _XpbdBodyBRead[pair.first];
+        float4 secondB = _XpbdBodyBRead[pair.second];
+        float2 delta = secondA.xy - firstPosition;
         float distanceSq = dot(delta, delta);
         float distanceToSecond = sqrt(max(distanceSq, 0.00000001));
         float2 normal = distanceSq > 0.00000001 ? delta / distanceToSecond :
             (pair.first < pair.second ? float2(1.0, 0.0) : float2(-1.0, 0.0));
-        float physicalDiameter = XpbdPairDiameter(first, second);
+        float physicalDiameter = XpbdPackedPairDiameter(firstB, secondB);
         constraint = distanceToSecond - XpbdSolveDistance(physicalDiameter);
         // Prioritize a deeply intersecting torso over the surrounding shallow
         // contacts. Otherwise their Jacobi corrections can cancel at a merge
@@ -2792,7 +3047,7 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
             : 1.0;
         firstGradient = -normal;
         secondGradient = normal;
-        inverseSecond = rcp(max(0.1, second.mass));
+        inverseSecond = secondA.z;
         // A faster body pressed against the back of a slower one goes round it (user, 2026-11-15:
         // a goblin behind an Orc Brute must get past it, not queue behind it): it steps sideways,
         // to the side it is already on, at about the difference of their speeds. The slower one
@@ -2801,13 +3056,13 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
         // 2026-11-15). Not while the slower one stands (held at a barricade, fighting): then it is
         // a queue, and the crowd keeps its places.
         {
-            float firstSpeed = _Controls[pair.first].x * first.slowMultiplier;
-            float secondSpeed = _Controls[pair.second].x * second.slowMultiplier;
+            float firstSpeed = firstB.z;
+            float secondSpeed = secondB.z;
             bool firstFaster = firstSpeed > secondSpeed;
             float fastSpeed = max(firstSpeed, secondSpeed);
             float slowSpeed = min(firstSpeed, secondSpeed);
-            float slowWalking = firstFaster ? second.locomotionSpeed : first.locomotionSpeed;
-            float2 heading = firstFaster ? second.facing : first.facing;
+            float slowWalking = firstFaster ? secondB.w : firstB.w;
+            float2 heading = (firstFaster ? _XpbdBodyCRead[pair.second] : _XpbdBodyCRead[pair.first]).xy;
             if (fastSpeed - slowSpeed > 0.1 * fastSpeed && slowWalking > 0.25 * slowSpeed &&
                 dot(heading, heading) > 0.0001 && distanceToSecond < physicalDiameter * PASS_REACH)
             {
@@ -2830,7 +3085,7 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
             // Overlapping bodies share only the knockback that exceeds a small
             // threshold along the contact normal, so a hit propagates through
             // the mass instead of leaving the neighbour untouched.
-            float closing = dot(first.knockbackVelocity - second.knockbackVelocity, normal);
+            float closing = dot(_XpbdBodyCRead[pair.first].zw - _XpbdBodyCRead[pair.second].zw, normal);
             float excess = closing - 0.5;
             if (excess > 0.0)
             {
@@ -2889,20 +3144,17 @@ void SolveXpbdPairs(uint3 id : SV_DispatchThreadID)
     }
 }
 
-[numthreads(64, 1, 1)]
-void SolveXpbdWalls(uint3 id : SV_DispatchThreadID)
+// The road edge's correction for one body, added to its pair corrections (was the kernel
+// SolveXpbdWalls; now done in ApplyXpbdCorrections, which saves a pass over every body each
+// iteration, optimization 2026-11-17). Same fixed-point amounts as before.
+void AddXpbdWallCorrection(uint index, AgentState state, inout int sumX, inout int sumY, inout uint count)
 {
-    uint activeSlot = id.x;
-    if (activeSlot >= _DiagnosticsRead[3]) return;
-    uint index = _ActiveIndicesRead[activeSlot];
-    AgentState state = _StatesRead[index];
-    if (state.status != 1u) return;
     float constraint = SampleBoundaryDistance(state.position) -
         XpbdSolveDistance(XpbdBodyRadius(state));
     float2 normal = SampleBoundaryNormal(state.position);
     if (dot(normal, normal) < 0.000001) return;
     float inverseMass = rcp(max(0.1, state.mass));
-    float appliedLambda;
+    float appliedLambda = 0.0;
     if (_XpbdWallCompliance <= 0.0)
     {
         if (constraint >= 0.0) return;
@@ -2921,9 +3173,9 @@ void SolveXpbdWalls(uint3 id : SV_DispatchThreadID)
     }
     float2 correction = normal * appliedLambda * inverseMass;
     const float fixedPointScale = 1000000.0;
-    InterlockedAdd(_XpbdCorrectionX[index], (int)round(clamp(correction.x, -8.0, 8.0) * fixedPointScale));
-    InterlockedAdd(_XpbdCorrectionY[index], (int)round(clamp(correction.y, -8.0, 8.0) * fixedPointScale));
-    InterlockedAdd(_XpbdCorrectionCounts[index], 1u);
+    sumX += (int)round(clamp(correction.x, -8.0, 8.0) * fixedPointScale);
+    sumY += (int)round(clamp(correction.y, -8.0, 8.0) * fixedPointScale);
+    count += 1u;
 }
 
 [numthreads(64, 1, 1)]
@@ -2932,19 +3184,25 @@ void ApplyXpbdCorrections(uint3 id : SV_DispatchThreadID)
     uint activeSlot = id.x;
     if (activeSlot >= _DiagnosticsRead[3]) return;
     uint index = _ActiveIndicesRead[activeSlot];
-    AgentState state = _StatesRead[index];
-    if (state.status != 1u)
-    {
-        _StatesWrite[index] = state;
-        return;
-    }
-    float correctionCount = max(1.0, (float)_XpbdCorrectionCounts[index]);
+    // In place (optimization, 2026-11-16): each body only changes itself, so the passes no longer
+    // copy every whole state to the other buffer; a pass before the last moves only the position.
+    AgentState state = _StatesWrite[index];
+    int sumX = _XpbdCorrectionX[index];
+    int sumY = _XpbdCorrectionY[index];
+    uint count = _XpbdCorrectionCounts[index];
+    // Cleared here for the next pass (the first pass is cleared by ClearXpbdCorrections).
+    _XpbdCorrectionX[index] = 0;
+    _XpbdCorrectionY[index] = 0;
+    _XpbdCorrectionCounts[index] = 0u;
+    if (state.status != 1u) return;
+    AddXpbdWallCorrection(index, state, sumX, sumY, count);
+    float correctionCount = max(1.0, (float)count);
     float jacobiDivisor = sqrt(correctionCount);
     // Mild weighted-Jacobi over-relaxation offsets the slow propagation of a
     // plain per-body average through long queues while retaining deterministic
     // fixed-point accumulation. The travel clamp remains the hard safety cap.
     const float jacobiRelaxation = 1.25;
-    float2 correction = float2(_XpbdCorrectionX[index], _XpbdCorrectionY[index]) *
+    float2 correction = float2(sumX, sumY) *
         (0.000001 * jacobiRelaxation / jacobiDivisor);
     float maximumCorrection = max(0.01, _XpbdMaximumTravel * 2.0);
     float correctionLength = length(correction);
@@ -2955,6 +3213,24 @@ void ApplyXpbdCorrections(uint3 id : SV_DispatchThreadID)
     if (totalTravelLength > _XpbdMaximumTravel)
     {
         state.position = state.stepStartPosition + totalTravel * (_XpbdMaximumTravel / totalTravelLength);
+    }
+    // Let out gently (user, 2026-11-18): when a wall broke, the goblins squeezed against it were
+    // shot forward as one straight line, pushed apart by the crowd behind them all at once. A
+    // walking body on its feet, not thrown by a blast, moves forward along the road at most a
+    // quarter faster than it walks (1 m/s at the least), so a squeezed crowd spreads out a little
+    // each tick. Only forward along the road: bodies pushed apart sideways or back still separate
+    // at once. TEMPORARY numbers.
+    if (_Controls[index].x > 0.0 && _CenterSeekingArena == 0u && !IsAirborne(state) &&
+        state.shockwaveOutwardTimer <= 0.0 && state.shockwaveReturnTimer <= 0.0 &&
+        dot(state.knockbackVelocity, state.knockbackVelocity) < 0.01)
+    {
+        float walkLimit = max(1.0, _Controls[index].x * _MovementSpeedMultiplier * state.slowMultiplier * 1.25) * _DeltaTime;
+        float2 roadAhead = SampleFlow(state.stepStartPosition);
+        float forward = dot(state.position - state.stepStartPosition, roadAhead);
+        if (forward > walkLimit)
+        {
+            state.position -= roadAhead * (forward - walkLimit);
+        }
     }
     if (!IsWalkable(state.position)) state.position = ConstrainMove(state.stepStartPosition, state.position);
     if (_XpbdWallCompliance <= 0.0)
@@ -3100,8 +3376,13 @@ void ApplyXpbdCorrections(uint3 id : SV_DispatchThreadID)
             float2 turned = lerp(state.facing, facing, 0.2);
             state.facing = dot(turned, turned) > 0.0001 ? normalize(turned) : facing;
         }
+        _StatesWrite[index] = state;
     }
-    _StatesWrite[index] = state;
+    else
+    {
+        _StatesWrite[index].position = state.position;
+    }
+    _XpbdBodyA[index].xy = state.position;
 }
 
 // Diagnostics measure the same compact grid and pair set that XPBD solved.

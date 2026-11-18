@@ -80,10 +80,12 @@ namespace TowerDefense.Tests
 
             // The thrown spear with its 7 upgrades (the rock's are hidden for now, user 2026-11-12),
             // four towers with 13 nodes each, and the mammoth's Brute Tosser.
-            Assert.That(nodes.Length, Is.EqualTo(61));
+            // +5 (2026-11-18): More Towers, Gatherers, the wall, its health and Extra Slinger.
+            Assert.That(nodes.Length, Is.EqualTo(66));
+            // The heavy spear and the volley are specials, for Challenge Sigils (user, 2026-11-18).
             foreach (var id in new[] { "spear_heavy", "spear_volley" })
             {
-                Assert.That(byId[id].costs[0].currency, Is.EqualTo(CurrencyType.KillEssence), id);
+                Assert.That(byId[id].costs[0].currency, Is.EqualTo(CurrencyType.ChallengeToken), id);
             }
             foreach (var hidden in TowerDefense.Runtime.SampleContent.RockNodesForLater())
             {
@@ -97,14 +99,26 @@ namespace TowerDefense.Tests
             Assert.That(byId["mammoth_unlock"].costs.Length, Is.EqualTo(2));
             Assert.That(byId["mammoth_unlock"].costs[1].currency, Is.EqualTo(CurrencyType.ChallengeToken));
             Assert.That(byId["mammoth_unlock"].costs[1].amount, Is.EqualTo(3));
-            Assert.That(byId["volley_core"].startsUnlocked && byId["slingers_unlock"].startsUnlocked, Is.True);
+            // The first Slingers tower costs 1 Kill Essence, ten goblins (user, 2026-11-18); More Towers
+            // brings up to four, each dearer than the last.
+            Assert.That(byId["volley_core"].startsUnlocked, Is.True);
+            Assert.That(byId["slingers_unlock"].startsUnlocked, Is.False);
+            Assert.That(byId["slingers_unlock"].costs[0].currency, Is.EqualTo(CurrencyType.KillEssence));
+            Assert.That(byId["slingers_unlock"].costs[0].amount, Is.EqualTo(1));
+            Assert.That(byId["slingers_towers"].maxRanks, Is.EqualTo(5), "Up to six towers.");
+            // Each extra slinger is a Challenge Sigil (user, 2026-11-18), from 2 up to 8.
+            Assert.That(byId["slingers_crew"].maxRanks, Is.EqualTo(6));
+            Assert.That(byId["slingers_crew"].costs[0].currency, Is.EqualTo(CurrencyType.ChallengeToken));
+            Assert.That(byId["slingers_crew"].costs[0].amount, Is.EqualTo(1));
+            Assert.That(byId["slingers_crew"].costGrowthMultiplier, Is.EqualTo(1f));
+            Assert.That(byId["slingers_towers"].costGrowthMultiplier, Is.GreaterThan(1.5f));
 
-            // The Slingers are buildable from the start, with nothing bought.
+            // With nothing bought no tower is unlocked.
             var tree = ScriptableObject.CreateInstance<SkillTreeDefinition>();
             cleanup.Add(tree);
             tree.nodes = nodes;
             var progression = new TowerDefense.Progression.ProgressionService(tree, new TowerDefense.Save.PlayerProfile());
-            Assert.That(progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "slingers"), Is.GreaterThan(0f));
+            Assert.That(progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "slingers"), Is.Zero);
             Assert.That(progression.GetEffectTotal(UpgradeEffectType.UnlockTower, "mammoth"), Is.Zero);
 
             // The mammoth can learn to push the Orc Brutes (Handoff, 2026-11-10), after it is owned.
@@ -151,11 +165,22 @@ namespace TowerDefense.Tests
         }
 
         [Test]
-        public void LevelOne_HasNoEnemiesForNow()
+        public void LevelOne_IsOneContinuousWaveOfRunnersWithAWall()
         {
+            // User, 2026-11-17: about 200 Goblin Runners over about 30 s, a wall with 20 health, and
+            // the first goblin through the broken wall loses.
             var content = SampleContent.Create();
-            Assert.That(content.Level.id, Is.EqualTo("level_01"));
-            Assert.That(content.Level.wave.entries, Is.Empty);
+            var level = content.Level;
+            Assert.That(level.id, Is.EqualTo("level_01"));
+            Assert.That(level.wave.totalEnemyCount, Is.EqualTo(200));
+            Assert.That(level.wave.entries, Has.Length.EqualTo(1));
+            Assert.That(level.wave.entries[0].enemy.id, Is.EqualTo("runner"));
+            Assert.That(level.wave.continuousSpawnRate, Is.EqualTo(10f), "A steady stream of about 10 goblins a second.");
+            Assert.That(level.wave.enemySpeedMultiplier, Is.EqualTo(1.5f));
+            Assert.That(level.wallHealth, Is.EqualTo(20f));
+            Assert.That(level.startingLives, Is.EqualTo(1));
+            Assert.That(level.roadWidth, Is.EqualTo(4f));
+            Assert.That(level.useSquarePathCorners, Is.True);
             Assert.That(content.LevelOneTestWave.totalEnemyCount, Is.EqualTo(215));
         }
 
@@ -163,7 +188,11 @@ namespace TowerDefense.Tests
         public IEnumerator EmptyWave_IsCompleteAtOnce()
         {
             var world = CreateWorld(cleanup);
-            world.Enemies.BeginWave(world.Level.wave, world.Route);
+            var empty = ScriptableObject.CreateInstance<WaveDefinition>();
+            cleanup.Add(empty);
+            empty.totalEnemyCount = 0;
+            empty.entries = System.Array.Empty<WaveEntry>();
+            world.Enemies.BeginWave(empty, world.Route);
             yield return null;
             Assert.That(world.Enemies.IsWaveComplete, Is.True, "A wave without enemies must end at once.");
         }
@@ -245,17 +274,21 @@ namespace TowerDefense.Tests
             var world = CreateWorld(cleanup);
             var slingers = FindTower("slingers");
             world.Towers.SetAvailableTowers(new[] { slingers });
+            // None can be built until bought (user, 2026-11-18): this test has bought one.
+            world.Towers.SetPerTypeLimitBonus("slingers", 1);
             Assert.That(world.Towers.TryPlace(slingers, new Vector3(-25f, 0f, 4.6f)), Is.True, "The Slingers could not be placed.");
             var kills = 0;
             world.Enemies.EnemyKilled += _ => kills++;
             world.Enemies.BeginWave(world.Wave, world.Route, useDataHordePrototype: true);
-            var deadline = Time.realtimeSinceStartup + 25f;
-            while (kills < 3 && Time.realtimeSinceStartup < deadline)
+            // A tower of 2 slingers (user, 2026-11-18) throws every 1.3 s and a goblin takes 3
+            // stones, spread over whichever goblin leads: one kill shows they work.
+            var deadline = Time.realtimeSinceStartup + 45f;
+            while (kills < 1 && Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
             }
 
-            Assert.That(kills, Is.GreaterThanOrEqualTo(3), "The Slingers did not kill goblins.");
+            Assert.That(kills, Is.GreaterThanOrEqualTo(1), "The Slingers did not kill goblins.");
         }
 
         [UnityTest]
@@ -340,6 +373,24 @@ namespace TowerDefense.Tests
 
         // The thrown spear, the first active weapon (user, 2026-11-12): it flies at the goblin nearest
         // the click, hurts only that one, stands in the ground a while, then sinks away.
+        // User, 2026-11-18: a spear thrown into empty ground hit nobody, yet counted its full damage.
+        [UnityTest]
+        public IEnumerator Spear_InEmptyGroundCountsNoDamage()
+        {
+            RequireComputeShaders();
+            var world = CreateWorld(cleanup);
+            var wave = OnlyEnemy(world, "runner", 10, out _);
+            world.Enemies.BeginWave(wave, world.Route, useDataHordePrototype: true);
+            yield return WaitForSpawned(world, 10);
+            var dealt = 0f;
+            // Far from the road and from every goblin.
+            var spear = ThrownSpear.Throw(world.Enemies, new Vector3(30f, 0f, -20f), 12f, 0.6f, amount => dealt += amount);
+            cleanup.Add(spear.gameObject);
+            yield return new WaitForSeconds(2f);
+            Assert.That(dealt, Is.Zero, "A spear in empty ground counted damage.");
+        }
+
+
         [UnityTest]
         public IEnumerator Spear_HitsOneGoblinThenStandsInTheGroundAndSinks()
         {
@@ -353,7 +404,8 @@ namespace TowerDefense.Tests
             // A goblin to click: the horde answers a frame or two after it is asked.
             var aim = Vector3.zero;
             var found = false;
-            for (var i = 0; i < 30 && !found; i++)
+            // By time, not frames: uncapped, 30 frames can pass before the horde's next step (2026-11-18).
+            for (var searchEnd = Time.realtimeSinceStartup + 2f; Time.realtimeSinceStartup < searchEnd && !found;)
             {
                 found = world.Enemies.TryGetHordeTargetSnapshot(world.Route.Sample(0f), 60f, true, TowerTargetingMode.First, out _, out aim, out _);
                 yield return null;
@@ -399,7 +451,8 @@ namespace TowerDefense.Tests
             yield return new WaitForSeconds(1.5f);
             var aim = Vector3.zero;
             var found = false;
-            for (var i = 0; i < 30 && !found; i++)
+            // By time, not frames: uncapped, 30 frames can pass before the horde's next step (2026-11-18).
+            for (var searchEnd = Time.realtimeSinceStartup + 2f; Time.realtimeSinceStartup < searchEnd && !found;)
             {
                 found = world.Enemies.TryGetHordeTargetSnapshot(world.Route.Sample(0f), 60f, true, TowerTargetingMode.First, out _, out aim, out _);
                 yield return null;
@@ -424,6 +477,12 @@ namespace TowerDefense.Tests
             Assert.That(ThrownSpear.Crits, Is.EqualTo(1));
             Assert.That(dealt[0], Is.EqualTo(36f).Within(0.01f), "A precise strike should deal 3 times the damage.");
             Assert.That(ThrownSpear.Shocks, Is.EqualTo(1), "The heavy spear's blow did not shake the ground.");
+            // The blow's damage is counted when the horde reports it, a few frames later (2026-11-18).
+            for (var reportEnd = Time.realtimeSinceStartup + 1f; dealt.Count < 2 && Time.realtimeSinceStartup < reportEnd;)
+            {
+                yield return null;
+            }
+
             Assert.That(dealt.Count, Is.EqualTo(2), "The blow hurt no goblin around the target.");
             Assert.That(dealt[1], Is.GreaterThan(0f));
 
@@ -585,6 +644,8 @@ namespace TowerDefense.Tests
             }
 
             world.Towers.SetAvailableTowers(new[] { slingers });
+            // None can be built until bought (user, 2026-11-18): this test has bought one.
+            world.Towers.SetPerTypeLimitBonus("slingers", 1);
             Assert.That(world.Towers.TryPlace(slingers, new Vector3(-25f, 0f, 4.6f)), Is.True, "The Slingers could not be placed.");
             var wave = OnlyEnemy(world, "runner", 80, out var runner);
             runner.maxHealth = 400f;
@@ -761,7 +822,7 @@ namespace TowerDefense.Tests
                         continue;
                     }
 
-                    var offset = new Vector2(state.Position.x - tower.Position.x, state.Position.y - tower.Position.z);
+                    var offset = new Vector2(state.Position.x - tower.RangeCenter.x, state.Position.y - tower.RangeCenter.z);
                     bruteInRange |= state.Mass >= 2.5f && offset.magnitude < spear.range - 0.5f;
                     poisonedNow += state.BurnTimer > 0f && (state.Flags & 8u) != 0u ? 1 : 0;
                 }
@@ -773,7 +834,7 @@ namespace TowerDefense.Tests
                 var answered = false;
                 for (var attempt = 0; bruteInRange && !answered && attempt < 120; attempt++)
                 {
-                    answered = world.Enemies.TryGetHordeTargetSnapshot(tower.Position, spear.range, spear.canHitFlying,
+                    answered = world.Enemies.TryGetHordeTargetSnapshot(tower.RangeCenter, spear.range, spear.canHitFlying,
                         TowerTargetingMode.Heaviest, out index, out _, out _);
                     if (!answered)
                     {

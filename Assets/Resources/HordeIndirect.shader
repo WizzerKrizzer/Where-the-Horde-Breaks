@@ -74,6 +74,7 @@ Shader "TowerDefense/HordeIndirect"
                 float airHeight;
                 float airSpeed;
                 float landingTimer;
+                float edgeWalk;
             };
 
             StructuredBuffer<AgentState> _AgentStates;
@@ -138,6 +139,14 @@ Shader "TowerDefense/HordeIndirect"
                 if (_HeldDepthPull > 0.0 && held.x > 0.5)
                 {
                     world += normalize(_WorldSpaceCameraPos - world) * _HeldDepthPull;
+                }
+
+                // Dead or hidden (AgentWorld drops them 100 km down): one point, no area, so no
+                // fragment has to be thrown away and the depth test can run before shading
+                // (optimization, 2026-11-16: the clip() that hid them turned early depth off).
+                if (world.y < -50000.0)
+                {
+                    return float4(0.0, 0.0, -1.0, 1.0);
                 }
 
                 return UnityWorldToClipPos(world);
@@ -207,7 +216,6 @@ Shader "TowerDefense/HordeIndirect"
 
             fixed4 Frag(Varyings input) : SV_Target
             {
-                clip(input.active - 0.5);
                 float normalTint = input.tint >= 3.5 ? 1.0 : saturate(input.tint);
                 float individualVariation = lerp(0.94, 1.06, input.variation);
 
@@ -297,6 +305,17 @@ Shader "TowerDefense/HordeIndirect"
             // placeholder bodies and for the far level of detail (_OutlineWidth 0).
             OutlineVaryings VertOutline(Attributes input)
             {
+                OutlineVaryings output;
+                if (_ModelEnabled < 0.5 || _OutlineWidth <= 0.0)
+                {
+                    // No outline (the far level of detail): every vertex at one point, so the
+                    // triangles have no area and nothing is posed or drawn (optimization, 2026-11-16:
+                    // posing them only to hide them cost a third of the far crowd's vertex work).
+                    output.position = float4(0.0, 0.0, -1.0, 1.0);
+                    output.active = 0.0;
+                    return output;
+                }
+
                 AgentState state;
                 uint agentIndex;
                 float active;
@@ -306,8 +325,6 @@ Shader "TowerDefense/HordeIndirect"
                 float2 at = lerp(placed.stepStartPosition, placed.position, _PresentationAlpha);
                 float width = OutlineWidthAt(float3(at.x, placed.airHeight + 0.6, at.y), _OutlineWidth);
                 float3 world = AgentWorld(input, width, state, agentIndex, active, variation, localNormal);
-                if (_ModelEnabled < 0.5 || _OutlineWidth <= 0.0) world.y = -100000.0;
-                OutlineVaryings output;
                 output.position = HeldClipPos(world, input.held);
                 output.active = active;
                 return output;
@@ -315,7 +332,6 @@ Shader "TowerDefense/HordeIndirect"
 
             fixed4 FragOutline(OutlineVaryings input) : SV_Target
             {
-                clip(input.active - 0.5);
                 return _OutlineColor;
             }
 

@@ -77,6 +77,8 @@ namespace TowerDefense.Runtime
             public float AirHeight;
             public float AirSpeed;
             public float LandingTimer;
+            // Metres walked pressed to a road edge (HordeSimulation.compute IntegrateXpbdBody).
+            public float EdgeWalk;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -348,8 +350,17 @@ namespace TowerDefense.Runtime
         private float MaximumPairDiameter => collisionDiameter * 1.55f;
         private const float FarLodVisibilityScale = 1f;
         // Above this height players can read the authored limb animation. Below it,
-        // the compact LOD communicates only collective direction and travel.
-        private const float SimplifiedGoblinLodMaxHeightPixels = 96f;
+        // the compact LOD communicates only collective direction and travel. Measured on a 1080-pixel
+        // screen whatever the window, so a small editor view shows the same model as full screen.
+        // 48 (was 96, user 2026-11-18: from about 14 m the goblins looked low-detail): the full
+        // model now shows up to about 23 m away. TEMPORARY, watch the frame rate of big hordes.
+        private const float SimplifiedGoblinLodMaxHeightPixels = 48f;
+        // Below this (same measure as above) the tiny level is drawn (optimization, 2026-11-16: at
+        // 100 m the far level's vertices took most of the frame). 20 (was 48): beyond about 56 m.
+        private const float TinyGoblinLodMaxHeightPixels = 20f;
+        private const float LodReferenceScreenPixels = 1080f;
+        // For side-by-side clips only: draw without the tiny level (GoblinShowcaseCaptureTests, HORDE_NO_TINY).
+        internal static bool TinyLevelOffForTests;
         private const float GoblinOutlineMetres = 0.022f;
         // Full width from this many metres from the camera out, thinner closer in (HordeIndirect
         // OutlineWidthAt).
@@ -392,8 +403,8 @@ namespace TowerDefense.Runtime
         private readonly int finalizeXpbdPairDispatchKernel;
         private readonly int clearXpbdCorrectionsKernel;
         private readonly int solveXpbdPairsKernel;
-        private readonly int solveXpbdWallsKernel;
         private readonly int applyXpbdCorrectionsKernel;
+        private readonly int prepareXpbdBodiesKernel;
         private readonly int measureXpbdGridDiagnosticsKernel;
         private readonly int measureXpbdPairDiagnosticsKernel;
         private readonly int measureXpbdBodyDiagnosticsKernel;
@@ -432,6 +443,9 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer lodIndirectArgs;
         private readonly GraphicsBuffer variantIndirectArgs;
         private readonly GraphicsBuffer variantLodIndirectArgs;
+        // The third, tiny level of detail, goblins then brutes (optimization, 2026-11-16).
+        private readonly GraphicsBuffer tinyIndirectArgs;
+        private readonly GraphicsBuffer variantTinyIndirectArgs;
         private readonly GraphicsBuffer activeIndices;
         private readonly GraphicsBuffer activeDispatchArgs;
         private readonly GraphicsBuffer xpbdCellCounts;
@@ -445,6 +459,15 @@ namespace TowerDefense.Runtime
         private readonly GraphicsBuffer xpbdPairDispatchArgs;
         private readonly GraphicsBuffer auxiliary;
         private readonly GraphicsBuffer corpseArgs;
+        // Corpse culling (optimization, 2026-11-16): the slots on screen, far model then tiny, and
+        // the tiny model's draw arguments; null without the goblin model (every slot is drawn).
+        private readonly GraphicsBuffer corpseVisible;
+        private readonly GraphicsBuffer corpseTinyArgs;
+        private readonly Mesh corpseTinyMesh;
+        private readonly MaterialPropertyBlock corpseFarProperties = new();
+        private readonly MaterialPropertyBlock corpseTinyProperties = new();
+        private readonly int clearCorpseVisibilityKernel;
+        private readonly int cullCorpsesKernel;
         private readonly Material corpseMaterial;
         private readonly Material bruteCorpseMaterial;
         private readonly Mesh bruteCorpseMesh;
@@ -470,6 +493,10 @@ namespace TowerDefense.Runtime
         private int stunCountSlot;
         private readonly uint[] corpseDrawArgs = new uint[5];
         private readonly GraphicsBuffer xpbdCorrectionX;
+        // What the pair solve needs of each body, packed once a tick (PrepareXpbdBodies).
+        private readonly GraphicsBuffer xpbdBodyA;
+        private readonly GraphicsBuffer xpbdBodyB;
+        private readonly GraphicsBuffer xpbdBodyC;
         private readonly GraphicsBuffer xpbdCorrectionY;
         private readonly GraphicsBuffer xpbdCorrectionCounts;
         private readonly GraphicsBuffer xpbdWallLambdas;
@@ -483,6 +510,18 @@ namespace TowerDefense.Runtime
         private readonly MaterialPropertyBlock lodProperties = new();
         private readonly MaterialPropertyBlock variantProperties = new();
         private readonly MaterialPropertyBlock variantLodProperties = new();
+        private readonly MaterialPropertyBlock tinyProperties = new();
+        private readonly MaterialPropertyBlock variantTinyProperties = new();
+        private readonly Mesh tinyRenderMesh;
+        private readonly Mesh variantTinyRenderMesh;
+        // The tiny goblins' and brutes' shadows, from the fourth level (GoblinModel.Shadow). Their
+        // draw arguments follow the tiny ones in the same buffers (from TinyShadowArgsOffset), the
+        // visible count written to both by CullVisible.
+        private readonly Mesh tinyShadowMesh;
+        private readonly Mesh variantTinyShadowMesh;
+        private const int TinyShadowArgsOffset = 5 * sizeof(uint);
+        private readonly MaterialPropertyBlock tinyShadowProperties = new();
+        private readonly MaterialPropertyBlock variantTinyShadowProperties = new();
         private readonly Mesh lowDetailMesh;
         private readonly bool hasGoblinModel;
         private readonly Mesh stableRenderMesh;
@@ -493,6 +532,8 @@ namespace TowerDefense.Runtime
         private readonly uint[] lodDrawArgs = new uint[5];
         private readonly uint[] variantDrawArgs = new uint[5];
         private readonly uint[] variantLodDrawArgs = new uint[5];
+        private readonly uint[] tinyDrawArgs = new uint[10];
+        private readonly uint[] variantTinyDrawArgs = new uint[10];
         private readonly AgentState[] singleStateUpload = new AgentState[1];
         private readonly Vector4[] singleControlUpload = new Vector4[1];
         private readonly List<PendingTargetQuery> pendingTargetQueries = new(MaxTargetQueries);
@@ -587,6 +628,32 @@ namespace TowerDefense.Runtime
             movementSpeedMultiplier = Mathf.Max(0f, multiplier);
         }
 
+        /// <summary>
+        /// The factor that makes a lone body's steady walking speed equal its authored speed: each
+        /// tick moves the velocity a share a of the way to the desired one and then damps it by
+        /// 1 + k dt, so it settles at a / (a + k dt) of the desired speed.
+        /// </summary>
+        public float FullSpeedFactor
+        {
+            get
+            {
+                var profile = solverProfile != null ? solverProfile : CrowdSolverProfile.Default;
+                var step = profile.FixedStep;
+                var share = 1f - Mathf.Exp(-Mathf.Max(0.1f, profile.propulsionAcceleration) * step);
+                return (share + Mathf.Max(0.01f, profile.velocityDamping) * step) / share;
+            }
+        }
+
+        /// <summary>
+        /// Edge walking: a body pressed to a road edge keeps to it for <paramref name="metres"/>
+        /// and then steers back until it is <paramref name="centreDistance"/> from the edge. 0 is off.
+        /// </summary>
+        public void SetEdgeWalk(float metres, float centreDistance)
+        {
+            compute.SetFloat("_EdgeWalkBeforeCentre", Mathf.Max(0f, metres));
+            compute.SetFloat("_EdgeCentreDistance", Mathf.Max(0f, centreDistance));
+        }
+
         /// <summary>Applies the one fixed-step crowd contract used by every level.</summary>
         public void SetCrowdSolverProfile(CrowdSolverProfile profile)
         {
@@ -673,6 +740,8 @@ namespace TowerDefense.Runtime
             {
                 stableRenderMesh = goblin.Near.Mesh;
                 lowDetailMesh = goblin.Far.Mesh;
+                tinyRenderMesh = goblin.Tiny.Mesh;
+                tinyShadowMesh = goblin.Shadow.Mesh;
             }
             // The Orc Brute's own model (user, 2026-11-14), drawn in the second pair of lists.
             GoblinModel brute = null;
@@ -681,6 +750,8 @@ namespace TowerDefense.Runtime
             {
                 variantRenderMesh = brute.Near.Mesh;
                 variantLodRenderMesh = brute.Far.Mesh;
+                variantTinyRenderMesh = brute.Tiny.Mesh;
+                variantTinyShadowMesh = brute.Shadow.Mesh;
             }
             // Greybox placeholders: the horde reads as one neutral value; slow,
             // rare and speed bands differ only in brightness.
@@ -696,6 +767,10 @@ namespace TowerDefense.Runtime
             lodProperties.SetFloat("_LightingVariation", 1f);
             variantProperties.SetFloat("_LightingVariation", 1f);
             variantLodProperties.SetFloat("_LightingVariation", 1f);
+            tinyProperties.SetFloat("_LightingVariation", 1f);
+            tinyShadowProperties.SetFloat("_LightingVariation", 1f);
+            variantTinyProperties.SetFloat("_LightingVariation", 1f);
+            variantTinyShadowProperties.SetFloat("_LightingVariation", 1f);
             properties.SetFloat("_VisualScaleMultiplier", 1f);
             // The low-poly model takes fewer pixels at distance. A modest visual
             // compensation preserves a readable crowd without increasing physics
@@ -703,6 +778,10 @@ namespace TowerDefense.Runtime
             lodProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
             variantProperties.SetFloat("_VisualScaleMultiplier", 1f);
             variantLodProperties.SetFloat("_VisualScaleMultiplier", 1f);
+            tinyProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+            tinyShadowProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+            variantTinyProperties.SetFloat("_VisualScaleMultiplier", 1f);
+            variantTinyShadowProperties.SetFloat("_VisualScaleMultiplier", 1f);
             if (hasGoblinModel)
             {
                 material.SetFloat("_ModelEnabled", 1f);
@@ -721,6 +800,10 @@ namespace TowerDefense.Runtime
                 variantProperties.SetFloat("_OutlineWidth", GoblinOutlineMetres);
                 lodProperties.SetFloat("_OutlineWidth", 0f);
                 variantLodProperties.SetFloat("_OutlineWidth", 0f);
+                tinyProperties.SetFloat("_OutlineWidth", 0f);
+                tinyShadowProperties.SetFloat("_OutlineWidth", 0f);
+                variantTinyProperties.SetFloat("_OutlineWidth", 0f);
+                variantTinyShadowProperties.SetFloat("_OutlineWidth", 0f);
                 if (airShadowMaterial != null)
                 {
                     airShadowMaterial.SetFloat("_ModelEnabled", 1f);
@@ -733,10 +816,14 @@ namespace TowerDefense.Runtime
                 lodProperties.SetTexture("_PoseTex", goblin.Far.Poses);
                 variantProperties.SetTexture("_PoseTex", goblin.Near.Poses);
                 variantLodProperties.SetTexture("_PoseTex", goblin.Far.Poses);
+                tinyProperties.SetTexture("_PoseTex", goblin.Tiny.Poses);
+                tinyShadowProperties.SetTexture("_PoseTex", goblin.Shadow.Poses);
+                variantTinyProperties.SetTexture("_PoseTex", goblin.Tiny.Poses);
+                variantTinyShadowProperties.SetTexture("_PoseTex", goblin.Shadow.Poses);
             }
             if (hasBruteModel)
             {
-                foreach (var block in new[] { variantProperties, variantLodProperties })
+                foreach (var block in new[] { variantProperties, variantLodProperties, variantTinyProperties })
                 {
                     block.SetTexture("_MainTex", brute.Texture);
                     block.SetFloat("_StrideMetres", brute.StrideMetres);
@@ -763,6 +850,10 @@ namespace TowerDefense.Runtime
                 variantProperties.SetTexture("_PoseTex", brute.Near.Poses);
                 variantLodProperties.SetTexture("_PoseTex", brute.Far.Poses);
                 variantLodProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+                variantTinyProperties.SetTexture("_PoseTex", brute.Tiny.Poses);
+                variantTinyShadowProperties.SetTexture("_PoseTex", brute.Shadow.Poses);
+                variantTinyProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
+                variantTinyShadowProperties.SetFloat("_VisualScaleMultiplier", FarLodVisibilityScale);
             }
             clearKernel = compute.FindKernel("ClearGrid");
             spawnKernel = compute.FindKernel("ApplySpawns");
@@ -778,6 +869,8 @@ namespace TowerDefense.Runtime
             unlimitedAreaEffectsKernel = compute.FindKernel("ApplyUnlimitedAreaEffects");
             clearVisibilityKernel = compute.FindKernel("ClearVisibility");
             cullVisibleKernel = compute.FindKernel("CullVisible");
+            clearCorpseVisibilityKernel = compute.FindKernel("ClearCorpseVisibility");
+            cullCorpsesKernel = compute.FindKernel("CullCorpses");
             finalizeActiveKernel = compute.FindKernel("FinalizeActiveDispatch");
             applyDynamicTargetCommandsKernel = compute.FindKernel("ApplyDynamicTargetCommands");
             clearDynamicTargetGridKernel = compute.FindKernel("ClearDynamicTargetGrid");
@@ -796,8 +889,8 @@ namespace TowerDefense.Runtime
             finalizeXpbdPairDispatchKernel = compute.FindKernel("FinalizeXpbdPairDispatch");
             clearXpbdCorrectionsKernel = compute.FindKernel("ClearXpbdCorrections");
             solveXpbdPairsKernel = compute.FindKernel("SolveXpbdPairs");
-            solveXpbdWallsKernel = compute.FindKernel("SolveXpbdWalls");
             applyXpbdCorrectionsKernel = compute.FindKernel("ApplyXpbdCorrections");
+            prepareXpbdBodiesKernel = compute.FindKernel("PrepareXpbdBodies");
             measureXpbdGridDiagnosticsKernel = compute.FindKernel("MeasureXpbdGridDiagnostics");
             measureXpbdPairDiagnosticsKernel = compute.FindKernel("MeasureXpbdPairDiagnostics");
             measureXpbdBodyDiagnosticsKernel = compute.FindKernel("MeasureXpbdBodyDiagnostics");
@@ -836,10 +929,12 @@ namespace TowerDefense.Runtime
             dynamicTargetLastAttacker = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MaxDynamicTargets, sizeof(uint));
             // Four packed lists: primary near/far, then secondary near/far. Packing
             // avoids exceeding D3D11's eight-UAV limit in the visibility kernel.
-            visibleIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity * 4, sizeof(uint));
+            visibleIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity * 6, sizeof(uint));
             lodIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
             variantIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
             variantLodIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+            tinyIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 10, sizeof(uint));
+            variantTinyIndirectArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 10, sizeof(uint));
             activeIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             activeDispatchArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 3, sizeof(uint));
             xpbdBlockCount = DivideRoundUp(cellCount, XpbdScanGroupSize);
@@ -892,6 +987,24 @@ namespace TowerDefense.Runtime
                     corpseMaterial.SetFloat("_OutlineFullAt", OutlineFullAt);
                     corpseMaterial.SetFloat("_GoblinHeight", goblin.Near.Mesh.bounds.max.y);
                     SetCorpseMesh(corpseMesh, 0f, 1f);
+                    corpseTinyMesh = goblin.Tiny.Mesh;
+                    corpseVisible = new GraphicsBuffer(GraphicsBuffer.Target.Structured, CorpseCapacity * 2, sizeof(uint));
+                    corpseTinyArgs = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 5, sizeof(uint));
+                    corpseTinyArgs.SetData(new[]
+                    {
+                        corpseTinyMesh.GetIndexCount(0), 0u, corpseTinyMesh.GetIndexStart(0), (uint)corpseTinyMesh.GetBaseVertex(0), 0u
+                    });
+                    // On the material too, so every draw with it (the brutes' ring) has a buffer bound.
+                    corpseMaterial.SetBuffer("_CorpseVisible", corpseVisible);
+                    corpseMaterial.SetFloat("_CorpseCulled", 0f);
+                    corpseFarProperties.SetBuffer("_CorpseVisible", corpseVisible);
+                    corpseFarProperties.SetInt("_CorpseVisibleOffset", 0);
+                    corpseFarProperties.SetFloat("_CorpseCulled", 1f);
+                    corpseTinyProperties.SetBuffer("_CorpseVisible", corpseVisible);
+                    corpseTinyProperties.SetInt("_CorpseVisibleOffset", CorpseCapacity);
+                    corpseTinyProperties.SetFloat("_CorpseCulled", 1f);
+                    corpseTinyProperties.SetTexture("_PoseTex", goblin.Tiny.Poses);
+                    corpseTinyProperties.SetFloat("_OutlineWidth", 0f);
                 }
 
                 if (hasBruteModel)
@@ -953,6 +1066,9 @@ namespace TowerDefense.Runtime
             compute.SetInt("_CorpseCapacity", CorpseCapacity);
             compute.SetInt("_CorpseBase", corpseBase);
             xpbdCorrectionX = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
+            xpbdBodyA = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
+            xpbdBodyB = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
+            xpbdBodyC = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float) * 4);
             xpbdCorrectionY = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(int));
             xpbdCorrectionCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(uint));
             xpbdWallLambdas = new GraphicsBuffer(GraphicsBuffer.Target.Structured, capacity, sizeof(float));
@@ -975,6 +1091,15 @@ namespace TowerDefense.Runtime
             dynamicTargets.SetData(new DynamicTargetState[MaxDynamicTargets]);
             dynamicTargetActiveCount.SetData(new uint[1]);
             xpbdDeepContactTicks.SetData(new uint[capacity]);
+            // A new GPU buffer holds whatever the memory held before, often a destroyed buffer's data
+            // (measured 2026-11-17: 39 times in 40). These are read before the first tick writes
+            // them: a wave begun between Update and LateUpdate (a test's coroutine, a button) culls in
+            // LateUpdate with activeDispatchArgs, and stale group counts in it hung the graphics card
+            // ("d3d12: failed to wait for fence", a driver reset).
+            activeDispatchArgs.SetData(new uint[] { 0u, 1u, 1u });
+            xpbdPairDispatchArgs.SetData(new uint[] { 0u, 1u, 1u });
+            diagnostics.SetData(new uint[DiagnosticsCount]);
+            activeIndices.SetData(new uint[capacity]);
             for (var slot = 0; slot < MaxDynamicTargets; slot++)
             {
                 freeDynamicTargetSlots.Enqueue(slot);
@@ -1006,6 +1131,28 @@ namespace TowerDefense.Runtime
             }
             variantIndirectArgs.SetData(variantDrawArgs);
             variantLodIndirectArgs.SetData(variantLodDrawArgs);
+            if (tinyRenderMesh != null)
+            {
+                tinyDrawArgs[0] = tinyRenderMesh.GetIndexCount(0);
+                tinyDrawArgs[2] = tinyRenderMesh.GetIndexStart(0);
+                tinyDrawArgs[3] = (uint)tinyRenderMesh.GetBaseVertex(0);
+                var shadow = tinyShadowMesh != null ? tinyShadowMesh : tinyRenderMesh;
+                tinyDrawArgs[5] = shadow.GetIndexCount(0);
+                tinyDrawArgs[7] = shadow.GetIndexStart(0);
+                tinyDrawArgs[8] = (uint)shadow.GetBaseVertex(0);
+            }
+            if (variantTinyRenderMesh != null)
+            {
+                variantTinyDrawArgs[0] = variantTinyRenderMesh.GetIndexCount(0);
+                variantTinyDrawArgs[2] = variantTinyRenderMesh.GetIndexStart(0);
+                variantTinyDrawArgs[3] = (uint)variantTinyRenderMesh.GetBaseVertex(0);
+                var shadow = variantTinyShadowMesh != null ? variantTinyShadowMesh : variantTinyRenderMesh;
+                variantTinyDrawArgs[5] = shadow.GetIndexCount(0);
+                variantTinyDrawArgs[7] = shadow.GetIndexStart(0);
+                variantTinyDrawArgs[8] = (uint)shadow.GetBaseVertex(0);
+            }
+            tinyIndirectArgs.SetData(tinyDrawArgs);
+            variantTinyIndirectArgs.SetData(variantTinyDrawArgs);
 
             var center = field.Origin + new Vector3(field.Width * field.CellSize * 0.5f, 0f, field.Height * field.CellSize * 0.5f);
             drawBounds = new Bounds(center, new Vector3(field.Width * field.CellSize + 4f, 20f, field.Height * field.CellSize + 4f));
@@ -1041,11 +1188,22 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(finalizeActiveKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(finalizeActiveKernel, "_ActiveDispatchArgs", activeDispatchArgs);
             compute.SetBuffer(finalizeActiveKernel, "_CorpseDrawArgs", corpseArgs);
+            compute.SetInt("_CorpseCulling", corpseVisible != null ? 1 : 0);
+            if (corpseVisible != null)
+            {
+                compute.SetBuffer(clearCorpseVisibilityKernel, "_CorpseDrawArgs", corpseArgs);
+                compute.SetBuffer(clearCorpseVisibilityKernel, "_CorpseTinyDrawArgs", corpseTinyArgs);
+                compute.SetBuffer(cullCorpsesKernel, "_CorpseDrawArgs", corpseArgs);
+                compute.SetBuffer(cullCorpsesKernel, "_CorpseTinyDrawArgs", corpseTinyArgs);
+                compute.SetBuffer(cullCorpsesKernel, "_CorpseVisible", corpseVisible);
+                compute.SetBuffer(cullCorpsesKernel, "_Aux", auxiliary);
+            }
             compute.SetBuffer(finalizeActiveKernel, "_DustDrawArgs", dustArgs);
             compute.SetBuffer(finalizeActiveKernel, "_Aux", auxiliary);
             compute.SetBuffer(simulateKernel, "_Controls", controls);
             // The pair solve reads each body's speed, to let a faster one go round a slower one.
             compute.SetBuffer(solveXpbdPairsKernel, "_Controls", controls);
+            compute.SetBuffer(prepareXpbdBodiesKernel, "_Controls", controls);
             compute.SetBuffer(simulateKernel, "_Impulses", impulses);
             foreach (var kernel in new[] { simulateKernel, projectileKernel, unlimitedAreaEffectsKernel, solveXpbdPairsKernel,
                          damageKernel, areaEffectKernel })
@@ -1070,6 +1228,8 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(targetQueryKernel, "_TargetQueries", targetQueries);
             compute.SetBuffer(targetQueryKernel, "_TargetResults", targetResults);
             compute.SetBuffer(targetQueryKernel, "_Controls", controls);
+            // "First" and "Last" go by the distance left along the road (the flow field).
+            compute.SetBuffer(targetQueryKernel, "_FlowData", flowData);
             compute.SetBuffer(damageKernel, "_DamageCommands", damageCommands);
             compute.SetBuffer(damageKernel, "_HordeEvents", hordeEvents);
             compute.SetBuffer(damageKernel, "_EventCount", eventCount);
@@ -1125,11 +1285,19 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(clearVisibilityKernel, "_LodIndirectArgs", lodIndirectArgs);
             compute.SetBuffer(clearVisibilityKernel, "_VariantIndirectArgs", variantIndirectArgs);
             compute.SetBuffer(clearVisibilityKernel, "_VariantLodIndirectArgs", variantLodIndirectArgs);
+            compute.SetBuffer(clearVisibilityKernel, "_TinyIndirectArgs", tinyIndirectArgs);
+            compute.SetBuffer(clearVisibilityKernel, "_VariantTinyIndirectArgs", variantTinyIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_IndirectArgs", indirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VisibleIndices", visibleIndices);
             compute.SetBuffer(cullVisibleKernel, "_LodIndirectArgs", lodIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VariantIndirectArgs", variantIndirectArgs);
             compute.SetBuffer(cullVisibleKernel, "_VariantLodIndirectArgs", variantLodIndirectArgs);
+            compute.SetBuffer(cullVisibleKernel, "_TinyIndirectArgs", tinyIndirectArgs);
+            compute.SetBuffer(cullVisibleKernel, "_VariantTinyIndirectArgs", variantTinyIndirectArgs);
+            // The tiny level only when every model drawn has one (or brutes would vanish).
+            compute.SetFloat("_TinyLodMaxHeightPixels",
+                !TinyLevelOffForTests && tinyRenderMesh != null && (!hasBruteModel || variantTinyRenderMesh != null)
+                    ? TinyGoblinLodMaxHeightPixels : 0f);
             // 1: brutes (BruteBodyFlag) go to the second pair of lists, drawn with their own model.
             compute.SetInt("_GoblinVariantCulling", hasBruteModel ? 1 : 0);
             compute.SetInt("_VisibleListCapacity", capacity);
@@ -1137,6 +1305,10 @@ namespace TowerDefense.Runtime
             lodProperties.SetInt("_VisibleIndexOffset", capacity);
             variantProperties.SetInt("_VisibleIndexOffset", capacity * 2);
             variantLodProperties.SetInt("_VisibleIndexOffset", capacity * 3);
+            tinyProperties.SetInt("_VisibleIndexOffset", capacity * 4);
+            tinyShadowProperties.SetInt("_VisibleIndexOffset", capacity * 4);
+            variantTinyProperties.SetInt("_VisibleIndexOffset", capacity * 5);
+            variantTinyShadowProperties.SetInt("_VisibleIndexOffset", capacity * 5);
             compute.SetBuffer(cullVisibleKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(cullVisibleKernel, "_ActiveIndicesRead", activeIndices);
             compute.SetBuffer(cullVisibleKernel, "_DiagnosticsRead", diagnostics);
@@ -1146,11 +1318,20 @@ namespace TowerDefense.Runtime
             SetCrowdSolverProfile(CrowdSolverProfile.Default);
             compute.SetInt("_XpbdUsePerBodyRadius", 0);
             foreach (var kernel in new[] { countXpbdGridKernel, scatterXpbdGridKernel, buildXpbdPairsKernel,
-                         clearXpbdCorrectionsKernel, solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+                         clearXpbdCorrectionsKernel, applyXpbdCorrectionsKernel, prepareXpbdBodiesKernel })
             {
                 compute.SetBuffer(kernel, "_ActiveIndicesRead", activeIndices);
                 compute.SetBuffer(kernel, "_DiagnosticsRead", diagnostics);
             }
+            foreach (var kernel in new[] { prepareXpbdBodiesKernel, applyXpbdCorrectionsKernel })
+            {
+                compute.SetBuffer(kernel, "_XpbdBodyA", xpbdBodyA);
+                compute.SetBuffer(kernel, "_XpbdBodyB", xpbdBodyB);
+                compute.SetBuffer(kernel, "_XpbdBodyC", xpbdBodyC);
+            }
+            compute.SetBuffer(solveXpbdPairsKernel, "_XpbdBodyARead", xpbdBodyA);
+            compute.SetBuffer(solveXpbdPairsKernel, "_XpbdBodyBRead", xpbdBodyB);
+            compute.SetBuffer(solveXpbdPairsKernel, "_XpbdBodyCRead", xpbdBodyC);
             foreach (var kernel in new[] { clearXpbdGridKernel, countXpbdGridKernel, scanXpbdGridBlocksKernel,
                          scanXpbdGridBlockTotalsKernel, addXpbdGridBlockOffsetsKernel, finalizeXpbdGridKernel,
                          scatterXpbdGridKernel, buildXpbdPairsKernel })
@@ -1180,7 +1361,7 @@ namespace TowerDefense.Runtime
                 compute.SetBuffer(kernel, "_XpbdPairDispatchArgs", xpbdPairDispatchArgs);
             }
             foreach (var kernel in new[] { clearXpbdCorrectionsKernel, solveXpbdPairsKernel,
-                         solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+                         applyXpbdCorrectionsKernel })
             {
                 compute.SetBuffer(kernel, "_XpbdCorrectionX", xpbdCorrectionX);
                 compute.SetBuffer(kernel, "_XpbdCorrectionY", xpbdCorrectionY);
@@ -1199,14 +1380,11 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(buildXpbdPairsKernel, "_DynamicTargetActiveCount", dynamicTargetActiveCount);
             compute.SetBuffer(solveXpbdPairsKernel, "_StatesRead", readStates);
             compute.SetBuffer(solveXpbdPairsKernel, "_DynamicTargetsRead", dynamicTargets);
-            compute.SetBuffer(solveXpbdWallsKernel, "_StatesRead", readStates);
             compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesRead", readStates);
             compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesWrite", writeStates);
-            foreach (var kernel in new[] { solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
-            {
-                compute.SetBuffer(kernel, "_FlowData", flowData);
-                compute.SetBuffer(kernel, "_FlowVectors", flowVectors);
-            }
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_FlowData", flowData);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_Controls", controls);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_FlowVectors", flowVectors);
             compute.SetBuffer(measureXpbdGridDiagnosticsKernel, "_XpbdCellCounts", xpbdCellCounts);
             compute.SetBuffer(measureXpbdGridDiagnosticsKernel, "_Diagnostics", diagnostics);
             compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_XpbdPairs", xpbdPairs);
@@ -1604,6 +1782,9 @@ namespace TowerDefense.Runtime
             };
         }
 
+        // Tests only: called between the parts of a tick, to time each part on the graphics card.
+        internal static Action<string> ProfileMarkForTests;
+
         public void Dispatch(
             float deltaTime,
             Vector4[] controlData,
@@ -1619,6 +1800,7 @@ namespace TowerDefense.Runtime
             }
 
             simulationSeconds += Mathf.Max(0f, deltaTime);
+            ProfileMarkForTests?.Invoke("before tick");
 
             var uploadCount = Mathf.Min(activeHighWaterMark, capacity);
             if (controlData != null && uploadCount > 0)
@@ -1652,6 +1834,7 @@ namespace TowerDefense.Runtime
             compute.Dispatch(buildDynamicTargetGridKernel, DivideRoundUp(MaxDynamicTargets, ThreadGroupSize), 1, 1);
             DispatchDamageCommands();
             DispatchStatusCommands();
+            ProfileMarkForTests?.Invoke("targets, damage, status");
             compute.SetBuffer(simulateKernel, "_StatesInput", readStates);
             compute.SetBuffer(simulateKernel, "_StatesRead", readStates);
             compute.SetBuffer(simulateKernel, "_StatesWrite", writeStates);
@@ -1659,17 +1842,20 @@ namespace TowerDefense.Runtime
             compute.Dispatch(clearDiagnosticsKernel, 1, 1, 1);
             compute.Dispatch(gridKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
             compute.Dispatch(finalizeActiveKernel, 1, 1, 1);
+            ProfileMarkForTests?.Invoke("grid");
             DispatchProjectiles();
             AdvanceShockwaves(Mathf.Min(deltaTime, 0.1f));
             AdvanceBombWaves(Mathf.Min(deltaTime, 0.1f));
             DispatchAreaEffects();
             DispatchTargetQueries();
+            ProfileMarkForTests?.Invoke("projectiles, area effects, queries");
             // Queries observe the pre-movement state. Bound the cached answer by
             // every fixed-tick displacement before CPU consumption.
             motionTravelBudget += maximumMotionDistance;
             compute.DispatchIndirect(simulateKernel, activeDispatchArgs);
             compute.SetBuffer(resolveDynamicTargetDamageKernel, "_StatesInput", writeStates);
             compute.Dispatch(resolveDynamicTargetDamageKernel, DivideRoundUp(MaxDynamicTargets, ThreadGroupSize), 1, 1);
+            ProfileMarkForTests?.Invoke("simulate");
             (readStates, writeStates) = (writeStates, readStates);
             ResolveXpbdContacts(
                 uploadCount,
@@ -1699,10 +1885,13 @@ namespace TowerDefense.Runtime
         private void ResolveXpbdContacts(int uploadCount, int iterationCount, bool measureOverlaps)
         {
             BuildXpbdGrid(uploadCount);
+            ProfileMarkForTests?.Invoke("xpbd grid");
             BindXpbdStateBuffers();
             compute.Dispatch(clearXpbdPairsKernel, 1, 1, 1);
             compute.Dispatch(buildXpbdPairsKernel, Mathf.Max(1, DivideRoundUp(uploadCount, ThreadGroupSize)), 1, 1);
             compute.Dispatch(finalizeXpbdPairDispatchKernel, 1, 1, 1);
+            compute.DispatchIndirect(prepareXpbdBodiesKernel, activeDispatchArgs);
+            ProfileMarkForTests?.Invoke("xpbd pairs");
 
             LastContactIterationCount = iterationCount;
             for (var iteration = 0; iteration < iterationCount; iteration++)
@@ -1713,13 +1902,20 @@ namespace TowerDefense.Runtime
                 BindXpbdStateBuffers();
                 compute.SetInt("_XpbdResetLambdas", iteration == 0 ? 1 : 0);
                 compute.SetInt("_XpbdFinalizePresentation", iteration == iterationCount - 1 ? 1 : 0);
-                compute.DispatchIndirect(clearXpbdCorrectionsKernel, activeDispatchArgs);
+                // Only the first pass is cleared here: each pass's apply clears for the next, and
+                // adds the road edge's correction itself (optimization 2026-11-17).
+                if (iteration == 0)
+                {
+                    compute.DispatchIndirect(clearXpbdCorrectionsKernel, activeDispatchArgs);
+                    ProfileMarkForTests?.Invoke("xpbd: clear");
+                }
                 compute.DispatchIndirect(solveXpbdPairsKernel, xpbdPairDispatchArgs);
-                compute.DispatchIndirect(solveXpbdWallsKernel, activeDispatchArgs);
+                ProfileMarkForTests?.Invoke("xpbd: pairs");
                 compute.DispatchIndirect(applyXpbdCorrectionsKernel, activeDispatchArgs);
-                (readStates, writeStates) = (writeStates, readStates);
+                ProfileMarkForTests?.Invoke("xpbd: apply");
             }
 
+            ProfileMarkForTests?.Invoke($"xpbd solve x{iterationCount}");
             if (measureOverlaps)
             {
                 // Rebuild the capped gameplay-query/render grid, but measure
@@ -1732,6 +1928,7 @@ namespace TowerDefense.Runtime
                 compute.SetBuffer(measureXpbdBodyDiagnosticsKernel, "_StatesRead", readStates);
                 compute.DispatchIndirect(measureXpbdBodyDiagnosticsKernel, activeDispatchArgs);
                 compute.DispatchIndirect(finalizeXpbdPersistentContactsKernel, activeDispatchArgs);
+                ProfileMarkForTests?.Invoke("contact grid, diagnostics");
             }
         }
 
@@ -1750,11 +1947,14 @@ namespace TowerDefense.Runtime
         private void BindXpbdStateBuffers()
         {
             foreach (var kernel in new[] { countXpbdGridKernel, scatterXpbdGridKernel, buildXpbdPairsKernel,
-                         solveXpbdPairsKernel, solveXpbdWallsKernel, applyXpbdCorrectionsKernel })
+                         solveXpbdPairsKernel, prepareXpbdBodiesKernel })
             {
                 compute.SetBuffer(kernel, "_StatesRead", readStates);
             }
-            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesWrite", writeStates);
+            // The passes correct the states in place (ApplyXpbdCorrections); the other buffer is
+            // bound only because the kernel declares _StatesRead.
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesRead", writeStates);
+            compute.SetBuffer(applyXpbdCorrectionsKernel, "_StatesWrite", readStates);
             compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_StatesRead", readStates);
             compute.SetBuffer(measureXpbdPairDiagnosticsKernel, "_DynamicTargetsRead", dynamicTargets);
         }
@@ -2150,6 +2350,11 @@ namespace TowerDefense.Runtime
             compute.SetBuffer(cullVisibleKernel, "_StatesInput", readStates);
             compute.Dispatch(clearVisibilityKernel, 1, 1, 1);
             compute.DispatchIndirect(cullVisibleKernel, activeDispatchArgs);
+            if (corpseVisible != null)
+            {
+                compute.Dispatch(clearCorpseVisibilityKernel, 1, 1, 1);
+                compute.Dispatch(cullCorpsesKernel, DivideRoundUp(CorpseCapacity, ThreadGroupSize), 1, 1);
+            }
         }
 
         public void SetPresentationInterpolation(float alpha)
@@ -2178,6 +2383,14 @@ namespace TowerDefense.Runtime
             variantProperties.SetBuffer("_VisibleIndices", visibleIndices);
             variantLodProperties.SetBuffer("_AgentStates", readStates);
             variantLodProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            tinyProperties.SetBuffer("_AgentStates", readStates);
+            tinyShadowProperties.SetBuffer("_AgentStates", readStates);
+            tinyProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            tinyShadowProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            variantTinyProperties.SetBuffer("_AgentStates", readStates);
+            variantTinyShadowProperties.SetBuffer("_AgentStates", readStates);
+            variantTinyProperties.SetBuffer("_VisibleIndices", visibleIndices);
+            variantTinyShadowProperties.SetBuffer("_VisibleIndices", visibleIndices);
             if (corpseMaterial != null)
             {
                 corpseMaterial.SetFloat("_CorpseClock", corpseClock - (1f - presentationAlpha) * lastSimulationDelta);
@@ -2198,10 +2411,15 @@ namespace TowerDefense.Runtime
                     drawBounds,
                     corpseArgs,
                     0,
-                    null,
+                    corpseVisible != null ? corpseFarProperties : null,
                     ShadowCastingMode.Off,
                     false,
                     layer);
+                if (corpseVisible != null)
+                {
+                    Graphics.DrawMeshInstancedIndirect(corpseTinyMesh, 0, corpseMaterial, drawBounds, corpseTinyArgs, 0,
+                        corpseTinyProperties, ShadowCastingMode.Off, false, layer);
+                }
                 if (bruteCorpseMaterial != null)
                 {
                     bruteCorpseMaterial.SetFloat("_CorpseClock", corpseClock - (1f - presentationAlpha) * lastSimulationDelta);
@@ -2244,6 +2462,16 @@ namespace TowerDefense.Runtime
                 Graphics.DrawMeshInstancedIndirect(variantLodRenderMesh, 0, material, drawBounds, variantLodIndirectArgs, 0,
                     variantLodProperties, ShadowCastingMode.Off, false, layer);
             }
+            if (tinyRenderMesh != null)
+            {
+                Graphics.DrawMeshInstancedIndirect(tinyRenderMesh, 0, material, drawBounds, tinyIndirectArgs, 0,
+                    tinyProperties, ShadowCastingMode.Off, false, layer);
+            }
+            if (variantTinyRenderMesh != null)
+            {
+                Graphics.DrawMeshInstancedIndirect(variantTinyRenderMesh, 0, material, drawBounds, variantTinyIndirectArgs, 0,
+                    variantTinyProperties, ShadowCastingMode.Off, false, layer);
+            }
             if (airShadowMaterial != null)
             {
                 Graphics.DrawMeshInstancedIndirect(stableRenderMesh, 0, airShadowMaterial, drawBounds, indirectArgs, 0, properties,
@@ -2257,6 +2485,17 @@ namespace TowerDefense.Runtime
                     Graphics.DrawMeshInstancedIndirect(variantLodRenderMesh, 0, airShadowMaterial, drawBounds, variantLodIndirectArgs, 0,
                         variantLodProperties, ShadowCastingMode.Off, false, layer);
                 }
+                if (tinyRenderMesh != null)
+                {
+                    Graphics.DrawMeshInstancedIndirect(tinyShadowMesh != null ? tinyShadowMesh : tinyRenderMesh, 0, airShadowMaterial,
+                        drawBounds, tinyIndirectArgs, TinyShadowArgsOffset, tinyShadowProperties, ShadowCastingMode.Off, false, layer);
+                }
+                if (variantTinyRenderMesh != null)
+                {
+                    Graphics.DrawMeshInstancedIndirect(variantTinyShadowMesh != null ? variantTinyShadowMesh : variantTinyRenderMesh, 0,
+                        airShadowMaterial, drawBounds, variantTinyIndirectArgs, TinyShadowArgsOffset, variantTinyShadowProperties,
+                        ShadowCastingMode.Off, false, layer);
+                }
             }
         }
 
@@ -2267,6 +2506,10 @@ namespace TowerDefense.Runtime
             lodProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
             variantProperties.SetFloat("_VisualScaleMultiplier", multiplier);
             variantLodProperties.SetFloat("_VisualScaleMultiplier", multiplier * (hasBruteModel ? FarLodVisibilityScale : 1f));
+            tinyProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
+            tinyShadowProperties.SetFloat("_VisualScaleMultiplier", multiplier * FarLodVisibilityScale);
+            variantTinyProperties.SetFloat("_VisualScaleMultiplier", multiplier * (hasBruteModel ? FarLodVisibilityScale : 1f));
+            variantTinyShadowProperties.SetFloat("_VisualScaleMultiplier", multiplier * (hasBruteModel ? FarLodVisibilityScale : 1f));
             if (corpseMaterial != null) corpseMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
             if (bruteCorpseMaterial != null) bruteCorpseMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
             if (stunMarkMaterial != null) stunMarkMaterial.SetFloat("_VisualScaleMultiplier", multiplier);
@@ -2452,6 +2695,8 @@ namespace TowerDefense.Runtime
             lodIndirectArgs?.Dispose();
             variantIndirectArgs?.Dispose();
             variantLodIndirectArgs?.Dispose();
+            tinyIndirectArgs?.Dispose();
+            variantTinyIndirectArgs?.Dispose();
             activeIndices?.Dispose();
             xpbdCellCounts?.Dispose();
             xpbdCellOffsets?.Dispose();
@@ -2464,6 +2709,8 @@ namespace TowerDefense.Runtime
             xpbdPairDispatchArgs?.Dispose();
             auxiliary?.Dispose();
             corpseArgs?.Dispose();
+            corpseVisible?.Dispose();
+            corpseTinyArgs?.Dispose();
             dustArgs?.Dispose();
             if (dustMaterial != null) UnityEngine.Object.Destroy(dustMaterial);
             if (dustMesh != null) UnityEngine.Object.Destroy(dustMesh);
@@ -2475,6 +2722,9 @@ namespace TowerDefense.Runtime
             bruteCorpseArgs?.Dispose();
             if (airShadowMaterial != null) UnityEngine.Object.Destroy(airShadowMaterial);
             xpbdCorrectionX?.Dispose();
+            xpbdBodyA?.Dispose();
+            xpbdBodyB?.Dispose();
+            xpbdBodyC?.Dispose();
             xpbdCorrectionY?.Dispose();
             xpbdCorrectionCounts?.Dispose();
             xpbdWallLambdas?.Dispose();
@@ -2871,8 +3121,8 @@ namespace TowerDefense.Runtime
             compute.SetInt("_CullingEnabled", 1);
             compute.SetVector("_LodCameraPosition", new Vector4(cameraPosition.x, cameraPosition.z, 0f, 0f));
             compute.SetVector("_LodProjection", new Vector4(cameraPosition.y,
-                camera.orthographic ? camera.pixelHeight / (2f * camera.orthographicSize) :
-                    camera.pixelHeight / (2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f)),
+                camera.orthographic ? LodReferenceScreenPixels / (2f * camera.orthographicSize) :
+                    LodReferenceScreenPixels / (2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f)),
                 camera.orthographic ? 1f : 0f, SimplifiedGoblinLodMaxHeightPixels));
             compute.SetMatrix("_ViewProjection", projection * camera.worldToCameraMatrix);
         }

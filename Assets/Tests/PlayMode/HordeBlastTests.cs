@@ -220,7 +220,11 @@ namespace TowerDefense.Tests
             Assert.That(hurtFar, Is.InRange(0.1f, hurtNear * 0.85f), "Further out the wave should hurt less.");
             Assert.That(hurtBeyond, Is.Zero, "The wave hurt goblins beyond its reach.");
             Assert.That(pushedNear, Is.GreaterThan(1f), "The wave did not push the goblins near the core away.");
-            Assert.That(pushedNear, Is.GreaterThan(pushedFar), "The wave should push hardest near the core.");
+            // Not near against far here: packed in the jam, the goblins near the core cannot move,
+            // and in 52 runs the measured near and far pushes overlapped (4.3-4.9 against 2.7-5.2 m/s),
+            // failing now and then with nothing wrong (2026-11-17). The falloff itself is checked with
+            // goblins standing apart: GpuHordeTargetingTests.BombWave_PushesHarderNearTheCore.
+            Assert.That(pushedFar, Is.GreaterThan(0.5f), "The wave did not push the goblins 20-32 m out.");
         }
 
         [UnityTest, Explicit("Records blasts in a jammed road to Logs/Captures/HordeBlast.")]

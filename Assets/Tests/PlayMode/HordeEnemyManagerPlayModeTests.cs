@@ -179,7 +179,7 @@ namespace TowerDefense.Tests
                 foreach (var entry in level.wave.entries) cleanupObjects.Add(entry.enemy);
                 if (!level.useDataHordePrototype)
                 {
-                    Assert.That(level.id, Is.EqualTo("level_01").Or.EqualTo("level_03"),
+                    Assert.That(level.id, Is.EqualTo("level_03"),
                         "Only the individual-actor levels retain their special-role gameplay backend.");
                     continue;
                 }
@@ -206,7 +206,7 @@ namespace TowerDefense.Tests
                 manager.StopWave();
                 checkedLevels++;
             }
-            Assert.That(checkedLevels, Is.EqualTo(6), "Audit levels 2, 2.1, 4, 5, 6 and 7.");
+            Assert.That(checkedLevels, Is.EqualTo(7), "Audit levels 1 (GPU horde since 2026-11-17), 2, 2.1, 4, 5, 6 and 7.");
             Assert.That(CrowdSolverProfile.PositionIterations, Is.EqualTo(8));
         }
 

@@ -87,6 +87,20 @@ namespace TowerDefense.Runtime
             mapRoot = new GameObject("LevelMap");
             CreateGround(mapRoot.transform, level);
             var route = CreatePath(level, mapRoot.transform);
+            if (level != null && level.sceneryLayout == 1)
+            {
+                var size = level.groundSize;
+                var center = level.groundCenter;
+                LevelScenery.CreateLevelOne(mapRoot.transform, route,
+                    new Rect(center.x - size.x * 0.5f, center.z - size.z * 0.5f, size.x, size.z));
+            }
+
+            if (level != null && level.wallHealth > 0f && route.HasUsableRoute)
+            {
+                LevelWall.Create(mapRoot.transform, route, Mathf.Max(0f, route.TotalLength - level.wallDistanceFromEnd),
+                    level.wallHealth, level.roadWidth);
+            }
+
             ApplyLevelCamera(level);
             return route;
         }
@@ -300,6 +314,8 @@ namespace TowerDefense.Runtime
         // The former Level 1 wave (170 Goblin Runners and 45 Orc Brutes), for tests on the Level 1
         // road now that the level itself has no enemies.
         public WaveDefinition LevelOneTestWave { get; private set; }
+        // The former Level 1 road and settings, for the tests built on them (not a level of the game).
+        public LevelDefinition LevelOneTestLevel { get; private set; }
         // Not in any level yet: the fourth prehistoric map is still being designed.
         public EnemyDefinition PrehistoricBoss { get; private set; }
         public IReadOnlyList<LevelDefinition> Levels { get; private set; }
@@ -355,6 +371,10 @@ namespace TowerDefense.Runtime
             harpy.eraIndex = (int)EraId.Medieval;
             zombie.eraIndex = (int)EraId.Medieval;
             runner.mass = 1f;
+            // One damage to a wall per blow (user, 2026-11-17: level 1). TEMPORARY.
+            runner.wallDamageMultiplier = 0.5f;
+            // A blow at the wall every 1 s, not 0.9 s (user, 2026-11-18).
+            runner.attackInterval = 1f;
             // The Brute hits a little harder than the Runner; its strength is that it lasts
             // (docs/Handoff.md). TEMPORARY value until balancing.
             brute.alliedDamageMultiplier = 1.3f;
@@ -410,8 +430,14 @@ namespace TowerDefense.Runtime
             var slingers = CreateTower("slingers", "Slingers", TowerRole.ArcherLine,
                 "Hunters whirl slings and pelt the road with stones. Fast, steady throws with small hits; they finish off goblins that slip past.",
                 "Weak against tough enemies: each stone hits lightly.",
-                (int)EraId.Prehistoric, 1, 6.5f, 3f, 0.4f, 16f, PlaceholderPalette.Tower);
+                (int)EraId.Prehistoric, 0, 6.5f, 6f, 1f / (1.15f * 1.15f), 16f, PlaceholderPalette.Tower);
             slingers.nextEvolution = archer;
+            // Level 1 (user, 2026-11-18): only the first tipi, 2 slingers, a stone of 6 (was 4),
+            // throwing 30% and then twice 15% faster than their 2.6 s throw allows two (every 0.76 s,
+            // was 1.3 s): the throw itself plays that much faster. Quick Slings speeds it up more;
+            // Extra Slinger adds throwers for Challenge Sigils. None can be built until bought: the first tower costs 1 Kill Essence
+            // (Slingers), the next three come with More Towers. TEMPORARY numbers.
+            slingers.crewSize = 2;
             // Cavemen with bones come out of a cave beside the road and hold the goblins back; they
             // hit lightly, holding is their job. One at first, up to five with upgrades; one shared
             // timer brings the next one only while fewer than the maximum are out (docs/Handoff.md,
@@ -514,37 +540,59 @@ namespace TowerDefense.Runtime
             wave.enforceSpawnClearance = true;
             wave.entries = BuildLevelOneWaveEntries(runner, brute);
 
-            // Level 1 has no enemies until it is redesigned (user, 2026-11-08): starting it wins at
-            // once. The old wave above stays for the tests on the Level 1 road (LevelOneTestWave).
+            // Level 1 (user, 2026-11-17): one wave that never pauses, about 200 Goblin Runners in a
+            // random stream of about 10 a second (so about 20 s), 50% faster than the runner's base speed. The player builds before the start and only
+            // throws spears during the run. TEMPORARY numbers until balancing.
             var levelOneWave = ScriptableObject.CreateInstance<WaveDefinition>();
-            levelOneWave.id = "wave_01_empty";
-            levelOneWave.totalEnemyCount = 0;
-            levelOneWave.spawnInterval = wave.spawnInterval;
-            levelOneWave.entries = System.Array.Empty<WaveEntry>();
+            levelOneWave.id = "wave_01_continuous";
+            levelOneWave.totalEnemyCount = 200;
+            levelOneWave.spawnInterval = 1f;
+            // A steady, random stream of about 10 a second, not a burst every second (user, 2026-11-17).
+            levelOneWave.continuousSpawnRate = 10f;
+            levelOneWave.enemySpeedMultiplier = 1.5f;
+            // 4 m/s for real (user, 2026-11-17), and along an edge for about 5 m before walking
+            // back to the middle of the road.
+            levelOneWave.walkAtFullSpeed = true;
+            // Each goblin between 8 and 14 health (user, 2026-11-18), not all 12.
+            levelOneWave.runnerHealthMin = 8f;
+            levelOneWave.runnerHealthMax = 14f;
+            levelOneWave.edgeWalkBeforeCentre = 5f;
+            levelOneWave.enforceSpawnClearance = true;
+            levelOneWave.roadHalfWidth = 2f;
+            levelOneWave.hordeNavigationMode = HordeNavigationMode.Corridor;
+            levelOneWave.entries = new[] { new WaveEntry { enemy = runner, count = 200 } };
 
             var level = ScriptableObject.CreateInstance<LevelDefinition>();
             level.id = "level_01";
             level.displayName = "Broken Green Pass";
-            level.startingLives = 10;
+            // One life: the first goblin through the broken wall loses the run (user, 2026-11-17).
+            level.startingLives = 1;
             level.wave = levelOneWave;
+            level.useDataHordePrototype = true;
+            level.wallHealth = 20f;
+            // At the map's right edge (user, 2026-11-17); the road goes on past the screen.
+            level.wallDistanceFromEnd = 8.5f;
+            level.sceneryLayout = 1;
             level.pathWaypoints = CreateLevelOnePath();
-            level.groundCenter = new Vector3(0f, -0.08f, 1.5f);
-            level.groundSize = new Vector3(82f, 0.1f, 50f);
+            level.useSquarePathCorners = true;
+            level.roadWidth = 4f;
+            level.groundCenter = new Vector3(-3.5f, -0.08f, 0f);
+            level.groundSize = new Vector3(33f, 0.1f, 24f);
             level.environmentTilePackage = EnvironmentTilePackageId.Prehistoric;
-            level.cameraPosition = new Vector3(0f, 24f, -20f);
+            level.cameraPosition = new Vector3(-3.5f, 30f, -21f);
             level.cameraFieldOfView = 45f;
             level.cameraMinHeight = 8f;
             level.cameraMaxHeight = 60f;
             level.cameraPanSpeed = 26f;
             level.cameraMouseDragSensitivity = 3.35f;
-            level.cameraMinBounds = new Vector2(-36f, -22f);
-            level.cameraMaxBounds = new Vector2(36f, 22f);
+            level.cameraMinBounds = new Vector2(-24f, -16f);
+            level.cameraMaxBounds = new Vector2(17f, 16f);
             level.firstClearReward = new CurrencyAmount(CurrencyType.VictorySigil, 1);
             level.perfectClearReward = new CurrencyAmount(CurrencyType.PerfectSigil, 1);
             level.replayReward = new CurrencyAmount(CurrencyType.KillEssence, 8);
             level.bossClearReward = new CurrencyAmount(CurrencyType.BossCore, 1);
             level.challengeReward = new CurrencyAmount(CurrencyType.ChallengeToken, 1);
-            level.recommendedTactics = "No enemies yet: this level is being redesigned.";
+            level.recommendedTactics = "Goblins pile up where the road turns: put slingers there.";
 
             var levelTwoWave = ScriptableObject.CreateInstance<WaveDefinition>();
             levelTwoWave.id = "wave_02_placeholder";
@@ -897,19 +945,45 @@ namespace TowerDefense.Runtime
                 {
                     id = "slingers_unlock",
                     displayName = "Slingers",
-                    description = "Hunters with slings: fast, light hits that finish off goblins. Yours from the start.",
+                    // Not free (user, 2026-11-18): the first tower costs 1 Kill Essence, ten goblins
+                    // killed with the spear. It unlocks the tower and lets one be built.
+                    description = "Hunters with slings: fast, light hits that finish off goblins. Lets you build one tower.",
                     iconKey = "slingers",
                     radialPosition = new Vector2(-499f, 126f),
                     maxRanks = 1,
-                    startsUnlocked = true,
+                    costs = new[] { new CurrencyAmount(CurrencyType.KillEssence, 1) },
                     isMajorUnlock = true,
                     prerequisiteNodeIds = new[] { "volley_core" },
-                    effects = new[] { TreeEffect(UpgradeEffectType.UnlockTower, 1f, "slingers") }
+                    effects = new[]
+                    {
+                        TreeEffect(UpgradeEffectType.UnlockTower, 1f, "slingers"),
+                        TreeEffect(UpgradeEffectType.PerTypeTowerLimitFlat, 1f, "slingers")
+                    }
                 },
+                // Up to six towers (user, 2026-11-18), each dearer than the last: 3, 7, 15, 32 and 70
+                // Kill Essence. TEMPORARY prices.
+                TreeNode("slingers_towers", "More Towers", "One more Slingers tower can be built.", "slingers|plus", new Vector2(-380f, 190f), 5, CurrencyType.KillEssence, 3, 2.2f, "slingers_unlock", false,
+                    TreeEffect(UpgradeEffectType.PerTypeTowerLimitFlat, 1f, "slingers")),
+                // One more slinger on every Slingers tower for a Challenge Sigil each (user, 2026-11-18),
+                // from 2 up to 8; the tipi widens for the 3rd, 5th and 7th.
+                TreeNode("slingers_crew", "Extra Slinger", "Special: one more slinger on every Slingers tower.", "slingers|crew", new Vector2(-420f, 280f), 6, CurrencyType.ChallengeToken, 1, 1f, "slingers_unlock", true,
+                    TreeEffect(UpgradeEffectType.TowerCrewFlat, 1f, "slingers")),
+                // The wall at the end of the road (user, 2026-11-18): bought for 1 Kill Essence like the
+                // first tower, then more health for Kill Essence; its other upgrades will be specials.
+                // TEMPORARY numbers: 20 health, +5 a rank.
+                TreeNode("wall_unlock", "Palisade", "Build the wall across the end of the road (20 health).", "wall", new Vector2(130f, -300f), 1, CurrencyType.KillEssence, 1, 1.2f, "volley_core", true,
+                    TreeEffect(UpgradeEffectType.UnlockWall, 1f)),
+                TreeNode("wall_health", "Thicker Stakes", "The wall has 5 more health.", "wall|up", new Vector2(220f, -385f), 10, CurrencyType.KillEssence, 2, 1.3f, "wall_unlock", false,
+                    TreeEffect(UpgradeEffectType.WallHealthFlat, 5f)),
+                // Income (user, 2026-11-18): Kill Essence after every run, won or lost. TEMPORARY numbers.
+                // +3 a rank (user, 2026-11-18), five ranks, doubling in price: 2, 4, 8, 16, 32.
+                TreeNode("essence_gatherers", "Gatherers", "+3 Kill Essence after each run.", "essence", new Vector2(0f, -200f), 5, CurrencyType.KillEssence, 2, 2f, "volley_core", false,
+                    TreeEffect(UpgradeEffectType.LevelEndKillEssenceFlat, 3f)),
+                // Slinger stones +12% a rank and throws +8% a rank (user, 2026-11-18; they were 10% and 6%).
                 TreeNode("slingers_damage", "Heavier Stones", "Slinger stones hit harder.", "damage", new Vector2(-481f, -18f), 10, CurrencyType.KillEssence, 2, 1.2f, "slingers_unlock", false,
-                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 10f, "slingers")),
+                    TreeEffect(UpgradeEffectType.TowerDamagePercent, 12f, "slingers")),
                 TreeNode("slingers_speed", "Quick Slings", "Slingers throw faster.", "speed", new Vector2(-667f, 48f), 8, CurrencyType.KillEssence, 3, 1.2f, "slingers_unlock", false,
-                    TreeEffect(UpgradeEffectType.TowerFireRatePercent, 6f, "slingers")),
+                    TreeEffect(UpgradeEffectType.TowerFireRatePercent, 8f, "slingers")),
                 TreeNode("slingers_range", "Long Cords", "Slingers reach further.", "range", new Vector2(-571f, 13f), 5, CurrencyType.KillEssence, 4, 1.25f, "slingers_unlock", false,
                     TreeEffect(UpgradeEffectType.TowerRangeFlat, 0.4f, "slingers")),
                 TreeNode("slingers_stun", "Stunning Stones", "Special: a stone sometimes stuns the goblin it hits (15%, 0.6 s).", "stun", new Vector2(-674f, 153f), 1, CurrencyType.ChallengeToken, 2, 1.2f, "slingers_unlock", true,
@@ -1012,16 +1086,17 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.TowerTorchBurnDamagePerSecondFlat, 1f, "cave")),
                 TreeNode("cave_torches_long", "Pitch", "Torches: the burn lasts 1 s longer.", "torch|time", new Vector2(-499f, -356f), 5, CurrencyType.KillEssence, 6, 1.25f, "cave_torches", false,
                     TreeEffect(UpgradeEffectType.TowerTorchBurnSecondsFlat, 1f, "cave")),
+                // A rank of spear speed is 6% (user, 2026-11-18; it was 5%).
                 TreeNode("rock_damage", "Sharper Flint", "The spear hits harder.", "damage", new Vector2(-46f, 146f), 10, CurrencyType.KillEssence, 2, 1.2f, "volley_core", false,
                     TreeEffect(UpgradeEffectType.ActiveWeaponDamagePercent, 10f)),
                 TreeNode("rock_cooldown", "Quick Hands", "The next spear is ready sooner.", "cooldown", new Vector2(-109f, -98f), 8, CurrencyType.KillEssence, 3, 1.2f, "volley_core", false,
-                    TreeEffect(UpgradeEffectType.ActiveWeaponCooldownPercent, 5f)),
+                    TreeEffect(UpgradeEffectType.ActiveWeaponCooldownPercent, 6f)),
                 // Spear upgrades (user, 2026-11-12), all prices and numbers TEMPORARY. The heavy spear and
-                // the volley are plain Kill Essence upgrades; the precise strike is a special with two
-                // upgrades of its own. They sit where the rock's upgrades were.
-                TreeNode("spear_heavy", "Heavy Spear", "The spear's blow shakes the ground: goblins within 0.7 m of its target take 40% of its damage. Each rank reaches 0.7 m further.", "heavyspear", new Vector2(115f, -118f), 3, CurrencyType.KillEssence, 4, 1.3f, "volley_core", false,
+                // the volley are specials too (user, 2026-11-18), bought with Challenge Sigils like the
+                // precise strike, which has two upgrades of its own. They sit where the rock's upgrades were.
+                TreeNode("spear_heavy", "Heavy Spear", "The spear's blow shakes the ground: goblins within 0.7 m of its target take 40% of its damage. Each rank reaches 0.7 m further.", "heavyspear", new Vector2(115f, -118f), 3, CurrencyType.ChallengeToken, 2, 1.5f, "volley_core", true,
                     TreeEffect(UpgradeEffectType.ActiveWeaponSplashRadiusFlat, 0.7f)),
-                TreeNode("spear_volley", "Volley", "One more spear flies with each click, at the goblins nearest it.", "volley", new Vector2(75f, 108f), 4, CurrencyType.KillEssence, 8, 1.5f, "volley_core", false,
+                TreeNode("spear_volley", "Volley", "One more spear flies with each click, at the goblins nearest it.", "volley", new Vector2(75f, 108f), 4, CurrencyType.ChallengeToken, 3, 1.5f, "volley_core", true,
                     TreeEffect(UpgradeEffectType.ActiveWeaponExtraSpearsFlat, 1f)),
                 TreeNode("spear_precise", "Precise Strike", "Special: each spear has a 15% chance to deal 3 times its damage.", "crit", new Vector2(-142f, 117f), 1, CurrencyType.ChallengeToken, 3, 1.2f, "volley_core", true,
                     TreeEffect(UpgradeEffectType.ActiveWeaponCritChancePercent, 15f)),
@@ -1031,20 +1106,13 @@ namespace TowerDefense.Runtime
                     TreeEffect(UpgradeEffectType.ActiveWeaponCritMultiplierFlat, 0.5f)),
             };
 
-            return new SampleContent
-            {
-                Level = level,
-                LevelOneTestWave = wave,
-                PrehistoricBoss = prehistoricBoss,
-                Levels = new[] { level, levelTwo, levelTwoPointOne, levelThree, levelFour, levelFive, levelSix, levelSeven },
-                SkillTree = tree,
-                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks, slingers, spearThrower, mammoth, cave }
-            };
-        }
-
-        private static Vector3[] CreateLevelOnePath()
-        {
-            return new[]
+            // The former Level 1 road (before 2026-11-17), kept only for the tests built on it.
+            var levelOneTestLevel = ScriptableObject.CreateInstance<LevelDefinition>();
+            levelOneTestLevel.id = "level_01_test_road";
+            levelOneTestLevel.displayName = "Former Level 1 Road";
+            levelOneTestLevel.startingLives = 10;
+            levelOneTestLevel.wave = wave;
+            levelOneTestLevel.pathWaypoints = new[]
             {
                 new Vector3(-32f, 0f, 9.5f),
                 new Vector3(-20.5f, 0f, 9.5f),
@@ -1054,6 +1122,37 @@ namespace TowerDefense.Runtime
                 new Vector3(3.8f, 0f, 10.2f),
                 new Vector3(15.6f, 0f, 10.2f),
                 new Vector3(26.5f, 0f, 10.2f)
+            };
+            levelOneTestLevel.groundCenter = new Vector3(0f, -0.08f, 1.5f);
+            levelOneTestLevel.groundSize = new Vector3(82f, 0.1f, 50f);
+
+            return new SampleContent
+            {
+                Level = level,
+                LevelOneTestLevel = levelOneTestLevel,
+                LevelOneTestWave = wave,
+                PrehistoricBoss = prehistoricBoss,
+                Levels = new[] { level, levelTwo, levelTwoPointOne, levelThree, levelFour, levelFive, levelSix, levelSeven },
+                SkillTree = tree,
+                Towers = new[] { archer, ballista, bell, catapult, barrier, knightBarracks, archerBarracks, paladinBarracks, slingers, spearThrower, mammoth, cave }
+            };
+        }
+
+        // Level 1 (user, 2026-11-17): from the left edge to the right, two right-angle turns where
+        // the goblins run on and pile up. It starts and ends past the screen's edges; a goblin walks
+        // the 50 m from the left edge to the wall at the right edge in about 12.5 s (1.5x speed).
+        private static Vector3[] CreateLevelOnePath()
+        {
+            return new[]
+            {
+                // Layout A (user, 2026-11-18): four right-angle turns, up and then down, so it is
+                // our own map and the horde piles up at four corners. About a quarter longer.
+                new Vector3(-27f, 0f, -2f),
+                new Vector3(-12f, 0f, -2f),
+                new Vector3(-12f, 0f, 6f),
+                new Vector3(0f, 0f, 6f),
+                new Vector3(0f, 0f, -5f),
+                new Vector3(24f, 0f, -5f)
             };
         }
 

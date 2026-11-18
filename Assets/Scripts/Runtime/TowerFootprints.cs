@@ -35,6 +35,26 @@ namespace TowerDefense.Runtime
         {
             if (definition != null && Measured.TryGetValue(definition.id, out var outline))
             {
+                // The narrower tipi of a smaller crew (user, 2026-11-18): squeezed across and in depth
+                // about its middle, its front still at the spot (SlingerTowerVisual backs it off).
+                if (definition.id == "slingers" && definition.crewSize > 0 && definition.crewSize < 8)
+                {
+                    var squeeze = SlingerTowerVisual.SqueezeFor(definition.crewSize);
+                    var front = float.MinValue;
+                    foreach (var point in outline)
+                    {
+                        front = Mathf.Max(front, point.y);
+                    }
+
+                    var squeezed = new Vector2[outline.Length];
+                    for (var i = 0; i < outline.Length; i++)
+                    {
+                        squeezed[i] = new Vector2(outline[i].x * squeeze, front + (outline[i].y - front) * squeeze);
+                    }
+
+                    return squeezed;
+                }
+
                 return outline;
             }
 

@@ -30,7 +30,13 @@ PREVIEW = argv[3] if len(argv) > 3 else None
 # few, so their near level of detail has more triangles than a goblin's.
 HEIGHT = 2.5
 HORDE_SCALE = 0.4875
-LODS = (6000, 700)
+LODS = (6000, 700, 110, 45)
+# The things held and worn, decimated only in the third, tiny level (optimization, 2026-11-16: far
+# from the camera, at a few dozen pixels tall, the full club and hair were half the vertices drawn).
+# Halved again for 100 000 enemies (2026-11-16): 107 -> 183 fps there, and the same look at 70 m.
+PIECE_TRIS = (None, None, 16, 0)
+# The fourth level only casts the shadows: no held or worn pieces (0). Its texture seams stay split:
+# welded (48 vertices instead of 147) it drew slower, as the welded tiny level did (2026-11-17).
 # How much lighter the skin is made: the Meshy texture's green is about 40% darker than the goblin's.
 SKIN_LIGHTEN = 1.45
 POSES = 6
@@ -821,7 +827,7 @@ def vertex_normals(p, idx):
 
 levels = []
 stride = None
-for target in LODS:
+for level_number, target in enumerate(LODS):
     bp, buv, bidx = mesh_arrays(body, target)
     # Body uvs move up into the top of the texture; each held or worn piece takes one colour from
     # the strip below (the facets shade it).
@@ -829,7 +835,9 @@ for target in LODS:
     points, uvs, idx, held, wear = [bp], [buv], [bidx], [np.zeros(len(bp))], [np.zeros(len(bp))]
     count = len(bp)
     for thing, segment, held_number, worn_number in PIECES:
-        cp, cuv, cidx = mesh_arrays(thing, None)
+        if PIECE_TRIS[level_number] == 0:
+            continue
+        cp, cuv, cidx = mesh_arrays(thing, PIECE_TRIS[level_number])
         points.append(cp)
         uvs.append(np.stack([np.full(len(cp), (segment + 0.5) / SEGMENTS),
                              np.full(len(cp), 0.5 * STRIP / (TEX + STRIP))], 1))

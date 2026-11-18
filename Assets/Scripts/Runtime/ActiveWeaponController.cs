@@ -141,7 +141,8 @@ namespace TowerDefense.Runtime
                 return;
             }
 
-            if (towers != null && towers.GetNearestTower(input.Current.PointerWorld) != null)
+            // A click on a tower selects it; it throws no spear.
+            if (towers != null && (towers.GetTowerAt(input.Current.PointerWorld) != null || towers.GetNearestTower(input.Current.PointerWorld) != null))
             {
                 return;
             }

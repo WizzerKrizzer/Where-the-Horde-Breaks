@@ -14,7 +14,8 @@ namespace TowerDefense.Runtime
         [SerializeField] private float panSpeed = 26f;
         [SerializeField] private float mouseDragSensitivity = 3.35f;
         [SerializeField] private float zoomSpeed = 10f;
-        [SerializeField] private float minHeight = 2.5f;
+        private const float ClosestHeight = 4f;
+        [SerializeField] private float minHeight = ClosestHeight;
         [SerializeField] private float maxHeight = 60f;
         [SerializeField] private Vector2 minBounds = new(-36f, -22f);
         [SerializeField] private Vector2 maxBounds = new(36f, 22f);
@@ -47,9 +48,16 @@ namespace TowerDefense.Runtime
             controlledCamera.transform.position = ConvertAuthoredPositionToReadablePitch(position);
             controlledCamera.transform.rotation = Quaternion.Euler(HordeReadableCameraPitch, 0f, 0f);
             controlledCamera.fieldOfView = fieldOfView;
+            // The view is orthographic: its height only sets the zoom, but the camera itself stood
+            // that low and cut off everything above it, the slingers' bodies on their deck and the
+            // tree tops (user, 2026-11-18). An orthographic camera may look from behind itself, so
+            // nothing up to 60 m above it is cut.
+            controlledCamera.nearClipPlane = controlledCamera.orthographic ? -60f : 0.1f;
             authoredFieldOfView = fieldOfView;
             dragReferenceHeight = Mathf.Max(1f, minZoomHeight);
-            minHeight = Mathf.Min(dragReferenceHeight, 2.5f);
+            // The closest is 4 m (user, 2026-11-11). It was 2.5 m, below the slingers' heads on their
+            // deck (about 3.9 m), which cut their bodies off and left only their legs (2026-11-18).
+            minHeight = ClosestHeight;
             maxHeight = Mathf.Max(minHeight + 1f, maxZoomHeight);
             panSpeed = Mathf.Max(1f, levelPanSpeed);
             mouseDragSensitivity = Mathf.Max(0.1f, levelMouseDragSensitivity);
